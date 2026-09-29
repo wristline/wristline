@@ -1,5 +1,14 @@
 package dev.wristline.watch.ui
 
+import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -8,9 +17,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
@@ -31,6 +42,8 @@ import androidx.wear.compose.material3.TextDefaults
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import dev.wristline.watch.BuildConfig
+import dev.wristline.watch.MonitorService
+import dev.wristline.watch.Notifier
 import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
@@ -43,10 +56,26 @@ internal fun SettingsScreen(
     onPaired: () -> Unit,
     onSignedOut: () -> Unit,
 ) {
+    val context = LocalContext.current
     val prefs = Bridge.prefs
     val conn by Bridge.conn.collectAsStateWithLifecycle()
     var deviceName by remember { mutableStateOf(prefs.deviceName) }
-    var monitoring by remember { mutableStateOf(prefs.monitoring) }
+    // The service turns the setting off itself when the pairing is gone.
+    val monitoring by prefs.monitoringState.collectAsStateWithLifecycle()
+    // Re-read on every resume: the user may have changed it in the system settings.
+    var notificationsOn by remember { mutableStateOf(Notifier.enabled(context)) }
+    LifecycleResumeEffect(Unit) {
+        notificationsOn = Notifier.enabled(context)
+        onPauseOrDispose {}
+    }
+    val setMonitoring = { on: Boolean ->
+        prefs.monitoring = on
+        MonitorService.sync(context)
+    }
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notificationsOn = Notifier.enabled(context)
+        if (notificationsOn) setMonitoring(true)
+    }
     var tokenNeedsAddress by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -65,14 +94,22 @@ internal fun SettingsScreen(
         paired = prefs.isPaired,
         deviceName = deviceName,
         monitoring = monitoring,
+        canMonitor = prefs.isPaired && conn !is Conn.Unauthorized,
+        notificationsOff = !notificationsOn,
         busy = busy,
         tokenNeedsAddress = tokenNeedsAddress,
         onAddress = onAddress,
         onDeviceName = editName,
-        onMonitoring = {
-            monitoring = it
-            prefs.monitoring = it
+        onMonitoring = { on ->
+            when {
+                // Without notifications monitoring has no way to reach the user.
+                !on || notificationsOn -> setMonitoring(on)
+                // Once denied for good this returns at once; the "notifications off" item explains it.
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED ->
+                    askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         },
+        onNotificationSettings = { openAppSettings(context) },
         onRepair = onRepair,
         onToken = { if (prefs.baseUrl.isEmpty()) tokenNeedsAddress = true else enterToken() },
         onDisconnect = { confirmDisconnect = true },
@@ -108,11 +145,14 @@ internal fun SettingsContent(
     paired: Boolean,
     deviceName: String,
     monitoring: Boolean,
+    canMonitor: Boolean,
+    notificationsOff: Boolean,
     busy: Boolean,
     tokenNeedsAddress: Boolean,
     onAddress: () -> Unit,
     onDeviceName: () -> Unit,
     onMonitoring: (Boolean) -> Unit,
+    onNotificationSettings: () -> Unit,
     onRepair: () -> Unit,
     onToken: () -> Unit,
     onDisconnect: () -> Unit,
@@ -176,11 +216,23 @@ internal fun SettingsContent(
                     SwitchButton(
                         checked = monitoring,
                         onCheckedChange = onMonitoring,
+                        enabled = canMonitor,
                         modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
                         transformation = SurfaceTransformation(spec),
                         label = { Text(stringResource(R.string.settings_monitoring)) },
                         secondaryLabel = { Text(stringResource(R.string.settings_monitoring_detail), maxLines = 2) },
                     )
+                }
+                if (notificationsOff) {
+                    item(key = "notificationsOff") {
+                        FilledTonalButton(
+                            onClick = onNotificationSettings,
+                            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
+                            transformation = SurfaceTransformation(spec),
+                            label = { Text(stringResource(R.string.settings_notifications_off), color = colors.error) },
+                            secondaryLabel = { Text(stringResource(R.string.settings_notifications_open), maxLines = 2) },
+                        )
+                    }
                 }
                 if (address.isNotEmpty()) {
                     item(key = "repair") {
@@ -234,5 +286,15 @@ internal fun SettingsContent(
                 )
             }
         }
+    }
+}
+
+/** App info in the system settings, where notifications can be allowed again. */
+private fun openAppSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        // No settings screen for apps on this watch; nothing else to offer.
     }
 }

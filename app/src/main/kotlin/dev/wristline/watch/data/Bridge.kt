@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.util.Log
 import androidx.compose.runtime.Immutable
+import dev.wristline.watch.Notifier
 import java.io.IOException
 import java.time.Instant
 import java.util.TreeMap
@@ -214,6 +215,13 @@ object Bridge {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var demo: DemoData? = null
 
+    /**
+     * MainActivity is resumed, i.e. the user is looking at the app. Requests then only tick the
+     * vibrator (the screens show them); otherwise they become notifications.
+     */
+    @Volatile
+    var foreground = false
+
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
@@ -228,6 +236,7 @@ object Bridge {
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
         prefs = Prefs(appContext)
+        Notifier.createChannels(appContext)
         if (prefs.isPaired) _conn.value = Conn.Connecting
     }
 
@@ -399,33 +408,61 @@ object Bridge {
                     ended.complete(End.INCOMPATIBLE)
                     return
                 }
+                val known = _requests.value.mapTo(HashSet()) { it.id }
                 _sessions.value = sortSessions(event.sessions)
                 _requests.value = event.requests
                 _usage.value = event.usage
                 _conn.value = Conn.Online
+                // Requests that arrived or ended while the socket was down.
+                Notifier.reconcile(appContext, event.requests, event.sessions)
+                if (!foreground) {
+                    event.requests.filter { it.id !in known }.forEach { Notifier.request(appContext, it, session(it.sessionId)) }
+                }
                 onOnline()
                 val open = synchronized(lock) { itemFlows.keys.toList() }
                 open.forEach { id -> scope.launch { loadLatest(id) } }
             }
-            is ServerEvent.SessionChanged ->
+            is ServerEvent.SessionChanged -> {
                 _sessions.value = sortSessions(_sessions.value.filterNot { it.id == event.session.id } + event.session)
-            is ServerEvent.SessionRemoved -> _sessions.value = _sessions.value.filterNot { it.id == event.sessionId }
+                // Working again or over: its needs-input or done alert is stale.
+                val status = event.session.status
+                if (status == SessionStatus.RUNNING || status == SessionStatus.ENDED) Notifier.cancelSession(appContext, event.session.id)
+            }
+            is ServerEvent.SessionRemoved -> {
+                _sessions.value = _sessions.value.filterNot { it.id == event.sessionId }
+                Notifier.cancelSession(appContext, event.sessionId)
+            }
             is ServerEvent.ItemChanged -> itemFlow(event.sessionId)?.update { it.withItem(event.item) }
-            is ServerEvent.RequestAdded ->
+            is ServerEvent.RequestAdded -> {
+                val isNew = _requests.value.none { it.id == event.request.id }
                 _requests.value = _requests.value.filterNot { it.id == event.request.id } + event.request
+                if (isNew) attention { Notifier.request(appContext, event.request, session(event.request.sessionId)) }
+            }
             is ServerEvent.Resolved -> removeRequest(event.requestId)
             is ServerEvent.UsageChanged -> {
                 val list = _usage.value
                 val index = list.indexOfFirst { it.provider == event.usage.provider }
                 _usage.value = if (index < 0) list + event.usage else list.toMutableList().apply { set(index, event.usage) }
             }
-            // Notifications come with the monitoring service (Phase 5).
-            is ServerEvent.Alert -> Unit
+            is ServerEvent.Alert -> when (event.alert) {
+                AlertKind.NEEDS_INPUT -> if (_requests.value.none { it.sessionId == event.sessionId }) {
+                    attention { Notifier.needsInput(appContext, event.sessionId, event.text, session(event.sessionId)) }
+                }
+                AlertKind.DONE -> if (!foreground) Notifier.done(appContext, event.sessionId, event.text, session(event.sessionId))
+            }
         }
     }
 
+    /** In the foreground a single vibration tick; otherwise [post] a notification. */
+    private inline fun attention(post: () -> Unit) {
+        if (foreground) Notifier.tick(appContext) else post()
+    }
+
+    private fun session(id: String): Session? = _sessions.value.firstOrNull { it.id == id }
+
     private fun removeRequest(id: String) {
         _requests.update { list -> list.filterNot { it.id == id } }
+        Notifier.cancelRequest(appContext, id)
     }
 
     private fun unauthorized() {
@@ -605,6 +642,7 @@ object Bridge {
         _requests.value = emptyList()
         _usage.value = emptyList()
         synchronized(lock) { itemFlows.values.forEach { it.value = SessionItems() } }
+        Notifier.reconcile(appContext, emptyList(), emptyList())
     }
 
     // ---- demo ----

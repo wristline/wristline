@@ -127,7 +127,7 @@ private fun SessionListUnreachablePreview() = Frame {
 private fun SessionDetailPreview() = Frame {
     SessionDetailContent(
         sessions[1], gone = false, state = items, hasRequest = false, sending = false, outcome = null,
-        onEarlier = {}, onAction = {},
+        onEarlier = {}, onAction = {}, onType = {},
     )
 }
 
@@ -152,7 +152,8 @@ private fun UsagePreview() = Frame { UsageContent(usage, now) }
 private fun SettingsPreview() = Frame {
     SettingsContent(
         demo = false, address = "https://siso-work.tail43ebc0.ts.net", paired = true, deviceName = "Galaxy Watch Ultra",
-        monitoring = false, busy = false, tokenNeedsAddress = false,
-        onAddress = {}, onDeviceName = {}, onMonitoring = {}, onRepair = {}, onToken = {}, onDisconnect = {}, onExitDemo = {},
+        monitoring = false, canMonitor = true, notificationsOff = true, busy = false, tokenNeedsAddress = false,
+        onAddress = {}, onDeviceName = {}, onMonitoring = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
+        onDisconnect = {}, onExitDemo = {},
     )
 }

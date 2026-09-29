@@ -3,6 +3,9 @@ package dev.wristline.watch.data
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Pairing and user settings. Stored in app-private SharedPreferences, which are excluded from
@@ -24,10 +27,16 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_DEVICE_NAME, null) ?: defaultDeviceName
         set(value) = sp.edit().putString(KEY_DEVICE_NAME, value).apply()
 
-    /** Background monitoring requested by the user (the service itself arrives in Phase 5). */
+    private val monitoringFlow = MutableStateFlow(sp.getBoolean(KEY_MONITORING, false))
+
+    /** Background monitoring requested by the user; MonitorService runs while this is on. */
+    val monitoringState: StateFlow<Boolean> = monitoringFlow.asStateFlow()
     var monitoring: Boolean
-        get() = sp.getBoolean(KEY_MONITORING, false)
-        set(value) = sp.edit().putBoolean(KEY_MONITORING, value).apply()
+        get() = monitoringFlow.value
+        set(value) {
+            monitoringFlow.value = value
+            sp.edit().putBoolean(KEY_MONITORING, value).apply()
+        }
 
     fun saveAddress(baseUrl: String) = sp.edit().putString(KEY_BASE_URL, baseUrl).apply()
 
@@ -39,7 +48,10 @@ class Prefs(context: Context) {
             .putString(KEY_DEVICE_ID, deviceId)
             .apply()
 
-    fun clear() = sp.edit().clear().apply()
+    fun clear() {
+        sp.edit().clear().apply()
+        monitoringFlow.value = false
+    }
 
     private companion object {
         const val KEY_BASE_URL = "baseUrl"

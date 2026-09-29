@@ -1,5 +1,11 @@
 package dev.wristline.watch.ui
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +22,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +45,7 @@ import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.CompactButton
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
+import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
@@ -85,12 +93,21 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
 
     val scope = rememberCoroutineScope()
     var draft by remember { mutableStateOf("") }
+    // How the draft was entered; [Retry] asks the same way again.
+    var typed by remember { mutableStateOf(false) }
     var confirming by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var outcome by remember { mutableStateOf<Sent?>(null) }
-    // Phase 5 puts speech recognition in front of this; the confirm-and-send path stays the same.
-    val compose = rememberTextInput(stringResource(R.string.detail_prompt_label)) {
+    val label = stringResource(R.string.detail_prompt_label)
+    val type = rememberTextInput(label) {
         draft = it
+        typed = true
+        outcome = null
+        confirming = true
+    }
+    val speak = rememberSpeechInput(label, onUnavailable = type) {
+        draft = it
+        typed = false
         outcome = null
         confirming = true
     }
@@ -109,7 +126,8 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
         sending = sending,
         outcome = outcome,
         onEarlier = { Bridge.loadEarlier(sessionId) },
-        onAction = { if (request != null) onRespond(request.id) else compose() },
+        onAction = { if (request != null) onRespond(request.id) else speak() },
+        onType = type,
     )
 
     AlertDialog(
@@ -128,8 +146,49 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
             )
         },
         title = { Text(stringResource(R.string.detail_confirm_title)) },
-        text = { Text(draft, maxLines = COLLAPSED_LINES, overflow = TextOverflow.Ellipsis) },
-    )
+        // Not clipped: a long message scrolls with the dialog.
+        text = { Text(draft) },
+    ) {
+        item {
+            FilledTonalButton(
+                onClick = {
+                    confirming = false
+                    if (typed) type() else speak()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.detail_retry)) },
+            )
+        }
+    }
+}
+
+/**
+ * Returns a launcher for the system speech recognizer (free-form, device language, one result).
+ * [onText] gets the trimmed, non-empty transcript. Without a recognizer on the watch,
+ * [onUnavailable] runs instead.
+ */
+@Composable
+private fun rememberSpeechInput(prompt: String, onUnavailable: () -> Unit, onText: (String) -> Unit): () -> Unit {
+    val latest by rememberUpdatedState(onText)
+    val fallback by rememberUpdatedState(onUnavailable)
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
+        if (!text.isNullOrEmpty()) latest(text)
+    }
+    return remember(launcher, prompt) {
+        {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
+                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            try {
+                launcher.launch(intent)
+            } catch (_: ActivityNotFoundException) {
+                fallback()
+            }
+        }
+    }
 }
 
 @Composable
@@ -142,6 +201,7 @@ internal fun SessionDetailContent(
     outcome: Sent?,
     onEarlier: () -> Unit,
     onAction: () -> Unit,
+    onType: () -> Unit,
 ) {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
@@ -154,7 +214,9 @@ internal fun SessionDetailContent(
     val showEmpty = items.isEmpty() && state.loaded && !state.loading
     val working = session?.status == SessionStatus.RUNNING
     val blockCode = session?.promptBlock?.takeIf { !hasRequest }
-    val footers = listOf(working, blockCode != null, outcome != null).count { it }
+    // Typing is the alternative to the [Speak] EdgeButton, offered whenever a prompt can be sent.
+    val canType = !hasRequest && session != null && session.promptBlock == null
+    val footers = listOf(working, blockCode != null, outcome != null, canType).count { it }
     val lastIndex = 1 + listOf(showEarlier, showLoading, showEmpty).count { it } + items.size + footers - 1
 
     // Follow new items only when the user was at the bottom. Read during composition on purpose:
@@ -252,6 +314,17 @@ internal fun SessionDetailContent(
                         text,
                         Modifier.edgeTransform(this, spec).animateItem(),
                         color = if (outcome == Sent.Ok) colors.primary else colors.error,
+                    )
+                }
+            }
+            if (canType) {
+                item(key = "type") {
+                    CompactButton(
+                        onClick = onType,
+                        enabled = !sending,
+                        modifier = Modifier.transformedHeight(this, spec).animateItem(),
+                        transformation = SurfaceTransformation(spec),
+                        label = { Text(stringResource(R.string.detail_type)) },
                     )
                 }
             }

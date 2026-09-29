@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification and ongoing-activity icon: the launcher foreground's shapes, cropped to their
+     bounds so they fill the small icon instead of sitting inside the adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="68"
+    android:viewportHeight="68">
+    <group
+        android:translateX="-20"
+        android:translateY="-20">
+        <path
+            android:pathData="M54,34a20,20 0,1 1,0 40a20,20 0,1 1,0 -40z"
+            android:strokeWidth="4"
+            android:strokeColor="#FFFFFFFF" />
+        <path
+            android:pathData="M24,54H34M74,54H84"
+            android:strokeWidth="4"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M46,47L53,54L46,61M56,61H63"
+            android:strokeWidth="4"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

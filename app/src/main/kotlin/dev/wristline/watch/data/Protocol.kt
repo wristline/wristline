@@ -66,6 +66,12 @@ object Decision {
     const val DEFER = "defer"
 }
 
+/** Values of [ServerEvent.Alert.alert]. */
+object AlertKind {
+    const val NEEDS_INPUT = "needs_input"
+    const val DONE = "done"
+}
+
 @Immutable
 @Serializable
 data class ContextUsage(val used: Long, val window: Long)

@@ -1,5 +1,6 @@
 package dev.wristline.watch
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -16,13 +17,14 @@ import dev.wristline.watch.data.normalizeAddress
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    private var requestId by mutableStateOf<String?>(null)
+    /** Screen to open once, from a notification tap. */
+    private var openRoute by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Bridge.init(this)
         if (savedInstanceState == null) handleIntent(intent)
-        setContent { App(requestId = requestId, onRequestShown = { requestId = null }) }
+        setContent { App(openRoute = openRoute, onOpened = { openRoute = null }) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -33,6 +35,18 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Bridge.acquire()
+        // Restarts monitoring after a reboot or after the system stopped it (there is no boot receiver).
+        MonitorService.sync(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Bridge.foreground = true
+    }
+
+    override fun onPause() {
+        Bridge.foreground = false
+        super.onPause()
     }
 
     override fun onStop() {
@@ -41,7 +55,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent) {
-        intent.getStringExtra(EXTRA_REQUEST_ID)?.let { requestId = it }
+        // A task first opened from a notification keeps that intent; Recents replays it later.
+        if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
+            intent.getStringExtra(EXTRA_REQUEST_ID)?.let { openRoute = Route.request(it) }
+            intent.getStringExtra(EXTRA_SESSION_ID)?.let { openRoute = Route.session(it) }
+        }
         if (BuildConfig.DEBUG) debugPair(intent)
     }
 
@@ -63,5 +81,19 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Extra carrying a PendingRequest id; opens the request screen. */
         const val EXTRA_REQUEST_ID = "requestId"
+
+        /** Extra carrying a session id (alert notifications); opens the session. */
+        const val EXTRA_SESSION_ID = "sessionId"
+
+        /**
+         * Opens the app from a notification. Same action and category as the launcher's intent, so
+         * the existing task is resumed instead of a second MainActivity or Recents entry being
+         * created; SINGLE_TOP hands the extras to [onNewIntent].
+         */
+        fun openIntent(context: Context): Intent =
+            Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .setClass(context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }
 }

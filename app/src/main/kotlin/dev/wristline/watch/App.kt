@@ -44,11 +44,12 @@ object Route {
 }
 
 /**
- * Root composable. [requestId] comes from a notification tap (Phase 5) and opens that request once.
- * AppScaffold shows the TimeText above every screen; each screen brings its own ScreenScaffold.
+ * Root composable. [openRoute] comes from a notification tap (a request or a session) and is
+ * opened once. AppScaffold shows the TimeText above every screen; each screen brings its own
+ * ScreenScaffold.
  */
 @Composable
-fun App(requestId: String?, onRequestShown: () -> Unit) {
+fun App(openRoute: String?, onOpened: () -> Unit) {
     MaterialTheme {
         AppScaffold {
             val nav = rememberSwipeDismissableNavController()
@@ -112,10 +113,10 @@ fun App(requestId: String?, onRequestShown: () -> Unit) {
                 }
             }
 
-            LaunchedEffect(requestId) {
-                if (requestId == null) return@LaunchedEffect
-                if (Bridge.prefs.isPaired) nav.navigate(Route.request(requestId))
-                onRequestShown()
+            LaunchedEffect(openRoute) {
+                if (openRoute == null) return@LaunchedEffect
+                if (Bridge.prefs.isPaired) nav.navigate(openRoute) { launchSingleTop = true }
+                onOpened()
             }
         }
     }
