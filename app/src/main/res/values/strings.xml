@@ -1,4 +1,123 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Wristline</string>
+    <string name="provider_claude_code" translatable="false">Claude</string>
+    <string name="provider_codex" translatable="false">Codex</string>
+    <string name="privacy_url" translatable="false">https://wristline.github.io/wristline/privacy</string>
+
+    <!-- Common -->
+    <string name="action_next">Next</string>
+    <string name="action_send">Send</string>
+
+    <!-- Onboarding -->
+    <string name="welcome_tagline">Your PC coding agents, on your wrist.</string>
+    <string name="welcome_setup">Set up</string>
+    <string name="welcome_demo">Try demo</string>
+    <string name="notify_title">Notifications</string>
+    <string name="notify_body">Allow notifications so your watch can buzz when an agent needs you.</string>
+    <string name="notify_continue">Continue</string>
+    <string name="address_title">Bridge address</string>
+    <string name="address_hint">Run wristline-bridge setup on your PC to see it.</string>
+    <string name="address_enter">Enter address</string>
+    <string name="address_change">Change address</string>
+    <string name="address_searching">Looking for the bridge…</string>
+    <string name="address_found">Bridge found</string>
+    <string name="address_error_empty">Enter an address.</string>
+    <string name="address_error_insecure">Use an https:// address.</string>
+    <string name="address_error_invalid">Enter only the host name, like name.ts.net.</string>
+    <string name="probe_not_bridge">No Wristline bridge at this address.</string>
+    <string name="probe_unreachable">Can\'t reach this address.</string>
+    <string name="code_title">Pairing code</string>
+    <string name="code_digit">Digit %1$d: %2$d</string>
+    <string name="code_pair">Pair</string>
+    <string name="token_use">Use a token instead</string>
+    <string name="token_label">Token from wristline-bridge pair --token</string>
+
+    <!-- Errors -->
+    <string name="error_unreachable">Can\'t reach the bridge.</string>
+    <string name="error_invalid_code">Wrong code. Check the code on your PC.</string>
+    <string name="error_no_pairing">No pairing in progress. Run wristline-bridge pair again.</string>
+    <string name="error_rate_limited">Too many attempts. Wait a minute and try again.</string>
+    <string name="error_incompatible">This bridge version isn\'t supported. Update the app or the bridge.</string>
+    <string name="error_unauthorized">This watch is no longer paired.</string>
+    <string name="error_already_resolved">Already handled.</string>
+    <string name="error_too_long">The message is too long.</string>
+    <string name="error_bad_request">The bridge rejected this.</string>
+    <string name="error_generic">Something went wrong (%1$s).</string>
+
+    <!-- Why a prompt can't be sent (PromptBlock) -->
+    <string name="block_not_live">This session isn\'t running.</string>
+    <string name="block_no_tmux">Sending needs a session started in tmux.</string>
+    <string name="block_awaiting_input">Answer the pending request first.</string>
+    <string name="block_busy">The agent is busy. Try again when it\'s done.</string>
+    <string name="block_unsupported">This session can\'t take messages from the watch.</string>
+
+    <!-- Connection -->
+    <string name="conn_connecting">Connecting…</string>
+    <string name="conn_offline">Offline. Showing the last list.</string>
+    <string name="conn_unreachable">Can\'t reach the bridge</string>
+    <string name="conn_retry_in">Retrying in %1$d s. Tap to retry now.</string>
+    <string name="conn_unauthorized">Pairing was removed</string>
+    <string name="conn_repair">Pair again</string>
+    <string name="conn_incompatible">Update needed</string>
+    <string name="conn_incompatible_detail">Bridge protocol v%1$d isn\'t supported.</string>
+    <string name="conn_demo">Demo mode</string>
+
+    <!-- Session list -->
+    <string name="sessions_title">Sessions</string>
+    <string name="sessions_empty">No sessions yet. Start Claude Code or Codex on your PC.</string>
+    <plurals name="requests_waiting">
+        <item quantity="one">%d request waiting</item>
+        <item quantity="other">%d requests waiting</item>
+    </plurals>
+    <string name="session_untitled">Untitled session</string>
+    <string name="status_running">Running</string>
+    <string name="status_idle">Idle</string>
+    <string name="status_needs_input">Needs input</string>
+    <string name="status_ended">Ended</string>
+
+    <!-- Session detail -->
+    <string name="detail_earlier">Earlier</string>
+    <string name="detail_working">Working…</string>
+    <string name="detail_respond">Respond</string>
+    <string name="detail_speak">Speak</string>
+    <string name="detail_prompt_label">Message to the agent</string>
+    <string name="detail_confirm_title">Send this?</string>
+    <string name="detail_sent">Sent</string>
+    <string name="detail_empty">No messages yet.</string>
+    <string name="detail_gone">This session is no longer on the bridge.</string>
+    <string name="detail_context">ctx %1$d%%</string>
+
+    <!-- Request -->
+    <string name="decision_allow">Allow</string>
+    <string name="decision_always">Always allow</string>
+    <string name="decision_deny">Deny</string>
+    <string name="decision_defer">Answer on PC</string>
+    <string name="request_progress">%1$d of %2$d</string>
+    <string name="request_waiting">Waiting for the bridge…</string>
+
+    <!-- Usage -->
+    <string name="usage_title">Usage</string>
+    <string name="usage_empty">No usage data yet.</string>
+    <string name="usage_window_5h">5-hour limit</string>
+    <string name="usage_window_7d">Weekly limit</string>
+    <string name="usage_window_hours">%1$d-hour limit</string>
+    <string name="usage_window_days">%1$d-day limit</string>
+    <string name="usage_window_minutes">%1$d-minute limit</string>
+    <string name="usage_resets">Resets %1$s</string>
+    <string name="usage_updated">Updated %1$s</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_not_set">Not set</string>
+    <string name="settings_device_name">Watch name</string>
+    <string name="settings_monitoring">Background alerts</string>
+    <string name="settings_monitoring_detail">Stay connected while the app is closed</string>
+    <string name="settings_token">Enter token</string>
+    <string name="settings_token_needs_address">Set the bridge address first.</string>
+    <string name="settings_disconnect">Disconnect</string>
+    <string name="settings_disconnect_confirm">Unpair this watch from the bridge?</string>
+    <string name="settings_exit_demo">Exit demo</string>
+    <string name="settings_version">Version %1$s</string>
+    <string name="settings_privacy">Privacy policy</string>
 </resources>

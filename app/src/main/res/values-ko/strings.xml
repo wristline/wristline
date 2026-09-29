@@ -1,4 +1,119 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Wristline</string>
+
+    <!-- Common -->
+    <string name="action_next">다음</string>
+    <string name="action_send">보내기</string>
+
+    <!-- Onboarding -->
+    <string name="welcome_tagline">PC의 코딩 에이전트를 손목에서 확인하세요.</string>
+    <string name="welcome_setup">설정하기</string>
+    <string name="welcome_demo">데모 보기</string>
+    <string name="notify_title">알림</string>
+    <string name="notify_body">에이전트가 응답을 기다릴 때 진동으로 알려 드리려면 알림을 허용해 주세요.</string>
+    <string name="notify_continue">계속</string>
+    <string name="address_title">브릿지 주소</string>
+    <string name="address_hint">PC에서 wristline-bridge setup을 실행하면 표시됩니다.</string>
+    <string name="address_enter">주소 입력</string>
+    <string name="address_change">주소 변경</string>
+    <string name="address_searching">브릿지를 찾는 중…</string>
+    <string name="address_found">브릿지를 찾았습니다</string>
+    <string name="address_error_empty">주소를 입력해 주세요.</string>
+    <string name="address_error_insecure">https:// 주소를 사용해 주세요.</string>
+    <string name="address_error_invalid">name.ts.net처럼 호스트 이름만 입력해 주세요.</string>
+    <string name="probe_not_bridge">이 주소에 Wristline 브릿지가 없습니다.</string>
+    <string name="probe_unreachable">이 주소에 연결할 수 없습니다.</string>
+    <string name="code_title">페어링 코드</string>
+    <string name="code_digit">%1$d번째 자리: %2$d</string>
+    <string name="code_pair">페어링</string>
+    <string name="token_use">토큰으로 연결</string>
+    <string name="token_label">wristline-bridge pair --token으로 받은 토큰</string>
+
+    <!-- Errors -->
+    <string name="error_unreachable">브릿지에 연결할 수 없습니다.</string>
+    <string name="error_invalid_code">코드가 맞지 않습니다. PC에 표시된 코드를 확인해 주세요.</string>
+    <string name="error_no_pairing">진행 중인 페어링이 없습니다. wristline-bridge pair를 다시 실행해 주세요.</string>
+    <string name="error_rate_limited">시도 횟수가 너무 많습니다. 1분 뒤 다시 시도해 주세요.</string>
+    <string name="error_incompatible">지원하지 않는 브릿지 버전입니다. 앱이나 브릿지를 업데이트해 주세요.</string>
+    <string name="error_unauthorized">이 워치의 페어링이 해제되었습니다.</string>
+    <string name="error_already_resolved">이미 처리되었습니다.</string>
+    <string name="error_too_long">메시지가 너무 깁니다.</string>
+    <string name="error_bad_request">브릿지가 요청을 거부했습니다.</string>
+    <string name="error_generic">문제가 발생했습니다(%1$s).</string>
+
+    <!-- Why a prompt can't be sent (PromptBlock) -->
+    <string name="block_not_live">실행 중인 세션이 아닙니다.</string>
+    <string name="block_no_tmux">메시지를 보내려면 tmux에서 시작한 세션이어야 합니다.</string>
+    <string name="block_awaiting_input">대기 중인 요청에 먼저 응답해 주세요.</string>
+    <string name="block_busy">에이전트가 작업 중입니다. 끝난 뒤 다시 시도해 주세요.</string>
+    <string name="block_unsupported">이 세션은 워치에서 메시지를 받을 수 없습니다.</string>
+
+    <!-- Connection -->
+    <string name="conn_connecting">연결 중…</string>
+    <string name="conn_offline">오프라인입니다. 마지막 목록을 표시합니다.</string>
+    <string name="conn_unreachable">브릿지에 연결할 수 없음</string>
+    <string name="conn_retry_in">%1$d초 후 다시 시도합니다. 탭하면 바로 시도합니다.</string>
+    <string name="conn_unauthorized">페어링이 해제됨</string>
+    <string name="conn_repair">다시 페어링</string>
+    <string name="conn_incompatible">업데이트 필요</string>
+    <string name="conn_incompatible_detail">브릿지 프로토콜 v%1$d는 지원하지 않습니다.</string>
+    <string name="conn_demo">데모 모드</string>
+
+    <!-- Session list -->
+    <string name="sessions_title">세션</string>
+    <string name="sessions_empty">아직 세션이 없습니다. PC에서 Claude Code나 Codex를 시작해 주세요.</string>
+    <plurals name="requests_waiting">
+        <item quantity="other">요청 %d개 대기 중</item>
+    </plurals>
+    <string name="session_untitled">제목 없는 세션</string>
+    <string name="status_running">실행 중</string>
+    <string name="status_idle">대기</string>
+    <string name="status_needs_input">입력 필요</string>
+    <string name="status_ended">종료됨</string>
+
+    <!-- Session detail -->
+    <string name="detail_earlier">이전 항목</string>
+    <string name="detail_working">작업 중…</string>
+    <string name="detail_respond">응답</string>
+    <string name="detail_speak">말하기</string>
+    <string name="detail_prompt_label">에이전트에게 보낼 메시지</string>
+    <string name="detail_confirm_title">이 메시지를 보낼까요?</string>
+    <string name="detail_sent">보냈습니다</string>
+    <string name="detail_empty">아직 메시지가 없습니다.</string>
+    <string name="detail_gone">브릿지에 더 이상 없는 세션입니다.</string>
+    <string name="detail_context">컨텍스트 %1$d%%</string>
+
+    <!-- Request -->
+    <string name="decision_allow">허용</string>
+    <string name="decision_always">항상 허용</string>
+    <string name="decision_deny">거부</string>
+    <string name="decision_defer">PC에서 응답</string>
+    <string name="request_progress">%1$d/%2$d</string>
+    <string name="request_waiting">브릿지를 기다리는 중…</string>
+
+    <!-- Usage -->
+    <string name="usage_title">사용량</string>
+    <string name="usage_empty">아직 사용량 정보가 없습니다.</string>
+    <string name="usage_window_5h">5시간 한도</string>
+    <string name="usage_window_7d">주간 한도</string>
+    <string name="usage_window_hours">%1$d시간 한도</string>
+    <string name="usage_window_days">%1$d일 한도</string>
+    <string name="usage_window_minutes">%1$d분 한도</string>
+    <string name="usage_resets">%1$s 초기화</string>
+    <string name="usage_updated">%1$s 갱신</string>
+
+    <!-- Settings -->
+    <string name="settings_title">설정</string>
+    <string name="settings_not_set">설정 안 됨</string>
+    <string name="settings_device_name">워치 이름</string>
+    <string name="settings_monitoring">백그라운드 알림</string>
+    <string name="settings_monitoring_detail">앱을 닫아도 연결을 유지합니다</string>
+    <string name="settings_token">토큰 입력</string>
+    <string name="settings_token_needs_address">먼저 브릿지 주소를 설정해 주세요.</string>
+    <string name="settings_disconnect">연결 해제</string>
+    <string name="settings_disconnect_confirm">이 워치를 브릿지에서 페어링 해제할까요?</string>
+    <string name="settings_exit_demo">데모 종료</string>
+    <string name="settings_version">버전 %1$s</string>
+    <string name="settings_privacy">개인정보처리방침</string>
 </resources>

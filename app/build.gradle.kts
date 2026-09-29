@@ -53,6 +53,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // Ship only the locales the app is translated into (matches res/xml/locales_config.xml);
@@ -83,6 +84,12 @@ dependencies {
     implementation(libs.androidx.wear.input)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
+
+    // Composable previews (src/debug) only; nothing from these reaches release builds.
+    debugImplementation(libs.androidx.wear.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.tooling.preview)
+    debugImplementation(libs.androidx.wear.tooling.preview)
 
     testImplementation(libs.junit)
 }
