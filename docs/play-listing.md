@@ -207,7 +207,7 @@ access no longer need a live bridge) is a bridge-side fixture change, not a watc
 | `POST_NOTIFICATIONS` | Request and task-update notifications; the foreground-service notification. Asked on the "Set up" path and again from Settings when turning on Background alerts | `Notifier.kt`, `NotifyScreen`, `MonitorService` |
 | `FOREGROUND_SERVICE` | Runs `MonitorService` while Background alerts is on | `MonitorService.kt` |
 | `FOREGROUND_SERVICE_CONNECTED_DEVICE` | Type of that service: keeps the network connection to the bridge on the user's computer (see section 3) | `MonitorService.onStartCommand` |
-| `CHANGE_NETWORK_STATE` | **Declared in the manifest but no code path uses it** (nothing calls `requestNetwork`, `bindProcessToNetwork` or similar). Either remove it from the manifest before release or add a justification if a future Bluetooth-proxy path needs it; the Play form should not list an unused permission | `AndroidManifest.xml` only |
+| `CHANGE_NETWORK_STATE` | Prerequisite for the `connectedDevice` foreground service type: Android requires at least one of `CHANGE_NETWORK_STATE`, `CHANGE_WIFI_STATE`, `BLUETOOTH_CONNECT`, `NFC`, `UWB_RANGING` (etc.) to be held before `startForeground(..., FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)` is allowed. It is the least invasive of those; no code calls network-changing APIs. Keep it and state this reason in the form | `AndroidManifest.xml`; enforced by the system in `MonitorService.onStartCommand` |
 | `VIBRATE` | One haptic click when a request arrives while the app is open (`Notifier.tick`). Notification vibration goes through the channel and does not need this permission | `Notifier.tick` |
 
 No `RECORD_AUDIO`: speech input launches the system recognizer via `RecognizerIntent`; the app

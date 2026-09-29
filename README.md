@@ -39,4 +39,4 @@ Not yet published. The listing draft is in [docs/play-listing.md](docs/play-list
 
 ## License
 
-TBD.
+MIT — see [LICENSE](LICENSE).
