@@ -74,8 +74,10 @@ internal fun UsageContent(usage: List<Usage>, now: Long) {
                     )
                 }
             }
-            for (provider in usage) {
-                item(key = "provider/${provider.provider}") {
+            // Keys include the position: nothing in the protocol stops a provider from appearing
+            // twice (e.g. two accounts), and a repeated key would crash the list.
+            usage.forEachIndexed { index, provider ->
+                item(key = "provider/$index/${provider.provider}") {
                     Column(
                         Modifier.fillMaxWidth().edgeTransform(this, spec).padding(top = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -84,7 +86,7 @@ internal fun UsageContent(usage: List<Usage>, now: Long) {
                         CaptionText(stringResource(R.string.usage_updated, relativeTime(provider.updatedAt, now)))
                     }
                 }
-                items(provider.windows, key = { "window/${provider.provider}/${it.id}" }) { window ->
+                items(provider.windows, key = { "window/$index/${it.id}" }) { window ->
                     WindowRow(
                         window,
                         locale,

@@ -1,6 +1,8 @@
 package dev.wristline.watch.data
 
+import okhttp3.Request
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class AddressTest {
@@ -60,5 +62,30 @@ class AddressTest {
         assertEquals(AddressError.INVALID, error("https://"))
         assertEquals(AddressError.INVALID, error("/"))
         assertEquals(AddressError.INVALID, error("host.ts.net:notaport"))
+    }
+
+    private fun authorize(token: String) =
+        Request.Builder().url("https://host.ts.net/api/ws").header("Authorization", "Bearer $token").build()
+
+    @Test
+    fun tokensKeepEveryBase64UrlCharacter() {
+        val token = "dG9rZW4tZm9yLWRvY3VtZW50YXRpb24tb25seS0xMjM0NTY_-"
+        assertEquals(token, normalizeToken(token))
+    }
+
+    @Test
+    fun typedTokensLoseWhitespaceAndCharactersAHeaderCannotCarry() {
+        assertEquals("abcDEF123", normalizeToken(" abc DEF\n123 \t"))
+        assertEquals("abc", normalizeToken("a한b“c”"))
+        assertEquals("", normalizeToken("한글"))
+    }
+
+    // Regression: a typed token with such characters was saved as is, and OkHttp threw on the
+    // Authorization header at every connection attempt, crashing the app on each start.
+    @Test
+    fun normalizedTokensAlwaysFitTheAuthorizationHeader() {
+        val typed = "abc 한\ndef"
+        assertThrows(IllegalArgumentException::class.java) { authorize(typed) }
+        assertEquals("Bearer abcdef", authorize(normalizeToken(typed)).header("Authorization"))
     }
 }

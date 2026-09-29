@@ -69,7 +69,8 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
                         onDemo = {
                             scope.launch {
                                 Bridge.startDemo()
-                                nav.navigate(Route.SESSIONS)
+                                // A second tap while the demo data loads must not stack a second list.
+                                nav.navigate(Route.SESSIONS) { launchSingleTop = true }
                             }
                         },
                     )

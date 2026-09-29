@@ -18,7 +18,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -219,7 +218,8 @@ private fun QuestionsContent(
     error: String?,
     onAnswer: (Answers) -> Unit,
 ) {
-    var index by rememberSaveable(request.id) { mutableIntStateOf(0) }
+    // Both plain remember: a restored index without the earlier answers would send an incomplete set.
+    var index by remember(request.id) { mutableIntStateOf(0) }
     val answers = remember(request.id) { mutableStateMapOf<String, List<String>>() }
     val question = request.questions.getOrNull(index) ?: return
     val last = index >= request.questions.lastIndex

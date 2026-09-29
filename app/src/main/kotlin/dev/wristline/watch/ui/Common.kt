@@ -169,6 +169,8 @@ fun errorMessage(code: String): String = when (code) {
     "already_resolved" -> stringResource(R.string.error_already_resolved)
     "payload_too_large" -> stringResource(R.string.error_too_long)
     "bad_request" -> stringResource(R.string.error_bad_request)
+    // A prompt to a session the bridge no longer has (pairing maps it to its own message).
+    "not_found" -> stringResource(R.string.detail_gone)
     "not_live" -> stringResource(R.string.block_not_live)
     "no_tmux" -> stringResource(R.string.block_no_tmux)
     "awaiting_input" -> stringResource(R.string.block_awaiting_input)

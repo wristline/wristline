@@ -18,13 +18,16 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -233,10 +236,11 @@ object Bridge {
 
     /** Idempotent; call before reading any state. */
     fun init(context: Context) {
+        // On every call: an activity recreated for a new app language renames the channels.
+        Notifier.createChannels(context)
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
         prefs = Prefs(appContext)
-        Notifier.createChannels(appContext)
         if (prefs.isPaired) _conn.value = Conn.Connecting
     }
 
@@ -352,6 +356,8 @@ object Bridge {
 
     private suspend fun connectOnce(onOnline: () -> Unit): End {
         val ended = CompletableDeferred<End>()
+        // stopConnection() cancels this job before the socket has closed; its late callbacks are dropped.
+        val job = currentCoroutineContext().job
         val request = Request.Builder()
             .url(apiUrl(prefs.baseUrl, "ws"))
             .header("Authorization", "Bearer ${prefs.token}")
@@ -361,14 +367,14 @@ object Bridge {
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
                     scope.launch {
-                        if (ended.isCompleted) return@launch
+                        if (ended.isCompleted || !job.isActive) return@launch
                         socket = webSocket
                         subscribed?.let { webSocket.send(subscribeMessage(it)) }
                     }
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
-                    scope.launch { if (!ended.isCompleted) onEvent(text, ended, onOnline) }
+                    scope.launch { if (!ended.isCompleted && job.isActive) onEvent(text, ended, onOnline) }
                 }
 
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -577,12 +583,15 @@ object Bridge {
         stopConnection()
         demo = null
         clearState()
-        prefs.savePairing(baseUrl, token, deviceId)
-        _conn.value = Conn.Connecting
+        prefs.savePairing(baseUrl, normalizeToken(token), deviceId)
+        // A typed token with nothing usable left is as wrong as one the bridge rejects.
+        _conn.value = if (prefs.isPaired) Conn.Connecting else Conn.Unauthorized
         connectNow()
     }
 
-    suspend fun prompt(sessionId: String, text: String): Sent = withContext(dispatcher) {
+    // prompt() and answer() finish even when the screen that sent them closes: the user has already
+    // confirmed them, and cancelling the call midway could drop a dictated prompt or an answer.
+    suspend fun prompt(sessionId: String, text: String): Sent = withContext(dispatcher + NonCancellable) {
         if (demo != null) {
             itemFlow(sessionId)?.update {
                 it.withItem(Item((it.items.lastOrNull()?.seq ?: 0L) + 1, ItemKind.USER, Instant.now().toString(), text))
@@ -602,7 +611,7 @@ object Bridge {
         }
     }
 
-    suspend fun answer(requestId: String, answers: Answers): Sent = withContext(dispatcher) {
+    suspend fun answer(requestId: String, answers: Answers): Sent = withContext(dispatcher + NonCancellable) {
         if (demo != null) {
             demoAnswer(requestId)
             return@withContext Sent.Ok

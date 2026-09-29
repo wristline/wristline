@@ -36,3 +36,11 @@ fun normalizeAddress(input: String): AddressResult {
     // HttpUrl lowercases the host and drops the default port 443.
     return AddressResult.Ok(url.toString().removeSuffix("/"))
 }
+
+/**
+ * The device token as it is stored and sent. Bridge tokens are base64url, so everything outside
+ * printable ASCII is dropped: spaces and line breaks that keyboards and dictation insert, and any
+ * other stray character. OkHttp refuses such characters in the Authorization header by throwing,
+ * which would crash every connection attempt for as long as the token is saved.
+ */
+fun normalizeToken(input: String): String = input.filter { it in '!'..'~' }

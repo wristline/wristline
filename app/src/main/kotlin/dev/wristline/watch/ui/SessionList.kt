@@ -146,7 +146,8 @@ internal fun SessionListContent(
                     )
                 }
             }
-            if (sessions.isEmpty() && conn !is Conn.Connecting) {
+            // Only an up-to-date list can say there are none; otherwise the banner explains.
+            if (sessions.isEmpty() && (conn is Conn.Online || conn is Conn.Demo)) {
                 item(key = "empty") {
                     BodyText(stringResource(R.string.sessions_empty), Modifier.edgeTransform(this, spec))
                 }
