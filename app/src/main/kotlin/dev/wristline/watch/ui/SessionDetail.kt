@@ -220,13 +220,14 @@ internal fun SessionDetailContent(
 
     val showEarlier = state.canLoadEarlier
     val showLoading = items.isEmpty() && state.loading
-    val showEmpty = items.isEmpty() && state.loaded && !state.loading
+    val showFailed = items.isEmpty() && state.failed && !state.loading
+    val showEmpty = items.isEmpty() && state.loaded && !state.loading && !state.failed
     val working = session?.status == SessionStatus.RUNNING
     val blockCode = session?.promptBlock?.takeIf { !hasRequest }
     // Typing is the alternative to the [Speak] EdgeButton, offered whenever a prompt can be sent.
     val canType = !hasRequest && session != null && session.promptBlock == null
     val footers = listOf(working, blockCode != null, outcome != null, canType).count { it }
-    val lastIndex = 1 + listOf(showEarlier, showLoading, showEmpty).count { it } + items.size + footers - 1
+    val lastIndex = 1 + listOf(showEarlier, showLoading, showFailed, showEmpty).count { it } + items.size + footers - 1
 
     // Follow new items only when the user was at the bottom. Read during composition on purpose:
     // it flips only at the end of the list, and when a new item arrives it still describes the
@@ -291,6 +292,11 @@ internal fun SessionDetailContent(
             if (showLoading) {
                 item(key = "loading") {
                     Box(Modifier.fillMaxWidth().edgeTransform(this, spec), contentAlignment = Alignment.Center) { SmallSpinner() }
+                }
+            }
+            if (showFailed) {
+                item(key = "failed") {
+                    CaptionText(stringResource(R.string.detail_load_failed), Modifier.edgeTransform(this, spec), color = colors.error)
                 }
             }
             if (showEmpty) {

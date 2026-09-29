@@ -78,6 +78,8 @@ data class SessionItems(
     val loading: Boolean = false,
     /** The newest page has arrived at least once. */
     val loaded: Boolean = false,
+    /** The newest page could not be fetched; the next page that arrives clears it. */
+    val failed: Boolean = false,
 ) {
     val canLoadEarlier: Boolean get() = hasMore && items.isNotEmpty() && items.size < ITEM_CAP
 }
@@ -564,7 +566,7 @@ object Bridge {
         latestJobs[id] = scope.launch {
             flow.update { it.copy(loading = true) }
             val page = fetchItems(id, before = null)
-            itemFlow(id)?.update { if (page == null) it.copy(loading = false) else it.withLatest(page) }
+            itemFlow(id)?.update { if (page == null) it.copy(loading = false, failed = true) else it.withLatest(page) }
         }
     }
 

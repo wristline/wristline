@@ -88,6 +88,7 @@
     <string name="detail_confirm_title">Send this?</string>
     <string name="detail_sent">Sent</string>
     <string name="detail_empty">No messages yet.</string>
+    <string name="detail_load_failed">Couldn\'t load messages.</string>
     <string name="detail_gone">This session is no longer on the bridge.</string>
     <string name="detail_context">ctx %1$d%%</string>
 

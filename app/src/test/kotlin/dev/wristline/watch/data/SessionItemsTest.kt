@@ -53,6 +53,20 @@ class SessionItemsTest {
     }
 
     @Test
+    fun latestPageClearsAFailedFetch() {
+        // Nothing held and the first fetch failed: the screen shows the failure caption until a page arrives.
+        val failed = SessionItems(failed = true)
+        assertTrue(failed.failed)
+        assertFalse(failed.loaded)
+        val recovered = failed.withLatest(ItemPage(range(1, 3), hasMore = false))
+        assertFalse(recovered.failed)
+        assertTrue(recovered.loaded)
+        assertEquals(listOf(1L, 2L, 3L), seqs(recovered))
+        // A live item does not stand in for the page: the flag stays until the fetch succeeds.
+        assertTrue(failed.withItem(item(7)).failed)
+    }
+
+    @Test
     fun earlierPagesPrependUpToTheCap() {
         val once = SessionItems(items = range(161, 200), hasMore = true, loaded = true)
             .withEarlier(ItemPage(range(121, 160), hasMore = true))

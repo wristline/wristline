@@ -175,6 +175,16 @@ private fun SessionDetailPreview() = Frame {
     )
 }
 
+// The newest page could not be fetched and nothing is held: the caption, not a blank list.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun SessionDetailFailedPreview() = Frame {
+    SessionDetailContent(
+        sessions[1], gone = false, state = SessionItems(failed = true), hasRequest = false, sending = false, outcome = null,
+        onEarlier = {}, onAction = {}, onType = {},
+    )
+}
+
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun PermissionPreview() = Frame {
