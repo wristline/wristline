@@ -47,9 +47,12 @@ import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.input.RemoteInputIntentHelper
 import dev.wristline.watch.R
+import dev.wristline.watch.data.Account
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.ProviderId
+import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
+import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.isoToMillis
 import java.time.Instant
 import java.time.LocalDate
@@ -106,6 +109,17 @@ fun clockTime(iso: String?, locale: Locale): String? {
 }
 
 fun basename(path: String): String = path.trimEnd('/').substringAfterLast('/')
+
+/** Card and chip form of an account: `~` when estimated, then the label up to its `@`, at most 12 chars. */
+fun accountShort(a: Account): String = (if (a.estimated) "~" else "") + a.label.substringBefore('@').take(12)
+
+/** Account labels are shown only when some provider has sessions or usage under two or more accounts. */
+fun showAccountLabels(sessions: List<Session>, usage: List<Usage>): Boolean {
+    val ids = HashMap<String, MutableSet<String>>()
+    sessions.forEach { s -> s.account?.let { ids.getOrPut(s.provider) { HashSet() } += it.id } }
+    usage.forEach { u -> u.account?.let { ids.getOrPut(u.provider) { HashSet() } += it.id } }
+    return ids.values.any { it.size >= 2 }
+}
 
 @Composable
 fun providerLabel(provider: String): String = when (provider) {

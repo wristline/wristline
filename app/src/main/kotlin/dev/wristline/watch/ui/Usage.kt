@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -34,6 +35,7 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.key
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -49,6 +51,7 @@ internal fun UsageContent(usage: List<Usage>, now: Long) {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
     val locale = LocalConfiguration.current.locales[0]
+    val sorted = remember(usage) { usage.sortedWith(compareBy({ it.provider }, { it.account?.label })) }
     // Only the last item's bottom value takes effect; it keeps the final row off the round edge.
     val bottom = TextDefaults.minimumBottomListContentPadding
     ScreenScaffold(scrollState = listState) { contentPadding ->
@@ -74,15 +77,24 @@ internal fun UsageContent(usage: List<Usage>, now: Long) {
                     )
                 }
             }
-            // Keys include the position: nothing in the protocol stops a provider from appearing
-            // twice (e.g. two accounts), and a repeated key would crash the list.
-            usage.forEachIndexed { index, provider ->
-                item(key = "provider/$index/${provider.provider}") {
+            // Keys include the position: nothing in the protocol stops a snapshot from repeating a
+            // [Usage.key], and a repeated key would crash the list.
+            sorted.forEachIndexed { index, provider ->
+                item(key = "provider/$index/${provider.key}") {
                     Column(
                         Modifier.fillMaxWidth().edgeTransform(this, spec).padding(top = 6.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(providerLabel(provider.provider), style = MaterialTheme.typography.titleSmall)
+                        provider.account?.let { account ->
+                            Text(
+                                if (account.estimated) stringResource(R.string.account_estimated, account.label) else account.label,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                         CaptionText(stringResource(R.string.usage_updated, relativeTime(provider.updatedAt, now)))
                     }
                 }

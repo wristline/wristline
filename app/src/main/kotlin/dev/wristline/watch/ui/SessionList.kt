@@ -88,7 +88,8 @@ internal fun SessionListContent(
     // Stale data stays readable but visibly out of date.
     val stale = conn is Conn.Offline || conn is Conn.Unreachable || conn is Conn.Unauthorized
     val oldestRequest = remember(requests) { requests.minByOrNull { it.createdAt } }
-    val chips = usageChips(usage)
+    val showAccounts = remember(sessions, usage) { showAccountLabels(sessions, usage) }
+    val chips = usageChips(usage, showAccounts)
     ScreenScaffold(
         scrollState = listState,
         edgeButton = {
@@ -155,6 +156,7 @@ internal fun SessionListContent(
             items(sessions, key = { it.id }, contentType = { "session" }) { session ->
                 SessionCard(
                     session = session,
+                    showAccount = showAccounts,
                     now = now,
                     onClick = { onSession(session.id) },
                     modifier = Modifier
@@ -173,20 +175,27 @@ internal fun SessionListContent(
 internal fun sessionTitle(session: Session): String =
     session.title.ifBlank { basename(session.cwd) }.ifBlank { stringResource(R.string.session_untitled) }
 
-/** `5h 42% · 7d 12%` for Claude Code, `Codex 30%` (first window) for other providers. */
+/**
+ * `5h 42% · 7d 12%` for Claude Code, `Codex 30%` (first window) for other providers; ordered by
+ * provider then account label, and prefixed with the short account label when [showAccounts].
+ */
 @Composable
-private fun usageChips(usage: List<Usage>): List<String> = usage.mapNotNull { u ->
-    if (u.windows.isEmpty()) return@mapNotNull null
-    if (u.provider == ProviderId.CLAUDE_CODE) {
-        u.windows.joinToString(" · ") { "${it.id} ${it.usedPercent.roundToInt()}%" }
-    } else {
-        "${providerLabel(u.provider)} ${u.windows.first().usedPercent.roundToInt()}%"
+private fun usageChips(usage: List<Usage>, showAccounts: Boolean): List<String> =
+    usage.sortedWith(compareBy({ it.provider }, { it.account?.label })).mapNotNull { u ->
+        if (u.windows.isEmpty()) return@mapNotNull null
+        val text = if (u.provider == ProviderId.CLAUDE_CODE) {
+            u.windows.joinToString(" · ") { "${it.id} ${it.usedPercent.roundToInt()}%" }
+        } else {
+            "${providerLabel(u.provider)} ${u.windows.first().usedPercent.roundToInt()}%"
+        }
+        val account = u.account
+        if (showAccounts && account != null) accountShort(account) + " " + text else text
     }
-}
 
 @Composable
 private fun SessionCard(
     session: Session,
+    showAccount: Boolean,
     now: Long,
     onClick: () -> Unit,
     modifier: Modifier,
@@ -204,9 +213,11 @@ private fun SessionCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusDot(session.status)
-                val place = basename(session.cwd)
+                // `Claude · school · repo`; the account and place parts are dropped when absent.
+                val account = session.account?.takeIf { showAccount }?.let(::accountShort)
+                val place = basename(session.cwd).ifEmpty { null }
                 Text(
-                    if (place.isEmpty()) providerLabel(session.provider) else "${providerLabel(session.provider)} · $place",
+                    listOfNotNull(providerLabel(session.provider), account, place).joinToString(" · "),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

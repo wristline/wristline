@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -104,6 +105,58 @@ class ProtocolTest {
         assertEquals("gemini-cli", event.session.provider)
         assertEquals("paused", event.session.status)
         assertNull(event.session.context)
+    }
+
+    // Handcrafted until the bridge fixtures carry `account` (multi-account, protocol v1 additive).
+    @Test
+    fun sessionAndUsageDecodeWithAndWithoutAccount() {
+        val list = decode<SessionList>(
+            WireJson.parseToJsonElement(
+                """{"sessions":[
+                   {"id":"claude-code:1","provider":"claude-code","status":"running","lastActivity":"2026-09-29T00:00:00Z",
+                    "account":{"id":"acc-a","label":"me@gmail.com"}},
+                   {"id":"claude-code:2","provider":"claude-code","status":"idle","lastActivity":"2026-09-29T00:00:00Z",
+                    "account":{"id":"acc-b","label":"school","estimated":true}},
+                   {"id":"codex:3","provider":"codex","status":"idle","lastActivity":"2026-09-29T00:00:00Z"}]}""",
+            ) as JsonObject,
+        ).sessions
+        assertEquals(Account("acc-a", "me@gmail.com"), list[0].account)
+        assertFalse(list[0].account!!.estimated)
+        assertEquals(Account("acc-b", "school", estimated = true), list[1].account)
+        assertNull(list[2].account)
+
+        val usage = decode<UsageList>(
+            WireJson.parseToJsonElement(
+                """{"usage":[
+                   {"provider":"claude-code","updatedAt":"2026-09-29T00:00:00Z","windows":[{"id":"5h","usedPercent":42}],
+                    "account":{"id":"acc-a","label":"me@gmail.com"}},
+                   {"provider":"claude-code","updatedAt":"2026-09-29T00:00:00Z","windows":[],
+                    "account":{"id":"acc-b","label":"school","estimated":true}},
+                   {"provider":"codex","updatedAt":"2026-09-29T00:00:00Z","windows":[{"id":"primary","usedPercent":13}]}]}""",
+            ) as JsonObject,
+        ).usage
+        assertEquals(Account("acc-a", "me@gmail.com"), usage[0].account)
+        assertTrue(usage[1].account!!.estimated)
+        assertNull(usage[2].account)
+
+        val event = parseServerEvent(
+            """{"type":"usage","usage":{"provider":"codex","updatedAt":"2026-09-29T00:00:00Z","windows":[],
+               "account":{"id":"chatgpt-1","label":"school"}}}""",
+        ) as ServerEvent.UsageChanged
+        assertEquals(Account("chatgpt-1", "school"), event.usage.account)
+    }
+
+    @Test
+    fun usageKeyIsProviderAndAccountId() {
+        val at = "2026-09-29T00:00:00Z"
+        assertEquals("claude-code:", Usage(ProviderId.CLAUDE_CODE, at).key)
+        assertEquals("claude-code:acc-a", Usage(ProviderId.CLAUDE_CODE, at, account = Account("acc-a", "me")).key)
+        assertEquals("codex:acc-a", Usage(ProviderId.CODEX, at, account = Account("acc-a", "me")).key)
+        // The label and estimated flag do not take part in the identity.
+        assertEquals(
+            Usage(ProviderId.CODEX, at, account = Account("acc-a", "me")).key,
+            Usage(ProviderId.CODEX, at, account = Account("acc-a", "other", estimated = true)).key,
+        )
     }
 
     @Test

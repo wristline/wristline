@@ -5,6 +5,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.tooling.preview.devices.WearDevices
+import dev.wristline.watch.data.Account
 import dev.wristline.watch.data.ContextUsage
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.Item
@@ -72,6 +73,27 @@ private val usage = listOf(
     Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 93.0, "2026-09-29T16:12:00Z", 300))),
 )
 
+// Two Claude accounts (one only estimated) and one Codex account: labels appear on cards and chips.
+private val me = Account("acc-me", "me@gmail.com")
+private val school = Account("acc-school", "school", estimated = true)
+private val codexSchool = Account("chatgpt-school", "school.account@university.ac.kr")
+
+private val accountSessions = listOf(
+    sessions[0].copy(account = me),
+    sessions[1].copy(account = codexSchool),
+    sessions[2].copy(account = school),
+)
+
+private val accountUsage = listOf(
+    usage[0].copy(account = me),
+    Usage(
+        ProviderId.CLAUDE_CODE, "2026-09-29T12:40:00Z",
+        listOf(UsageWindow("5h", 10.0, "2026-09-29T14:30:00Z", 300), UsageWindow("7d", 3.0, "2026-10-02T09:00:00Z", 10_080)),
+        school,
+    ),
+    usage[1].copy(account = codexSchool),
+)
+
 private val items = SessionItems(
     items = listOf(
         Item(1, ItemKind.USER, "2026-09-29T12:41:00Z", "Refactor the auth middleware to use the new token service."),
@@ -124,6 +146,24 @@ private fun SessionListUnreachablePreview() = Frame {
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
+private fun SessionListAccountsPreview() = Frame {
+    SessionListContent(
+        Conn.Online, accountSessions, emptyList(), accountUsage, now,
+        onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun SessionListAccountsKoPreview() = Frame {
+    SessionListContent(
+        Conn.Online, accountSessions, emptyList(), accountUsage, now,
+        onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
 private fun SessionDetailPreview() = Frame {
     SessionDetailContent(
         sessions[1], gone = false, state = items, hasRequest = false, sending = false, outcome = null,
@@ -146,6 +186,14 @@ private fun QuestionPreview() = Frame {
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun UsagePreview() = Frame { UsageContent(usage, now) }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun UsageAccountsPreview() = Frame { UsageContent(accountUsage, now) }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun UsageAccountsKoPreview() = Frame { UsageContent(accountUsage, now) }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable

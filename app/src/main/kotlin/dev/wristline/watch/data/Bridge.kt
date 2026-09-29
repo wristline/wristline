@@ -447,7 +447,7 @@ object Bridge {
             is ServerEvent.Resolved -> removeRequest(event.requestId)
             is ServerEvent.UsageChanged -> {
                 val list = _usage.value
-                val index = list.indexOfFirst { it.provider == event.usage.provider }
+                val index = list.indexOfFirst { it.key == event.usage.key }
                 _usage.value = if (index < 0) list + event.usage else list.toMutableList().apply { set(index, event.usage) }
             }
             is ServerEvent.Alert -> when (event.alert) {

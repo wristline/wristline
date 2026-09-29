@@ -76,6 +76,17 @@ object AlertKind {
 @Serializable
 data class ContextUsage(val used: Long, val window: Long)
 
+/** Absent on a session or usage entry means a single or unknown account. */
+@Immutable
+@Serializable
+data class Account(
+    val id: String,
+    /** Never empty; the bridge picks a user label, email, organization or id prefix. */
+    val label: String,
+    /** Claude Code only: attributed from the home's login timeline rather than known exactly. */
+    val estimated: Boolean = false,
+)
+
 @Immutable
 @Serializable
 data class Session(
@@ -91,6 +102,7 @@ data class Session(
     /** Present when a prompt would be refused; one of the PromptBlock codes. */
     val promptBlock: String? = null,
     val context: ContextUsage? = null,
+    val account: Account? = null,
 )
 
 @Immutable
@@ -146,7 +158,15 @@ data class UsageWindow(
 
 @Immutable
 @Serializable
-data class Usage(val provider: String, val updatedAt: String, val windows: List<UsageWindow> = emptyList())
+data class Usage(
+    val provider: String,
+    val updatedAt: String,
+    val windows: List<UsageWindow> = emptyList(),
+    val account: Account? = null,
+)
+
+/** Identity of a usage entry: a `usage` event replaces the entry with the same key. */
+val Usage.key: String get() = provider + ":" + (account?.id ?: "")
 
 // REST bodies.
 

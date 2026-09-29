@@ -104,6 +104,7 @@
     <string name="usage_window_minutes">%1$d분 한도</string>
     <string name="usage_resets">%1$s 초기화</string>
     <string name="usage_updated">%1$s 갱신</string>
+    <string name="account_estimated">%1$s (추정)</string>
 
     <!-- Settings -->
     <string name="settings_title">설정</string>
