@@ -48,6 +48,7 @@
     <string name="block_awaiting_input">대기 중인 요청에 먼저 응답해 주세요.</string>
     <string name="block_busy">에이전트가 작업 중입니다. 끝난 뒤 다시 시도해 주세요.</string>
     <string name="block_unsupported">이 세션은 워치에서 메시지를 받을 수 없습니다.</string>
+    <string name="block_unsafe_prefix">메시지는 \'!\'로 시작할 수 없습니다(셸 명령으로 실행됩니다).</string>
 
     <!-- Connection -->
     <string name="conn_connecting">연결 중…</string>

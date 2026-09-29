@@ -5,7 +5,6 @@ import android.app.RemoteInput
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,7 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -151,20 +149,16 @@ fun StatusDot(status: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** Circular arc for a percentage; sweeps in from zero on first composition. */
+/** Circular arc for a percentage; the indicator animates later changes itself. */
 @Composable
 fun PercentRing(percent: Double, modifier: Modifier = Modifier, strokeWidth: Dp = 4.dp) {
     val fraction = (percent / 100).toFloat().coerceIn(0f, 1f)
-    var target by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(fraction) { target = fraction }
-    val animated by animateFloatAsState(target, label = "percent")
     val colors = if (percent >= 90) {
         ProgressIndicatorDefaults.colors(indicatorColor = MaterialTheme.colorScheme.error)
     } else {
         ProgressIndicatorDefaults.colors()
     }
-    // Reading `animated` inside the lambda keeps the animation in the draw phase (no recomposition).
-    CircularProgressIndicator(progress = { animated }, modifier = modifier, colors = colors, strokeWidth = strokeWidth)
+    CircularProgressIndicator(progress = { fraction }, modifier = modifier, colors = colors, strokeWidth = strokeWidth)
 }
 
 /** Small indeterminate spinner: used only for pending tool calls and connecting/sending states. */
@@ -190,6 +184,7 @@ fun errorMessage(code: String): String = when (code) {
     "awaiting_input" -> stringResource(R.string.block_awaiting_input)
     "busy" -> stringResource(R.string.block_busy)
     "unsupported" -> stringResource(R.string.block_unsupported)
+    "unsafe_prefix" -> stringResource(R.string.block_unsafe_prefix)
     else -> stringResource(R.string.error_generic, code)
 }
 

@@ -341,15 +341,18 @@ internal fun CodeContent(busy: Boolean, error: String?, onSubmit: (String) -> Un
                 color = if (message != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                 style = if (message != null) MaterialTheme.typography.labelSmall else MaterialTheme.typography.titleSmall,
                 textAlign = TextAlign.Center,
-                maxLines = 2,
+                // The longest error strings need three lines at this width.
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 28.dp),
             )
             Spacer(Modifier.height(4.dp))
+            // No auto-centering: the six pickers fit on screen, and centering the selected one
+            // would push the row past the round edge.
             PickerGroup(
                 selectedPickerState = pickers[selected],
                 modifier = Modifier.fillMaxWidth().height(88.dp),
-                autoCenter = true,
+                autoCenter = false,
             ) {
                 pickers.forEachIndexed { index, state ->
                     PickerGroupItem(

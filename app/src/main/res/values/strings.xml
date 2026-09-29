@@ -51,6 +51,7 @@
     <string name="block_awaiting_input">Answer the pending request first.</string>
     <string name="block_busy">The agent is busy. Try again when it\'s done.</string>
     <string name="block_unsupported">This session can\'t take messages from the watch.</string>
+    <string name="block_unsafe_prefix">Messages can\'t start with \'!\' (it would run as a shell command).</string>
 
     <!-- Connection -->
     <string name="conn_connecting">Connecting…</string>

@@ -126,6 +126,10 @@ private fun AddressFoundPreview() = Frame {
 @Composable
 private fun CodePreview() = Frame { CodeContent(busy = false, error = null, onSubmit = {}) }
 
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "not_found", onSubmit = {}) }
+
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {

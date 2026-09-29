@@ -1,5 +1,6 @@
 package dev.wristline.watch.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -221,78 +222,82 @@ private fun QuestionsContent(
     // Both plain remember: a restored index without the earlier answers would send an incomplete set.
     var index by remember(request.id) { mutableIntStateOf(0) }
     val answers = remember(request.id) { mutableStateMapOf<String, List<String>>() }
-    val question = request.questions.getOrNull(index) ?: return
-    val last = index >= request.questions.lastIndex
-    val choose = { ids: List<String> ->
-        answers[question.id] = ids
-        if (last) onAnswer(answers.toMap()) else index++
-    }
-    key(request.id, index) {
-        val listState = rememberTransformingLazyColumnState()
-        val spec = rememberTransformationSpec()
-        val selected = remember { mutableStateListOf<String>() }
-        val progress = if (request.questions.size > 1) {
-            stringResource(R.string.request_progress, index + 1, request.questions.size)
-        } else {
-            null
+    // Everything below derives from `i`, not `index`, so the outgoing question keeps its content
+    // while it fades out.
+    AnimatedContent(targetState = index, label = "question") { i ->
+        val question = request.questions.getOrNull(i) ?: return@AnimatedContent
+        val last = i >= request.questions.lastIndex
+        val choose = { ids: List<String> ->
+            answers[question.id] = ids
+            if (last) onAnswer(answers.toMap()) else index++
         }
-        val list: @Composable BoxScope.(PaddingValues) -> Unit = { contentPadding ->
-            TransformingLazyColumn(
-                state = listState,
-                contentPadding = contentPadding,
-                rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
-            ) {
-                requestHeader(question.header ?: request.title, listOfNotNull(progress, sessionTitle).joinToString(" · "), spec)
-                if (question.text.isNotEmpty()) {
-                    item(key = "text") { BodyText(question.text, Modifier.edgeTransform(this, spec)) }
-                }
-                errorItem(error, spec)
-                items(question.options, key = { it.id }) { option ->
-                    val modifier = Modifier
-                        .fillMaxWidth()
-                        .transformedHeight(this, spec)
-                        .minimumVerticalContentPadding(top = 0.dp, bottom = ButtonDefaults.minimumVerticalListContentPadding)
-                    val secondary: (@Composable RowScope.() -> Unit)? =
-                        option.description?.let { { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) } }
-                    if (question.multi) {
-                        CheckboxButton(
-                            checked = option.id in selected,
-                            onCheckedChange = { checked -> if (checked) selected += option.id else selected -= option.id },
-                            modifier = modifier,
-                            enabled = !sending,
-                            transformation = SurfaceTransformation(spec),
-                            secondaryLabel = secondary,
-                            label = { Text(option.label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        )
-                    } else {
-                        FilledTonalButton(
-                            onClick = { choose(listOf(option.id)) },
-                            modifier = modifier,
-                            enabled = !sending,
-                            transformation = SurfaceTransformation(spec),
-                            secondaryLabel = secondary,
-                            label = { Text(option.label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        )
+        key(request.id, i) {
+            val listState = rememberTransformingLazyColumnState()
+            val spec = rememberTransformationSpec()
+            val selected = remember { mutableStateListOf<String>() }
+            val progress = if (request.questions.size > 1) {
+                stringResource(R.string.request_progress, i + 1, request.questions.size)
+            } else {
+                null
+            }
+            val list: @Composable BoxScope.(PaddingValues) -> Unit = { contentPadding ->
+                TransformingLazyColumn(
+                    state = listState,
+                    contentPadding = contentPadding,
+                    rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
+                ) {
+                    requestHeader(question.header ?: request.title, listOfNotNull(progress, sessionTitle).joinToString(" · "), spec)
+                    if (question.text.isNotEmpty()) {
+                        item(key = "text") { BodyText(question.text, Modifier.edgeTransform(this, spec)) }
+                    }
+                    errorItem(error, spec)
+                    items(question.options, key = { it.id }) { option ->
+                        val modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, spec)
+                            .minimumVerticalContentPadding(top = 0.dp, bottom = ButtonDefaults.minimumVerticalListContentPadding)
+                        val secondary: (@Composable RowScope.() -> Unit)? =
+                            option.description?.let { { Text(it, maxLines = 2, overflow = TextOverflow.Ellipsis) } }
+                        if (question.multi) {
+                            CheckboxButton(
+                                checked = option.id in selected,
+                                onCheckedChange = { checked -> if (checked) selected += option.id else selected -= option.id },
+                                modifier = modifier,
+                                enabled = !sending,
+                                transformation = SurfaceTransformation(spec),
+                                secondaryLabel = secondary,
+                                label = { Text(option.label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            )
+                        } else {
+                            FilledTonalButton(
+                                onClick = { choose(listOf(option.id)) },
+                                modifier = modifier,
+                                enabled = !sending,
+                                transformation = SurfaceTransformation(spec),
+                                secondaryLabel = secondary,
+                                label = { Text(option.label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            )
+                        }
                     }
                 }
             }
-        }
-        if (question.multi) {
-            ScreenScaffold(
-                scrollState = listState,
-                edgeButton = {
-                    EdgeButton(
-                        onClick = { choose(selected.toList()) },
-                        buttonSize = EdgeButtonSize.Medium,
-                        enabled = selected.isNotEmpty() && !sending,
-                    ) {
-                        if (sending) SmallSpinner() else Text(stringResource(if (last) R.string.action_send else R.string.action_next))
-                    }
-                },
-                content = list,
-            )
-        } else {
-            ScreenScaffold(scrollState = listState, content = list)
+            if (question.multi) {
+                ScreenScaffold(
+                    scrollState = listState,
+                    edgeButton = {
+                        EdgeButton(
+                            onClick = { choose(selected.toList()) },
+                            buttonSize = EdgeButtonSize.Medium,
+                            enabled = selected.isNotEmpty() && !sending,
+                        ) {
+                            if (sending) SmallSpinner() else Text(stringResource(if (last) R.string.action_send else R.string.action_next))
+                        }
+                    },
+                    content = list,
+                )
+            } else {
+                ScreenScaffold(scrollState = listState, content = list)
+            }
         }
     }
 }

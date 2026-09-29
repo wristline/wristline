@@ -6,6 +6,8 @@ import android.content.Intent
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -373,13 +375,17 @@ private fun TransformingLazyColumnItemScope.ItemRow(
     spec: TransformationSpec,
 ) {
     val colors = MaterialTheme.colorScheme
+    // New items fade in. No placement animation: the rows already follow a neighbour's animated
+    // size exactly, and a placement spring would trail it.
+    val appear = Modifier.animateItem(placementSpec = null)
     when (item.kind) {
         ItemKind.USER, ItemKind.ASSISTANT -> {
             // An expanded message can be far taller than the screen, and the edge transformation
-            // renders its item through an offscreen layer of the full size; skip it there.
+            // renders its item through an offscreen layer of the full size; skip it there. (It is
+            // back for the few frames a long message takes to shrink after collapsing.)
             Card(
                 onClick = onToggle,
-                modifier = Modifier.fillMaxWidth().then(if (expanded) Modifier else Modifier.transformedHeight(this, spec)),
+                modifier = Modifier.fillMaxWidth().then(if (expanded) Modifier else Modifier.transformedHeight(this, spec)).then(appear),
                 transformation = if (expanded) null else SurfaceTransformation(spec),
                 colors = if (item.kind == ItemKind.USER) {
                     CardDefaults.cardColors(containerColor = colors.primaryContainer, contentColor = colors.onPrimaryContainer)
@@ -389,6 +395,7 @@ private fun TransformingLazyColumnItemScope.ItemRow(
             ) {
                 Text(
                     item.text,
+                    modifier = Modifier.animateContentSize(),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_LINES,
                     overflow = TextOverflow.Ellipsis,
@@ -397,7 +404,7 @@ private fun TransformingLazyColumnItemScope.ItemRow(
         }
         ItemKind.TOOL -> Card(
             onClick = onToggle,
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).then(appear),
             transformation = SurfaceTransformation(spec),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
             colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
@@ -414,16 +421,18 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                 )
             }
             val detail = item.detail
-            if (expanded && !detail.isNullOrEmpty()) {
-                Text(
-                    detail,
-                    modifier = Modifier.padding(top = 4.dp),
-                    style = MaterialTheme.typography.bodyExtraSmall,
-                    fontFamily = FontFamily.Monospace,
-                    color = if (item.error) colors.error else colors.onSurfaceVariant,
-                )
+            if (!detail.isNullOrEmpty()) {
+                AnimatedVisibility(visible = expanded) {
+                    Text(
+                        detail,
+                        modifier = Modifier.padding(top = 4.dp),
+                        style = MaterialTheme.typography.bodyExtraSmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = if (item.error) colors.error else colors.onSurfaceVariant,
+                    )
+                }
             }
         }
-        else -> CaptionText(item.text, Modifier.edgeTransform(this, spec))
+        else -> CaptionText(item.text, Modifier.edgeTransform(this, spec).then(appear))
     }
 }
