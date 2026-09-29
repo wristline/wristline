@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -108,18 +109,22 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
     var sending by remember { mutableStateOf(false) }
     var outcome by remember { mutableStateOf<Sent?>(null) }
     val label = stringResource(R.string.detail_prompt_label)
-    val type = rememberTextInput(label) {
+    val context = LocalContext.current
+    val tryType = rememberTextInputLauncher(label) {
         draft = it
         typed = true
         outcome = null
         confirming = true
     }
-    val speak = rememberSpeechInput(label, onUnavailable = type) {
+    val trySpeak = rememberSpeechInput(label) {
         draft = it
         typed = false
         outcome = null
         confirming = true
     }
+    // Each way in falls back to the other; a watch with neither is told so.
+    val type = remember(tryType, trySpeak) { { if (!tryType() && !trySpeak()) inputUnavailable(context) } }
+    val speak = remember(tryType, trySpeak) { { if (!trySpeak() && !tryType()) inputUnavailable(context) } }
     LaunchedEffect(outcome) {
         if (outcome == Sent.Ok) {
             delay(SENT_NOTICE_MS)
@@ -173,13 +178,12 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
 
 /**
  * Returns a launcher for the system speech recognizer (free-form, device language, one result).
- * [onText] gets the trimmed, non-empty transcript. Without a recognizer on the watch,
- * [onUnavailable] runs instead.
+ * [onText] gets the trimmed, non-empty transcript. Returns false when the watch has no recognizer
+ * (or will not let this app start it), so the caller can offer typing instead.
  */
 @Composable
-private fun rememberSpeechInput(prompt: String, onUnavailable: () -> Unit, onText: (String) -> Unit): () -> Unit {
+private fun rememberSpeechInput(prompt: String, onText: (String) -> Unit): () -> Boolean {
     val latest by rememberUpdatedState(onText)
-    val fallback by rememberUpdatedState(onUnavailable)
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
         val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
@@ -193,8 +197,11 @@ private fun rememberSpeechInput(prompt: String, onUnavailable: () -> Unit, onTex
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             try {
                 launcher.launch(intent)
+                true
             } catch (_: ActivityNotFoundException) {
-                fallback()
+                false
+            } catch (_: SecurityException) {
+                false
             }
         }
     }

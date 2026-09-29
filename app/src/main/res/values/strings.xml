@@ -44,6 +44,7 @@
     <string name="error_too_long">The message is too long.</string>
     <string name="error_bad_request">The bridge rejected this.</string>
     <string name="error_generic">Something went wrong (%1$s).</string>
+    <string name="input_unavailable">Text input isn\'t available on this watch.</string>
 
     <!-- Why a prompt can't be sent (PromptBlock) -->
     <string name="block_not_live">This session isn\'t running.</string>

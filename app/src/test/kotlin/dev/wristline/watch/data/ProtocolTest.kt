@@ -107,7 +107,8 @@ class ProtocolTest {
         assertNull(event.session.context)
     }
 
-    // Handcrafted until the bridge fixtures carry `account` (multi-account, protocol v1 additive).
+    // Hand-written on purpose: the fixtures carry `account` on every live session and usage entry,
+    // so the single-account (absent) case and an unknown key inside it are covered here.
     @Test
     fun sessionAndUsageDecodeWithAndWithoutAccount() {
         val list = decode<SessionList>(

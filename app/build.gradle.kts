@@ -74,6 +74,12 @@ kotlin {
     }
 }
 
+// ProtocolTest reads the fixtures straight from the source tree (they are not on the test
+// classpath), so without this a changed fixture would leave the test task up to date.
+tasks.withType<Test>().configureEach {
+    inputs.dir("src/main/assets/protocol").withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

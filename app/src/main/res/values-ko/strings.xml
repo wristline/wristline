@@ -41,6 +41,7 @@
     <string name="error_too_long">메시지가 너무 깁니다.</string>
     <string name="error_bad_request">브릿지가 요청을 거부했습니다.</string>
     <string name="error_generic">문제가 발생했습니다(%1$s).</string>
+    <string name="input_unavailable">이 워치에서는 텍스트 입력을 사용할 수 없습니다.</string>
 
     <!-- Why a prompt can't be sent (PromptBlock) -->
     <string name="block_not_live">실행 중인 세션이 아닙니다.</string>

@@ -2,7 +2,10 @@ package dev.wristline.watch.ui
 
 import android.app.Activity
 import android.app.RemoteInput
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.text.format.DateUtils
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -23,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -195,10 +199,21 @@ private const val INPUT_KEY = "text"
 
 /**
  * Returns a launcher for the system text input (keyboard, dictation or phone). [onText] gets the
- * trimmed, non-empty result.
+ * trimmed, non-empty result. A watch without a text input activity gets [inputUnavailable].
  */
 @Composable
 fun rememberTextInput(label: String, onText: (String) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val tryType = rememberTextInputLauncher(label, onText)
+    return remember(tryType) { { if (!tryType()) inputUnavailable(context) } }
+}
+
+/**
+ * [rememberTextInput] without the message: returns false when the input activity could not be
+ * started, so the caller can try another way in first.
+ */
+@Composable
+fun rememberTextInputLauncher(label: String, onText: (String) -> Unit): () -> Boolean {
     val latest by rememberUpdatedState(onText)
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val data = result.data
@@ -210,9 +225,22 @@ fun rememberTextInput(label: String, onText: (String) -> Unit): () -> Unit {
         {
             val intent = RemoteInputIntentHelper.createActionRemoteInputIntent()
             RemoteInputIntentHelper.putRemoteInputsExtra(intent, listOf(RemoteInput.Builder(INPUT_KEY).setLabel(label).build()))
-            launcher.launch(intent)
+            try {
+                launcher.launch(intent)
+                true
+            } catch (_: ActivityNotFoundException) {
+                false
+            } catch (_: SecurityException) {
+                // The activity exists but this watch does not let third-party apps start it.
+                false
+            }
         }
     }
+}
+
+/** Says that nothing on this watch can take the input (no text input activity or speech recognizer). */
+fun inputUnavailable(context: Context) {
+    Toast.makeText(context, R.string.input_unavailable, Toast.LENGTH_SHORT).show()
 }
 
 fun Conn.hasBanner(): Boolean = when (this) {
