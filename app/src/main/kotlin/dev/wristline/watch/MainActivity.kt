@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() {
-        Bridge.foreground = false
+        Bridge.toBackground()
         super.onPause()
     }
 

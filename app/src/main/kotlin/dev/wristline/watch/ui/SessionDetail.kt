@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
@@ -72,7 +73,7 @@ import kotlinx.coroutines.launch
 private const val COLLAPSED_LINES = 6
 private const val SENT_NOTICE_MS = 4_000L
 
-/** Holds the session open (subscription + items) exactly as long as the screen is composed. */
+/** Holds the session open (its items) exactly as long as the screen is composed. */
 private class OpenedSession(val id: String) : RememberObserver {
     val items = Bridge.openSession(id)
 
@@ -86,6 +87,12 @@ private class OpenedSession(val id: String) : RememberObserver {
 @Composable
 internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit) {
     val opened = remember(sessionId) { OpenedSession(sessionId) }
+    // Live items only while started: with the screen off, or another activity in front, nothing
+    // streams; coming back reloads the newest page.
+    LifecycleStartEffect(sessionId) {
+        Bridge.watchSession(sessionId)
+        onStopOrDispose { Bridge.unwatchSession(sessionId) }
+    }
     val items by opened.items.collectAsStateWithLifecycle()
     val sessions by Bridge.sessions.collectAsStateWithLifecycle()
     val requests by Bridge.requests.collectAsStateWithLifecycle()

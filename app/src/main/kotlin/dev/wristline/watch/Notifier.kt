@@ -78,6 +78,8 @@ object Notifier {
             context, TAG_SESSION, sessionId, CHANNEL_REQUESTS, MainActivity.EXTRA_SESSION_ID,
             title = sessionTitle(context, session),
             text = text ?: context.getString(R.string.status_needs_input),
+            // Replacing an earlier alert of the session (e.g. its "Finished") must vibrate again.
+            alertOnce = false,
         )
     }
 
@@ -98,25 +100,36 @@ object Notifier {
     }
 
     /**
-     * Cancels the notifications that no longer apply: requests missing from [requests], and alerts
-     * of sessions missing from [sessions] or working again. Also clears notifications left by an
-     * earlier process. Empty lists cancel everything except the monitoring notification.
+     * Cancels the notifications that no longer apply (see [notificationApplies]). Also clears
+     * notifications left by an earlier process. Empty lists cancel everything except the
+     * monitoring notification.
      */
     fun reconcile(context: Context, requests: List<PendingRequest>, sessions: List<Session>) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        val requestIds = requests.mapTo(HashSet()) { notificationId(it.id) }
-        val sessionIds = sessions
-            .filter { it.status != SessionStatus.RUNNING && it.status != SessionStatus.ENDED }
-            .mapTo(HashSet()) { notificationId(it.id) }
         for (active in manager.activeNotifications) {
-            val stale = when (active.tag) {
-                TAG_REQUEST -> active.id !in requestIds
-                TAG_SESSION -> active.id !in sessionIds
-                else -> false
+            if (!notificationApplies(active.tag, active.notification.channelId, active.id, requests, sessions)) {
+                manager.cancel(active.tag, active.id)
             }
-            if (stale) manager.cancel(active.tag, active.id)
         }
     }
+
+    /**
+     * Whether the notification [tag]/[id] posted on [channel] still applies: a request in
+     * [requests]; a needs-input alert (requests channel) of a session in [sessions] that is still
+     * waiting; a done alert of one that is neither running nor ended. Untagged ones (monitoring)
+     * always do.
+     */
+    internal fun notificationApplies(tag: String?, channel: String?, id: Int, requests: List<PendingRequest>, sessions: List<Session>): Boolean =
+        when (tag) {
+            TAG_REQUEST -> requests.any { notificationId(it.id) == id }
+            TAG_SESSION -> sessions.any { session ->
+                notificationId(session.id) == id && when (channel) {
+                    CHANNEL_REQUESTS -> session.status == SessionStatus.NEEDS_INPUT
+                    else -> session.status != SessionStatus.RUNNING && session.status != SessionStatus.ENDED
+                }
+            }
+            else -> true
+        }
 
     /** One short click so the user notices a request while looking at the app. */
     fun tick(context: Context) {
@@ -132,6 +145,7 @@ object Notifier {
         extra: String,
         title: String,
         text: String,
+        alertOnce: Boolean = true,
     ) {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val id = notificationId(key)
@@ -145,7 +159,7 @@ object Notifier {
                 PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),
             )
             .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
+            .setOnlyAlertOnce(alertOnce)
             .build()
         NotificationManagerCompat.from(context).notify(tag, id, notification)
     }

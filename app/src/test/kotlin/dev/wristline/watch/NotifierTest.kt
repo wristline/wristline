@@ -1,7 +1,14 @@
 package dev.wristline.watch
 
+import dev.wristline.watch.data.PendingRequest
+import dev.wristline.watch.data.ProviderId
+import dev.wristline.watch.data.RequestKind
+import dev.wristline.watch.data.Session
+import dev.wristline.watch.data.SessionStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotifierTest {
@@ -20,5 +27,42 @@ class NotifierTest {
         val key = "req-" + 42
         assertEquals(notificationId("req-42"), notificationId(key))
         assertNotEquals(notificationId("req-1"), notificationId("req-2"))
+    }
+
+    private fun session(status: String) = Session(id = "s1", provider = ProviderId.CLAUDE_CODE, status = status, lastActivity = "2026-09-30T00:00:00Z")
+
+    private fun applies(tag: String?, channel: String, sessions: List<Session>, requests: List<PendingRequest> = emptyList()) =
+        Notifier.notificationApplies(tag, channel, notificationId("s1"), requests, sessions)
+
+    // Needs-input and done alerts share the "session" tag and id; the channel tells them apart.
+    @Test
+    fun needsInputAlertAppliesOnlyWhileTheSessionWaits() {
+        val waiting = listOf(session(SessionStatus.NEEDS_INPUT))
+        assertTrue(applies("session", Notifier.CHANNEL_REQUESTS, waiting))
+        // Answered on the PC while the watch was offline: the snapshot shows the session idle.
+        val idle = listOf(session(SessionStatus.IDLE))
+        assertFalse(applies("session", Notifier.CHANNEL_REQUESTS, idle))
+        for (status in listOf(SessionStatus.RUNNING, SessionStatus.ENDED)) {
+            assertFalse(status, applies("session", Notifier.CHANNEL_REQUESTS, listOf(session(status))))
+        }
+        assertFalse(applies("session", Notifier.CHANNEL_REQUESTS, emptyList()))
+    }
+
+    @Test
+    fun doneAlertAppliesUntilTheSessionWorksAgain() {
+        assertTrue(applies("session", Notifier.CHANNEL_UPDATES, listOf(session(SessionStatus.IDLE))))
+        assertTrue(applies("session", Notifier.CHANNEL_UPDATES, listOf(session(SessionStatus.NEEDS_INPUT))))
+        for (status in listOf(SessionStatus.RUNNING, SessionStatus.ENDED)) {
+            assertFalse(status, applies("session", Notifier.CHANNEL_UPDATES, listOf(session(status))))
+        }
+        assertFalse(applies("session", Notifier.CHANNEL_UPDATES, emptyList()))
+    }
+
+    @Test
+    fun requestNotificationsFollowPendingRequestsAndTheMonitoringOneStays() {
+        val request = PendingRequest(id = "s1", sessionId = "x", kind = RequestKind.PERMISSION, createdAt = "2026-09-30T00:00:00Z")
+        assertTrue(applies("request", Notifier.CHANNEL_REQUESTS, emptyList(), listOf(request)))
+        assertFalse(applies("request", Notifier.CHANNEL_REQUESTS, emptyList()))
+        assertTrue(applies(null, Notifier.CHANNEL_MONITOR, emptyList()))
     }
 }

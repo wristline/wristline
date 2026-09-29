@@ -217,6 +217,7 @@ object Bridge {
     private var networkUp = true
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var demo: DemoData? = null
+    private val latestJobs = HashMap<String, Job>()
 
     /**
      * MainActivity is resumed, i.e. the user is looking at the app. Requests then only tick the
@@ -224,6 +225,15 @@ object Bridge {
      */
     @Volatile
     var foreground = false
+
+    /** MainActivity is paused: the requests its screens were showing become notifications. */
+    fun toBackground() {
+        foreground = false
+        scope.launch {
+            if (demo != null) return@launch
+            _requests.value.forEach { Notifier.request(appContext, it, session(it.sessionId)) }
+        }
+    }
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -241,7 +251,12 @@ object Bridge {
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
         prefs = Prefs(appContext)
-        if (prefs.isPaired) _conn.value = Conn.Connecting
+        if (prefs.isPaired) {
+            _conn.value = Conn.Connecting
+        } else if (prefs.demo) {
+            // Like a pairing, the demo outlives the process: screens restored after its death expect it.
+            scope.launch { startDemo() }
+        }
     }
 
     // ---- lifecycle ----
@@ -425,8 +440,8 @@ object Bridge {
                     event.requests.filter { it.id !in known }.forEach { Notifier.request(appContext, it, session(it.sessionId)) }
                 }
                 onOnline()
-                val open = synchronized(lock) { itemFlows.keys.toList() }
-                open.forEach { id -> scope.launch { loadLatest(id) } }
+                // The subscription alone does not replay what the socket missed.
+                subscribed?.let { loadLatest(it) }
             }
             is ServerEvent.SessionChanged -> {
                 _sessions.value = sortSessions(_sessions.value.filterNot { it.id == event.session.id } + event.session)
@@ -478,18 +493,28 @@ object Bridge {
 
     // ---- session items ----
 
-    /** Starts showing a session: subscribes to its items and loads the newest page. */
-    fun openSession(id: String): StateFlow<SessionItems> {
-        val flow = synchronized(lock) {
+    /** Starts showing a session: holds its items until the matching [closeSession]; [watchSession] fills them. */
+    fun openSession(id: String): StateFlow<SessionItems> =
+        synchronized(lock) {
             openCounts[id] = (openCounts[id] ?: 0) + 1
             itemFlows.getOrPut(id) { MutableStateFlow(SessionItems()) }
-        }
+        }.asStateFlow()
+
+    /**
+     * The screen showing [id] is started: subscribes to its live items and loads the newest page,
+     * which also catches up on what was missed while the screen was stopped.
+     */
+    fun watchSession(id: String) {
         scope.launch {
             subscribe(id)
             // Otherwise the next snapshot loads it.
-            if (!flow.value.loaded && (_conn.value is Conn.Online || demo != null)) loadLatest(id)
+            if (_conn.value is Conn.Online || demo != null) loadLatest(id)
         }
-        return flow.asStateFlow()
+    }
+
+    /** The screen is stopped (screen off, another activity in front): nothing streams until it is watched again. */
+    fun unwatchSession(id: String) {
+        scope.launch { if (subscribed == id) subscribe(null) }
     }
 
     /** Pairs with [openSession]; the last close releases the items. */
@@ -505,7 +530,12 @@ object Bridge {
                 true
             }
         }
-        if (released) scope.launch { if (subscribed == id) subscribe(null) }
+        if (released) {
+            scope.launch {
+                latestJobs.remove(id)?.cancel()
+                if (subscribed == id) subscribe(null)
+            }
+        }
     }
 
     fun loadEarlier(id: String) {
@@ -527,12 +557,15 @@ object Bridge {
         socket?.send(subscribeMessage(id))
     }
 
-    private suspend fun loadLatest(id: String) {
+    /** Loads the newest page. A fetch still in flight is replaced, so a reconnect never skips the reload. */
+    private fun loadLatest(id: String) {
         val flow = itemFlow(id) ?: return
-        if (flow.value.loading) return
-        flow.update { it.copy(loading = true) }
-        val page = fetchItems(id, before = null)
-        itemFlow(id)?.update { if (page == null) it.copy(loading = false) else it.withLatest(page) }
+        latestJobs[id]?.cancel()
+        latestJobs[id] = scope.launch {
+            flow.update { it.copy(loading = true) }
+            val page = fetchItems(id, before = null)
+            itemFlow(id)?.update { if (page == null) it.copy(loading = false) else it.withLatest(page) }
+        }
     }
 
     private suspend fun fetchItems(id: String, before: Long?): ItemPage? {
@@ -562,7 +595,25 @@ object Bridge {
         }
     }
 
-    suspend fun pair(baseUrl: String, code: String): Sent = withContext(dispatcher) {
+    /**
+     * The address at which the address screen found a bridge. While paired, the connection moves
+     * there at once: the token still works when it is the same bridge under a new hostname, and a
+     * different bridge rejects it, which asks for a new pairing instead of failing later.
+     */
+    fun useAddress(baseUrl: String) {
+        if (baseUrl == prefs.baseUrl) return
+        prefs.saveAddress(baseUrl)
+        scope.launch {
+            if (!prefs.isPaired) return@launch
+            stopConnection()
+            _conn.value = Conn.Connecting
+            connectNow()
+        }
+    }
+
+    // Like prompt() and answer() below, pair() and disconnect() finish even when their screen is
+    // swiped away: the bridge consumes the code or revokes the device as soon as the request is in.
+    suspend fun pair(baseUrl: String, code: String): Sent = withContext(dispatcher + NonCancellable) {
         val body = WireJson.encodeToString(PairRequest.serializer(), PairRequest(code, prefs.deviceName))
         val result = send(Request.Builder().url(apiUrl(baseUrl, "pair")).post(body.toRequestBody(jsonType)).build())
             ?: return@withContext Sent.Unreachable
@@ -637,7 +688,7 @@ object Bridge {
     }
 
     /** Unregisters this watch on the bridge when reachable, then forgets the pairing either way. */
-    suspend fun disconnect() = withContext(dispatcher) {
+    suspend fun disconnect() = withContext(dispatcher + NonCancellable) {
         if (demo == null && prefs.isPaired) send(authed(apiUrl(prefs.baseUrl, "device")).delete().build())
         stopConnection()
         demo = null
@@ -661,6 +712,7 @@ object Bridge {
         clearState()
         val data = Demo.load(appContext)
         demo = data
+        prefs.demo = true
         _sessions.value = sortSessions(data.sessions)
         _requests.value = data.requests
         _usage.value = data.usage
@@ -669,6 +721,7 @@ object Bridge {
 
     fun stopDemo() {
         scope.launch {
+            prefs.demo = false
             if (demo == null) return@launch
             demo = null
             clearState()

@@ -169,7 +169,7 @@ internal fun AddressScreen(onFound: () -> Unit, onPairedWithToken: () -> Unit) {
                 state = AddressState.Searching
                 scope.launch {
                     val probe = Bridge.probe(result.url)
-                    if (probe == Probe.FOUND) Bridge.prefs.saveAddress(result.url)
+                    if (probe == Probe.FOUND) Bridge.useAddress(result.url)
                     state = if (probe == Probe.FOUND) AddressState.Found else AddressState.Failed(probe)
                 }
             }

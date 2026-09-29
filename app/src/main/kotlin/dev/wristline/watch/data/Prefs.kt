@@ -38,6 +38,11 @@ class Prefs(context: Context) {
             sp.edit().putBoolean(KEY_MONITORING, value).apply()
         }
 
+    /** Demo mode is on; like a pairing it survives the process (see Bridge.init). */
+    var demo: Boolean
+        get() = sp.getBoolean(KEY_DEMO, false)
+        set(value) = sp.edit().putBoolean(KEY_DEMO, value).apply()
+
     fun saveAddress(baseUrl: String) = sp.edit().putString(KEY_BASE_URL, baseUrl).apply()
 
     /** [deviceId] is empty for a token entered by hand. */
@@ -59,5 +64,6 @@ class Prefs(context: Context) {
         const val KEY_DEVICE_ID = "deviceId"
         const val KEY_DEVICE_NAME = "deviceName"
         const val KEY_MONITORING = "monitoring"
+        const val KEY_DEMO = "demo"
     }
 }
