@@ -595,22 +595,6 @@ object Bridge {
         }
     }
 
-    /**
-     * The address at which the address screen found a bridge. While paired, the connection moves
-     * there at once: the token still works when it is the same bridge under a new hostname, and a
-     * different bridge rejects it, which asks for a new pairing instead of failing later.
-     */
-    fun useAddress(baseUrl: String) {
-        if (baseUrl == prefs.baseUrl) return
-        prefs.saveAddress(baseUrl)
-        scope.launch {
-            if (!prefs.isPaired) return@launch
-            stopConnection()
-            _conn.value = Conn.Connecting
-            connectNow()
-        }
-    }
-
     // Like prompt() and answer() below, pair() and disconnect() finish even when their screen is
     // swiped away: the bridge consumes the code or revokes the device as soon as the request is in.
     suspend fun pair(baseUrl: String, code: String): Sent = withContext(dispatcher + NonCancellable) {

@@ -156,8 +156,9 @@ internal sealed interface AddressState {
     data class Failed(val probe: Probe) : AddressState
 }
 
+/** [onFound] gets the address at which a bridge answered; it is paired with on the next screen. */
 @Composable
-internal fun AddressScreen(onFound: () -> Unit, onPairedWithToken: () -> Unit) {
+internal fun AddressScreen(onFound: (String) -> Unit, onPairedWithToken: () -> Unit) {
     var address by rememberSaveable { mutableStateOf(Bridge.prefs.baseUrl) }
     var state by remember { mutableStateOf<AddressState>(AddressState.Idle) }
     val scope = rememberCoroutineScope()
@@ -169,7 +170,10 @@ internal fun AddressScreen(onFound: () -> Unit, onPairedWithToken: () -> Unit) {
                 state = AddressState.Searching
                 scope.launch {
                     val probe = Bridge.probe(result.url)
-                    if (probe == Probe.FOUND) Bridge.useAddress(result.url)
+                    // Before pairing the address is kept for the next start. While paired it is stored
+                    // only with the new token (startPaired): the current token belongs to the current
+                    // bridge, and backing out must leave that pairing untouched.
+                    if (probe == Probe.FOUND && !Bridge.prefs.isPaired) Bridge.prefs.saveAddress(result.url)
                     state = if (probe == Probe.FOUND) AddressState.Found else AddressState.Failed(probe)
                 }
             }
@@ -179,7 +183,7 @@ internal fun AddressScreen(onFound: () -> Unit, onPairedWithToken: () -> Unit) {
         Bridge.useToken(address, token)
         onPairedWithToken()
     }
-    AddressContent(address, state, onEnter = enterAddress, onNext = onFound, onToken = enterToken)
+    AddressContent(address, state, onEnter = enterAddress, onNext = { onFound(address) }, onToken = enterToken)
 }
 
 @Composable
@@ -297,8 +301,9 @@ private fun AddressStatus(state: AddressState) {
 
 private const val CODE_LENGTH = 6
 
+/** Pairs with the bridge at [baseUrl]; the address is saved together with the token. */
 @Composable
-internal fun CodeScreen(onPaired: () -> Unit) {
+internal fun CodeScreen(baseUrl: String, onPaired: () -> Unit) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -306,7 +311,7 @@ internal fun CodeScreen(onPaired: () -> Unit) {
         busy = true
         error = null
         scope.launch {
-            when (val result = Bridge.pair(Bridge.prefs.baseUrl, code)) {
+            when (val result = Bridge.pair(baseUrl, code)) {
                 Sent.Ok -> onPaired()
                 Sent.Unreachable -> error = "unreachable"
                 is Sent.Refused -> error = result.code

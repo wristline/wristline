@@ -16,7 +16,10 @@ class Prefs(context: Context) {
     private val defaultDeviceName =
         Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL
 
-    /** `https://host[:port]`, set once an address has been entered (even before pairing). */
+    /**
+     * `https://host[:port]`, set once an address has been entered before pairing; while paired it
+     * changes only together with the token ([savePairing]), never on its own.
+     */
     val baseUrl: String get() = sp.getString(KEY_BASE_URL, null).orEmpty()
     val token: String get() = sp.getString(KEY_TOKEN, null).orEmpty()
     val deviceId: String get() = sp.getString(KEY_DEVICE_ID, null).orEmpty()

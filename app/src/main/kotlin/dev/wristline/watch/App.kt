@@ -31,12 +31,15 @@ object Route {
     const val ONBOARDING = "onboarding"
     const val NOTIFY = "onboarding/notify"
     const val ADDRESS = "onboarding/address"
-    const val CODE = "onboarding/code"
+    const val CODE = "onboarding/code/{url}"
     const val SESSIONS = "sessions"
     const val SESSION = "session/{id}"
     const val REQUEST = "request/{id}"
     const val USAGE = "usage"
     const val SETTINGS = "settings"
+
+    /** Pairing screen for the bridge at [url]. */
+    fun code(url: String) = "onboarding/code/" + Uri.encode(url)
 
     fun session(id: String) = "session/" + Uri.encode(id)
 
@@ -79,10 +82,10 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
                     NotifyScreen(onNext = { nav.navigate(Route.ADDRESS) { popUpTo(Route.NOTIFY) { inclusive = true } } })
                 }
                 composable(Route.ADDRESS) {
-                    AddressScreen(onFound = { nav.navigate(Route.CODE) }, onPairedWithToken = { nav.showSessions() })
+                    AddressScreen(onFound = { nav.navigate(Route.code(it)) }, onPairedWithToken = { nav.showSessions() })
                 }
-                composable(Route.CODE) {
-                    CodeScreen(onPaired = { nav.showSessions() })
+                composable(Route.CODE) { entry ->
+                    CodeScreen(baseUrl = entry.arguments?.getString("url").orEmpty(), onPaired = { nav.showSessions() })
                 }
                 composable(Route.SESSIONS) {
                     SessionListScreen(
@@ -90,7 +93,7 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
                         onRequest = { nav.navigate(Route.request(it)) },
                         onUsage = { nav.navigate(Route.USAGE) },
                         onSettings = { nav.navigate(Route.SETTINGS) },
-                        onRepair = { nav.navigate(Route.CODE) },
+                        onRepair = { nav.navigate(Route.code(Bridge.prefs.baseUrl)) },
                     )
                 }
                 composable(Route.SESSION) { entry ->
@@ -105,7 +108,7 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
                 composable(Route.SETTINGS) {
                     SettingsScreen(
                         onAddress = { nav.navigate(Route.ADDRESS) },
-                        onRepair = { nav.navigate(Route.CODE) },
+                        onRepair = { nav.navigate(Route.code(Bridge.prefs.baseUrl)) },
                         onPaired = { nav.showSessions() },
                         onSignedOut = {
                             nav.navigate(Route.ONBOARDING) { popUpTo(nav.graph.id) { inclusive = true } }

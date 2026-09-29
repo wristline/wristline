@@ -153,12 +153,15 @@ fun StatusDot(status: String, modifier: Modifier = Modifier) {
 @Composable
 fun PercentRing(percent: Double, modifier: Modifier = Modifier, strokeWidth: Dp = 4.dp) {
     val fraction = (percent / 100).toFloat().coerceIn(0f, 1f)
+    // The indicator keeps the first progress lambda and observes only the State it reads: a lambda
+    // over a plain Float would never report a later percent.
+    val progress by rememberUpdatedState(fraction)
     val colors = if (percent >= 90) {
         ProgressIndicatorDefaults.colors(indicatorColor = MaterialTheme.colorScheme.error)
     } else {
         ProgressIndicatorDefaults.colors()
     }
-    CircularProgressIndicator(progress = { fraction }, modifier = modifier, colors = colors, strokeWidth = strokeWidth)
+    CircularProgressIndicator(progress = { progress }, modifier = modifier, colors = colors, strokeWidth = strokeWidth)
 }
 
 /** Small indeterminate spinner: used only for pending tool calls and connecting/sending states. */
