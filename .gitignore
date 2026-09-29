@@ -20,3 +20,6 @@ keystore.properties
 Thumbs.db
 *.swp
 .vscode/
+
+# Kotlin 2.x per-project data
+.kotlin/
