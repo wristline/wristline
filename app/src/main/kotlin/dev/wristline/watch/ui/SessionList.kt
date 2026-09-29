@@ -177,19 +177,19 @@ internal fun sessionTitle(session: Session): String =
 
 /**
  * `5h 42% · 7d 12%` for Claude Code, `Codex 30%` (first window) for other providers; ordered by
- * provider then account label, and prefixed with the short account label when [showAccounts].
+ * provider then account label. With [showAccounts] the short account label goes after the provider
+ * name, before the numbers: `school 5h 42% · 7d 12%`, `Codex school 30%`.
  */
 @Composable
 private fun usageChips(usage: List<Usage>, showAccounts: Boolean): List<String> =
     usage.sortedWith(compareBy({ it.provider }, { it.account?.label })).mapNotNull { u ->
         if (u.windows.isEmpty()) return@mapNotNull null
-        val text = if (u.provider == ProviderId.CLAUDE_CODE) {
-            u.windows.joinToString(" · ") { "${it.id} ${it.usedPercent.roundToInt()}%" }
+        val account = u.account?.takeIf { showAccounts }?.let { accountShort(it) + " " }.orEmpty()
+        if (u.provider == ProviderId.CLAUDE_CODE) {
+            account + u.windows.joinToString(" · ") { "${it.id} ${it.usedPercent.roundToInt()}%" }
         } else {
-            "${providerLabel(u.provider)} ${u.windows.first().usedPercent.roundToInt()}%"
+            "${providerLabel(u.provider)} $account${u.windows.first().usedPercent.roundToInt()}%"
         }
-        val account = u.account
-        if (showAccounts && account != null) accountShort(account) + " " + text else text
     }
 
 @Composable

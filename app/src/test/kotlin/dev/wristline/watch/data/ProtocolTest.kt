@@ -114,7 +114,7 @@ class ProtocolTest {
             WireJson.parseToJsonElement(
                 """{"sessions":[
                    {"id":"claude-code:1","provider":"claude-code","status":"running","lastActivity":"2026-09-29T00:00:00Z",
-                    "account":{"id":"acc-a","label":"me@gmail.com"}},
+                    "account":{"id":"acc-a","label":"me@gmail.com","plan":"max"}},
                    {"id":"claude-code:2","provider":"claude-code","status":"idle","lastActivity":"2026-09-29T00:00:00Z",
                     "account":{"id":"acc-b","label":"school","estimated":true}},
                    {"id":"codex:3","provider":"codex","status":"idle","lastActivity":"2026-09-29T00:00:00Z"}]}""",
