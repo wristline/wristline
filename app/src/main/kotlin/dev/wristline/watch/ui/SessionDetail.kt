@@ -96,6 +96,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val COLLAPSED_LINES = 6
+// Far more than COLLAPSED_LINES hold: a collapsed message lays out this much of its up to 4000 chars.
+private const val COLLAPSED_CHARS = 1_000
 private const val SENT_NOTICE_MS = 4_000L
 private val ACTION_SIZE = 44.dp
 
@@ -588,6 +590,13 @@ private fun GaugeNumbers(context: ContextUsage?, limit: UsageWindow?) {
     )
 }
 
+/** The start of a long message, enough to fill the collapsed lines and end in an ellipsis. */
+private fun collapsedText(text: String): String {
+    if (text.length <= COLLAPSED_CHARS) return text
+    // Never split a surrogate pair.
+    return text.substring(0, if (text[COLLAPSED_CHARS - 1].isHighSurrogate()) COLLAPSED_CHARS - 1 else COLLAPSED_CHARS)
+}
+
 @Composable
 private fun TransformingLazyColumnItemScope.ItemRow(
     item: Item,
@@ -615,7 +624,7 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                 },
             ) {
                 Text(
-                    item.text,
+                    if (expanded) item.text else collapsedText(item.text),
                     modifier = Modifier.animateContentSize(),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_LINES,

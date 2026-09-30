@@ -135,7 +135,7 @@ private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "no
 @Composable
 private fun SessionListPreview() = Frame {
     SessionListContent(
-        Conn.Online, sessions, listOf(permission, question), usage, now,
+        Conn.Online, sessions, listOf(permission, question), usage, { now },
         onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -144,7 +144,7 @@ private fun SessionListPreview() = Frame {
 @Composable
 private fun SessionListUnreachablePreview() = Frame {
     SessionListContent(
-        Conn.Unreachable(System.currentTimeMillis() + 12_000), sessions, emptyList(), usage, now,
+        Conn.Unreachable(System.currentTimeMillis() + 12_000), sessions, emptyList(), usage, { now },
         onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -153,7 +153,7 @@ private fun SessionListUnreachablePreview() = Frame {
 @Composable
 private fun SessionListAccountsPreview() = Frame {
     SessionListContent(
-        Conn.Online, accountSessions, emptyList(), accountUsage, now,
+        Conn.Online, accountSessions, emptyList(), accountUsage, { now },
         onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -162,7 +162,7 @@ private fun SessionListAccountsPreview() = Frame {
 @Composable
 private fun SessionListAccountsKoPreview() = Frame {
     SessionListContent(
-        Conn.Online, accountSessions, emptyList(), accountUsage, now,
+        Conn.Online, accountSessions, emptyList(), accountUsage, { now },
         onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }

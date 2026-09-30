@@ -17,11 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -76,13 +76,17 @@ fun Modifier.edgeTransform(scope: TransformingLazyColumnItemScope, spec: Transfo
 
 /** Wall-clock time refreshed every [periodMs] while the screen is at least STARTED. */
 @Composable
-fun rememberNow(periodMs: Long = 60_000): Long {
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+fun rememberNow(periodMs: Long = 60_000): Long = rememberNowState(periodMs).value
+
+/** [rememberNow] as a State: a tick recomposes only the scopes that read it. */
+@Composable
+fun rememberNowState(periodMs: Long = 60_000): State<Long> {
+    val now = remember { mutableLongStateOf(System.currentTimeMillis()) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     LaunchedEffect(lifecycle, periodMs) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                now = System.currentTimeMillis()
+                now.longValue = System.currentTimeMillis()
                 delay(periodMs)
             }
         }

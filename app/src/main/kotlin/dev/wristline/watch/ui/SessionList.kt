@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
@@ -36,6 +37,7 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TitleCard
+import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import dev.wristline.watch.R
@@ -59,12 +61,14 @@ internal fun SessionListScreen(
     val sessions by Bridge.sessions.collectAsStateWithLifecycle()
     val requests by Bridge.requests.collectAsStateWithLifecycle()
     val usage by Bridge.usage.collectAsStateWithLifecycle()
+    // Read by the cards' time only, so the minute tick recomposes just the visible cards' time.
+    val now = rememberNowState()
     SessionListContent(
         conn = conn,
         sessions = sessions,
         requests = requests,
         usage = usage,
-        now = rememberNow(),
+        now = { now.value },
         onSession = onSession,
         onRequest = onRequest,
         onUsage = onUsage,
@@ -80,7 +84,7 @@ internal fun SessionListContent(
     sessions: List<Session>,
     requests: List<PendingRequest>,
     usage: List<Usage>,
-    now: Long,
+    now: () -> Long,
     onSession: (String) -> Unit,
     onRequest: (String) -> Unit,
     onUsage: () -> Unit,
@@ -157,14 +161,10 @@ internal fun SessionListContent(
                 SessionCard(
                     session = session,
                     showAccount = showAccounts,
+                    stale = stale,
                     now = now,
+                    spec = spec,
                     onClick = { onSession(session.id) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .transformedHeight(this, spec)
-                        .animateItem()
-                        .then(if (stale) Modifier.alpha(0.6f) else Modifier),
-                    transformation = SurfaceTransformation(spec),
                 )
             }
         }
@@ -216,19 +216,25 @@ private fun GlanceLine(u: Usage) {
     }
 }
 
+// Builds its modifier and transformation itself, as ItemRow does: made by the caller they would be
+// new on every recomposition of the list, and the card could never skip.
 @Composable
-private fun SessionCard(
+private fun TransformingLazyColumnItemScope.SessionCard(
     session: Session,
     showAccount: Boolean,
-    now: Long,
+    stale: Boolean,
+    now: () -> Long,
+    spec: TransformationSpec,
     onClick: () -> Unit,
-    modifier: Modifier,
-    transformation: SurfaceTransformation,
 ) {
     TitleCard(
         onClick = onClick,
-        modifier = modifier,
-        transformation = transformation,
+        modifier = Modifier
+            .fillMaxWidth()
+            .transformedHeight(this, spec)
+            .animateItem()
+            .then(if (stale) Modifier.alpha(0.6f) else Modifier),
+        transformation = SurfaceTransformation(spec),
         title = { Text(sessionTitle(session), maxLines = 2, overflow = TextOverflow.Ellipsis) },
         // The dot sits on the card's top row: near the screen's bottom edge the list morphs the
         // card's lower corners, which hid a dot at the start of the subtitle.
@@ -238,14 +244,12 @@ private fun SessionCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusDot(session.status)
-                Text(
-                    if (isJustNow(session.lastActivity, now)) {
-                        stringResource(R.string.time_just_now)
-                    } else {
-                        relativeTime(session.lastActivity, now)
-                    },
-                    maxLines = 1,
-                )
+                // Recomputed once per tick and activity, not on every recomposition of the card.
+                val at = now()
+                val ago = remember(session.lastActivity, at) {
+                    if (isJustNow(session.lastActivity, at)) null else relativeTime(session.lastActivity, at)
+                }
+                Text(ago ?: stringResource(R.string.time_just_now), maxLines = 1)
             }
         },
         subtitle = {
