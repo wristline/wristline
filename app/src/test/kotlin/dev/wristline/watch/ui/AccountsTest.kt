@@ -25,8 +25,9 @@ class AccountsTest {
     fun accountShortDropsDomainAndTruncates() {
         assertEquals("me", accountShort(me))
         assertEquals("~school", accountShort(school))
-        assertEquals("averyveryver", accountShort(Account("x", "averyveryverylongname@example.com")))
-        assertEquals("~" + "a".repeat(12), accountShort(Account("x", "a".repeat(20), estimated = true)))
+        assertEquals("averyver", accountShort(Account("x", "averyveryverylongname@example.com")))
+        assertEquals("~" + "a".repeat(8), accountShort(Account("x", "a".repeat(20), estimated = true)))
+        assertEquals("~sisolab", accountShort(Account("x", "sisolab.sswu@gmail.com", estimated = true)))
     }
 
     @Test

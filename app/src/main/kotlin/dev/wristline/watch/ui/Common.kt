@@ -112,8 +112,12 @@ fun clockTime(iso: String?, locale: Locale): String? {
 
 fun basename(path: String): String = path.trimEnd('/').substringAfterLast('/')
 
-/** Card and chip form of an account: `~` when estimated, then the label up to its `@`, at most 12 chars. */
-fun accountShort(a: Account): String = (if (a.estimated) "~" else "") + a.label.substringBefore('@').take(12)
+/**
+ * Card and usage-line form of an account: `~` when estimated, then the label up to its `@`, at most
+ * 8 chars, without a separator left dangling by the cut (`sisolab.sswu` -> `sisolab`).
+ */
+fun accountShort(a: Account): String =
+    (if (a.estimated) "~" else "") + a.label.substringBefore('@').take(8).trimEnd('.', '_', '-')
 
 /** Account labels are shown only when some provider has sessions or usage under two or more accounts. */
 fun showAccountLabels(sessions: List<Session>, usage: List<Usage>): Boolean {

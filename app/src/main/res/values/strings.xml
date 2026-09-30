@@ -111,6 +111,7 @@
     <string name="usage_window_minutes">%1$d-minute limit</string>
     <string name="usage_resets">Resets %1$s</string>
     <string name="usage_updated">Updated %1$s</string>
+    <string name="usage_updated_now">Updated just now</string>
     <string name="account_estimated">%1$s (estimated)</string>
 
     <!-- Settings -->

@@ -74,7 +74,12 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val result = Bridge.pair(url, code)
             Log.i("Wristline", "debug pairing: $result")
-            if (result == Sent.Ok) recreate()
+            // A new instance has no saved back stack and opens on the session list; recreate()
+            // would restore the Welcome screen.
+            if (result == Sent.Ok) {
+                startActivity(Intent(this@MainActivity, MainActivity::class.java))
+                finish()
+            }
         }
     }
 

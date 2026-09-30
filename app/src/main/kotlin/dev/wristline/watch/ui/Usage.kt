@@ -35,6 +35,7 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.key
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -95,7 +96,15 @@ internal fun UsageContent(usage: List<Usage>, now: Long) {
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        CaptionText(stringResource(R.string.usage_updated, relativeTime(provider.updatedAt, now)))
+                        // Under a minute the relative time would read "0 min. ago".
+                        val updated = isoToMillis(provider.updatedAt)
+                        CaptionText(
+                            if (updated != null && now - updated < 60_000) {
+                                stringResource(R.string.usage_updated_now)
+                            } else {
+                                stringResource(R.string.usage_updated, relativeTime(provider.updatedAt, now))
+                            },
+                        )
                     }
                 }
                 items(provider.windows, key = { "window/$index/${it.id}" }) { window ->
@@ -113,7 +122,8 @@ internal fun UsageContent(usage: List<Usage>, now: Long) {
 @Composable
 private fun WindowRow(window: UsageWindow, locale: Locale, modifier: Modifier) {
     Row(
-        modifier.fillMaxWidth().padding(horizontal = 12.dp),
+        // 16dp keeps the start-aligned ring clear of the round edge in the lower half of the screen.
+        modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

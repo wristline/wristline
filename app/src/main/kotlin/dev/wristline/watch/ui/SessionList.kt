@@ -1,6 +1,7 @@
 package dev.wristline.watch.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -89,7 +90,7 @@ internal fun SessionListContent(
     val stale = conn is Conn.Offline || conn is Conn.Unreachable || conn is Conn.Unauthorized
     val oldestRequest = remember(requests) { requests.minByOrNull { it.createdAt } }
     val showAccounts = remember(sessions, usage) { showAccountLabels(sessions, usage) }
-    val chips = usageChips(usage, showAccounts)
+    val lines = usageLines(usage, showAccounts)
     ScreenScaffold(
         scrollState = listState,
         edgeButton = {
@@ -132,17 +133,25 @@ internal fun SessionListContent(
                     )
                 }
             }
-            if (chips.isNotEmpty()) {
+            if (lines.isNotEmpty()) {
                 item(key = "usage") {
                     FilledTonalButton(
                         onClick = onUsage,
                         modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
                         transformation = SurfaceTransformation(spec),
-                        label = { Text(chips[0], maxLines = 1) },
-                        secondaryLabel = if (chips.size > 1) {
-                            { Text(chips.drop(1).joinToString("  "), maxLines = 1) }
-                        } else {
-                            null
+                        label = {
+                            Column {
+                                lines.take(MAX_USAGE_LINES).forEach { (label, windows) ->
+                                    // The numbers always show whole; a long label gives way first.
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        if (label != null) {
+                                            Text(label, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        }
+                                        Text(windows, maxLines = 1)
+                                    }
+                                }
+                                if (lines.size > MAX_USAGE_LINES) Text("+${lines.size - MAX_USAGE_LINES}", maxLines = 1)
+                            }
                         },
                     )
                 }
@@ -175,20 +184,25 @@ internal fun SessionListContent(
 internal fun sessionTitle(session: Session): String =
     session.title.ifBlank { basename(session.cwd) }.ifBlank { stringResource(R.string.session_untitled) }
 
+/** Usage entries shown on the list's usage card; the rest are counted as `+N`. */
+private const val MAX_USAGE_LINES = 3
+
 /**
- * `5h 42% · 7d 12%` for Claude Code, `Codex 30%` (first window) for other providers; ordered by
- * provider then account label. With [showAccounts] the short account label goes after the provider
- * name, before the numbers: `school 5h 42% · 7d 12%`, `Codex school 30%`.
+ * One (label, windows) line per usage entry, ordered by provider then account label. Claude Code
+ * windows keep their short ids and have no label of their own: `5h 42% · 7d 12%`. Other providers'
+ * ids are long (`primary`), so only their percentages follow the provider name: `Codex 30%·8%`.
+ * With [showAccounts] the short account label joins the label: `~school`, `Codex school`.
  */
 @Composable
-private fun usageChips(usage: List<Usage>, showAccounts: Boolean): List<String> =
+private fun usageLines(usage: List<Usage>, showAccounts: Boolean): List<Pair<String?, String>> =
     usage.sortedWith(compareBy({ it.provider }, { it.account?.label })).mapNotNull { u ->
         if (u.windows.isEmpty()) return@mapNotNull null
-        val account = u.account?.takeIf { showAccounts }?.let { accountShort(it) + " " }.orEmpty()
+        val account = u.account?.takeIf { showAccounts }?.let(::accountShort)
         if (u.provider == ProviderId.CLAUDE_CODE) {
-            account + u.windows.joinToString(" · ") { "${it.id} ${it.usedPercent.roundToInt()}%" }
+            account to u.windows.joinToString(" · ") { "${it.id} ${it.usedPercent.roundToInt()}%" }
         } else {
-            "${providerLabel(u.provider)} $account${u.windows.first().usedPercent.roundToInt()}%"
+            listOfNotNull(providerLabel(u.provider), account).joinToString(" ") to
+                u.windows.joinToString("·") { "${it.usedPercent.roundToInt()}%" }
         }
     }
 
@@ -206,22 +220,26 @@ private fun SessionCard(
         modifier = modifier,
         transformation = transformation,
         title = { Text(sessionTitle(session), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-        time = { Text(relativeTime(session.lastActivity, now), maxLines = 1) },
-        subtitle = {
+        // The dot sits on the card's top row: near the screen's bottom edge the list morphs the
+        // card's lower corners, which hid a dot at the start of the subtitle.
+        time = {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusDot(session.status)
-                // `Claude · school · repo`; the account and place parts are dropped when absent.
-                val account = session.account?.takeIf { showAccount }?.let(::accountShort)
-                val place = basename(session.cwd).ifEmpty { null }
-                Text(
-                    listOfNotNull(providerLabel(session.provider), account, place).joinToString(" · "),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Text(relativeTime(session.lastActivity, now), maxLines = 1)
             }
+        },
+        subtitle = {
+            // `Claude · school · repo`; the account and place parts are dropped when absent.
+            val account = session.account?.takeIf { showAccount }?.let(::accountShort)
+            val place = basename(session.cwd).ifEmpty { null }
+            Text(
+                listOfNotNull(providerLabel(session.provider), account, place).joinToString(" · "),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         },
     )
 }
