@@ -1,9 +1,11 @@
 package dev.wristline.watch.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -11,18 +13,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.painter.BrushPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -34,7 +32,6 @@ import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
-import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.FilledTonalIconButton
 import androidx.wear.compose.material3.Icon
@@ -43,7 +40,6 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
@@ -60,8 +56,8 @@ import kotlin.math.roundToInt
 private val ACTION_SIZE = 40.dp
 private val ACTION_GAP = 8.dp
 
-/** The usage card's percentages: a step above the session titles. */
-private val GLANCE_NUMBER_SIZE = 17.sp
+/** The provider badge beside labelSmall text (the limit card, a session card's second line). */
+private val SMALL_BADGE = 14.dp
 
 @Composable
 internal fun SessionListScreen(
@@ -173,19 +169,21 @@ internal fun SessionListContent(
             }
             if (glance.isNotEmpty()) {
                 item(key = "usage") {
-                    val colors = MaterialTheme.colorScheme
-                    // Lit from the top and outlined, so the limits stand apart from the session cards below.
-                    val tint = remember(colors) {
-                        BrushPainter(Brush.verticalGradient(listOf(colors.surfaceContainerHigh, colors.surfaceContainer)))
-                    }
                     Card(
                         onClick = onUsage,
-                        containerPainter = tint,
                         modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
                         transformation = SurfaceTransformation(spec),
-                        border = BorderStroke(1.dp, colors.outlineVariant),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                     ) {
-                        glance.forEach { GlanceLine(it) }
+                        // One line for both providers; the second wraps under the first only when
+                        // they do not fit side by side.
+                        FlowRow(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            glance.forEach { GlanceEntry(it) }
+                        }
                     }
                 }
             }
@@ -228,16 +226,15 @@ internal fun glanceUsage(usage: List<Usage>): List<Usage> =
         .map { entries -> entries.maxBy { u -> u.windows.maxOf { it.usedPercent } } }
 
 /**
- * `[C]     5h 14% · 7d 40%`, `[C]     12% · 40%`, each after its provider's badge: Claude Code
- * windows keep their short ids, other providers' ids are long (`primary`) so only the percentages
- * show, except for a lone window, named by its label or length (`[C]     7d 2%`). The numbers are
- * larger and tabular, the names smaller and muted; a number near its limit takes the error color.
+ * `[C] 5h 14% · 7d 40%`, `[C] 12% · 40%`: a provider's badge and its windows. Claude Code windows
+ * keep their short ids, other providers' ids are long (`primary`) so only the percentages show,
+ * except for a lone window, named by its label or length (`[C] 7d 2%`). The names are muted; a
+ * number near its limit takes the error color.
  */
 @Composable
-private fun GlanceLine(u: Usage) {
+private fun GlanceEntry(u: Usage) {
     val colors = MaterialTheme.colorScheme
-    val number = SpanStyle(fontSize = GLANCE_NUMBER_SIZE, fontFeatureSettings = "tnum")
-    val muted = SpanStyle(fontSize = MaterialTheme.typography.bodySmall.fontSize, color = colors.onSurfaceVariant)
+    val muted = SpanStyle(color = colors.onSurfaceVariant)
     val windows = buildAnnotatedString {
         u.windows.forEachIndexed { i, w ->
             if (i > 0) withStyle(muted) { append(" · ") }
@@ -248,13 +245,12 @@ private fun GlanceLine(u: Usage) {
             }
             if (name != null) withStyle(muted) { append("$name ") }
             val percent = w.usedPercent.roundToInt()
-            withStyle(if (percent >= NEAR_LIMIT_PERCENT) number.copy(color = colors.error) else number) { append("$percent%") }
+            if (percent >= NEAR_LIMIT_PERCENT) withStyle(SpanStyle(color = colors.error)) { append("$percent%") } else append("$percent%")
         }
     }
-    // The badge is measured first and always shows whole; the numbers take the rest.
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        ProviderBadge(u.provider)
-        Text(windows, Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1)
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        ProviderBadge(u.provider, size = SMALL_BADGE)
+        Text(windows, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -268,7 +264,7 @@ private fun TransformingLazyColumnItemScope.SessionCard(
     spec: TransformationSpec,
     onClick: () -> Unit,
 ) {
-    TitleCard(
+    Card(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
@@ -276,34 +272,29 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             .animateItem()
             .then(if (stale) Modifier.alpha(0.6f) else Modifier),
         transformation = SurfaceTransformation(spec),
-        // The folder is secondary to the title: muted, not the accent.
-        colors = CardDefaults.cardColors(subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant),
-        // The session's name is what tells cards apart: the largest text, up to two lines.
-        title = {
-            Text(sessionTitle(session), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
-        // The dot sits on the card's top row: near the screen's bottom edge the list morphs the
-        // card's lower corners, which hid a dot at the start of the subtitle.
-        time = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StatusDot(session.status)
-                // Recomputed once per tick and activity, not on every recomposition of the card.
-                val at = now()
-                val ago = remember(session.lastActivity, at) {
-                    if (isJustNow(session.lastActivity, at)) null else relativeTime(session.lastActivity, at)
-                }
-                Text(ago ?: stringResource(R.string.time_just_now), maxLines = 1)
-            }
-        },
-        subtitle = {
-            // `[C] repo`: the provider's badge, then the folder; accounts are on the Usage screen.
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                ProviderBadge(session.provider)
-                Text(basename(session.cwd), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        },
-    )
+    ) {
+        // Line 1: the status dot and the session's name, which tells cards apart: the largest text.
+        // The dot sits on the top line: near the screen's bottom edge the list morphs the card's
+        // lower corners, which would hide it at the start of the second line.
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            StatusDot(session.status)
+            Text(sessionTitle(session), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        // Line 2, muted: `12 min. ago · [C] repo`; accounts are on the Usage screen.
+        // Recomputed once per tick and activity, not on every recomposition of the card.
+        val at = now()
+        val ago = remember(session.lastActivity, at) {
+            if (isJustNow(session.lastActivity, at)) null else relativeTime(session.lastActivity, at)
+        }
+        val muted = MaterialTheme.colorScheme.onSurfaceVariant
+        Row(
+            Modifier.padding(top = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text((ago ?: stringResource(R.string.time_just_now)) + " ·", color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            ProviderBadge(session.provider, size = SMALL_BADGE)
+            Text(basename(session.cwd), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }

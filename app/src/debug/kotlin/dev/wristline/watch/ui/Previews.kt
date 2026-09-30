@@ -141,7 +141,8 @@ private fun CodePreview() = Frame { CodeContent(busy = false, error = null, onSu
 private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "not_found", onSubmit = {}) }
 
 // The icon row (Settings, Ask, recent questions) heads the list; the request banner sits right
-// under it, then the tinted limit card, where Codex's 93% takes the error color.
+// under it, then the one-line limit card, where Codex's 93% takes the error color, and the
+// two-line session cards.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {

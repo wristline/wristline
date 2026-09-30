@@ -152,28 +152,28 @@ private val CodexTop = Color(0xFFB7AEFF)
 private val CodexBottom = Color(0xFF3B36FF)
 
 /**
- * A provider's 16dp monogram: a white C on a Claude-orange circle for Claude Code, a white C on a
- * square in the Codex icon's gradient for Codex, otherwise the id's first letter in an outlined
- * circle. Read out as the provider's name.
+ * A provider's monogram, [size] (16dp) square: a white C on a Claude-orange circle for Claude
+ * Code, a white C on a square in the Codex icon's gradient for Codex, otherwise the id's first
+ * letter in an outlined circle. Read out as the provider's name.
  */
 @Composable
-fun ProviderBadge(provider: String, modifier: Modifier = Modifier) {
+fun ProviderBadge(provider: String, modifier: Modifier = Modifier, size: Dp = 16.dp) {
     val colors = MaterialTheme.colorScheme
     val label = providerLabel(provider)
     val (fill, letterColor) = when (provider) {
         ProviderId.CLAUDE_CODE -> Modifier.background(ClaudeOrange, CircleShape) to Color.White
         ProviderId.CODEX -> Modifier.background(
             Brush.verticalGradient(listOf(CodexTop, CodexBottom)),
-            RoundedCornerShape(4.dp),
+            RoundedCornerShape(size / 4),
         ) to Color.White
         else -> Modifier.border(1.dp, colors.outline, CircleShape) to colors.onSurfaceVariant
     }
     // A fixed-size mark, so the letter is sized in dp: in sp a large font scale would overflow it.
     val letterStyle = with(LocalDensity.current) {
-        MaterialTheme.typography.labelSmall.copy(fontSize = 12.dp.toSp(), lineHeight = 16.dp.toSp())
+        MaterialTheme.typography.labelSmall.copy(fontSize = (size * 0.75f).toSp(), lineHeight = size.toSp())
     }
     Box(
-        modifier.size(16.dp).then(fill).clearAndSetSemantics { contentDescription = label },
+        modifier.size(size).then(fill).clearAndSetSemantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
         val letter = provider.take(1).uppercase()
