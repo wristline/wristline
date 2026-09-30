@@ -35,7 +35,6 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
-import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.key
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -96,10 +95,8 @@ internal fun UsageContent(usage: List<Usage>, now: Long) {
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        // Under a minute the relative time would read "0 min. ago".
-                        val updated = isoToMillis(provider.updatedAt)
                         CaptionText(
-                            if (updated != null && now - updated < 60_000) {
+                            if (isJustNow(provider.updatedAt, now)) {
                                 stringResource(R.string.usage_updated_now)
                             } else {
                                 stringResource(R.string.usage_updated, relativeTime(provider.updatedAt, now))

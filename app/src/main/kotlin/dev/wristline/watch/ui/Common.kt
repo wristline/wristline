@@ -100,6 +100,12 @@ fun relativeTime(iso: String?, now: Long): String {
     ).toString()
 }
 
+/** Under a minute [relativeTime] would read "0 min. ago"; callers show "Just now" instead. */
+fun isJustNow(iso: String?, now: Long): Boolean {
+    val millis = isoToMillis(iso) ?: return false
+    return now - millis < 60_000
+}
+
 /** Localized short time, prefixed by the weekday when not today. */
 fun clockTime(iso: String?, locale: Locale): String? {
     val millis = isoToMillis(iso) ?: return null

@@ -5,6 +5,7 @@
     <!-- Common -->
     <string name="action_next">다음</string>
     <string name="action_send">보내기</string>
+    <string name="time_just_now">방금</string>
 
     <!-- Onboarding -->
     <string name="welcome_tagline">PC의 코딩 에이전트를 손목에서 확인하세요.</string>

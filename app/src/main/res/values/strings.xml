@@ -8,6 +8,7 @@
     <!-- Common -->
     <string name="action_next">Next</string>
     <string name="action_send">Send</string>
+    <string name="time_just_now">Just now</string>
 
     <!-- Onboarding -->
     <string name="welcome_tagline">Your PC coding agents, on your wrist.</string>

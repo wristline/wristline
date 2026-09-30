@@ -228,7 +228,14 @@ private fun SessionCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusDot(session.status)
-                Text(relativeTime(session.lastActivity, now), maxLines = 1)
+                Text(
+                    if (isJustNow(session.lastActivity, now)) {
+                        stringResource(R.string.time_just_now)
+                    } else {
+                        relativeTime(session.lastActivity, now)
+                    },
+                    maxLines = 1,
+                )
             }
         },
         subtitle = {
