@@ -125,6 +125,34 @@ class ProtocolTest {
         assertEquals("All 12 pass.", titled.text)
     }
 
+    // Hand-written on purpose: `id` and `at` on alerts, and the snapshot's `alerts`, are newer than the fixtures.
+    @Test
+    fun alertIdAndTimeAreOptional() {
+        val replayed = parseServerEvent(
+            """{"type":"alert","id":"al-7","at":"2026-09-29T12:58:00Z","sessionId":"codex:1","alert":"needs_input","text":"Pick one"}""",
+        ) as ServerEvent.Alert
+        assertEquals("al-7", replayed.id)
+        assertEquals("2026-09-29T12:58:00Z", replayed.at)
+        val live = parseServerEvent("""{"type":"alert","sessionId":"codex:1","alert":"done"}""") as ServerEvent.Alert
+        assertNull(live.id)
+        assertNull(live.at)
+    }
+
+    @Test
+    fun snapshotAlertsDecodeOldestFirstAndDefaultToNone() {
+        val snapshot = parseServerEvent(
+            """{"type":"snapshot","apiVersion":1,"sessions":[],"requests":[],"usage":[],"alerts":[
+               {"id":"al-1","at":"2026-09-29T12:50:00Z","sessionId":"codex:1","alert":"done","title":"Tests fixed","text":"All pass."},
+               {"id":"al-2","at":"2026-09-29T12:58:00Z","sessionId":"claude-code:2","alert":"needs_input"}]}""",
+        ) as ServerEvent.Snapshot
+        assertEquals(listOf("al-1", "al-2"), snapshot.alerts.map { it.id })
+        assertEquals("Tests fixed", snapshot.alerts[0].title)
+        assertEquals(AlertKind.NEEDS_INPUT, snapshot.alerts[1].alert)
+        assertNull(snapshot.alerts[1].text)
+        val without = parseServerEvent("""{"type":"snapshot","apiVersion":1}""") as ServerEvent.Snapshot
+        assertTrue(without.alerts.isEmpty())
+    }
+
     // Hand-written on purpose: the fixtures carry `account` on every live session and usage entry,
     // so the single-account (absent) case and an unknown key inside it are covered here.
     @Test

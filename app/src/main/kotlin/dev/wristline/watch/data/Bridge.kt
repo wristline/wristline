@@ -122,6 +122,12 @@ const val ASK_KEEP = 20
 /** How long the demo "thinks" before its canned answer. */
 private const val DEMO_ASK_MS = 1_500L
 
+/** A snapshot's alert older than this is not replayed. */
+private const val ALERT_REPLAY_MS = 10 * 60_000L
+
+/** Alert ids remembered, so a snapshot after a reconnect does not replay what was already handled. */
+private const val ALERT_IDS_KEPT = 50
+
 /** The item kinds of a transcript without tool calls and notices ([Prefs.showToolCalls] off). */
 val CONVERSATION_KINDS = listOf(ItemKind.USER, ItemKind.ASSISTANT)
 
@@ -192,6 +198,24 @@ internal fun SessionItems.withEarlier(page: ItemPage): SessionItems {
     val kept = older.takeLast((ITEM_CAP - items.size).coerceAtLeast(0))
     return copy(items = kept + items, hasMore = page.hasMore || kept.size < older.size, loading = false)
 }
+
+/**
+ * The snapshot's alerts still worth handling: with an id (else they could be replayed again and
+ * again), at most [ALERT_REPLAY_MS] old by `at`, and still true of their session, as the live
+ * events would have cancelled the rest: a needs-input alert of a session that is still waiting, a
+ * done alert of one that is listed and not running again.
+ */
+internal fun replayableAlerts(alerts: List<ServerEvent.Alert>, sessions: List<Session>, now: Long): List<ServerEvent.Alert> =
+    alerts.filter { alert ->
+        if (alert.id == null) return@filter false
+        val at = isoToMillis(alert.at)
+        if (at != null && now - at > ALERT_REPLAY_MS) return@filter false
+        val session = sessions.firstOrNull { it.id == alert.sessionId } ?: return@filter false
+        when (alert.alert) {
+            AlertKind.NEEDS_INPUT -> session.status == SessionStatus.NEEDS_INPUT
+            else -> session.status != SessionStatus.RUNNING
+        }
+    }
 
 /** Replaces the ask with the same id, or puts a new one first; never more than [ASK_KEEP]. */
 internal fun List<Ask>.withAsk(ask: Ask): List<Ask> {
@@ -269,6 +293,7 @@ object Bridge {
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var demo: DemoData? = null
     private val latestJobs = HashMap<String, Job>()
+    private val seenAlertIds = ArrayDeque<String>()
 
     /**
      * MainActivity is resumed, i.e. the user is looking at the app. Requests then only tick the
@@ -490,6 +515,8 @@ object Bridge {
                 if (!foreground) {
                     event.requests.filter { it.id !in known }.forEach { Notifier.request(appContext, it, session(it.sessionId)) }
                 }
+                // Alerts the closed socket missed, oldest first; the ones already handled are skipped.
+                replayableAlerts(event.alerts, event.sessions, System.currentTimeMillis()).forEach(::onAlert)
                 onOnline()
                 // The subscription alone does not replay what the socket missed.
                 subscribed?.let { loadLatest(it) }
@@ -517,13 +544,24 @@ object Bridge {
                 val index = list.indexOfFirst { it.key == event.usage.key }
                 _usage.value = if (index < 0) list + event.usage else list.toMutableList().apply { set(index, event.usage) }
             }
-            is ServerEvent.Alert -> when (event.alert) {
-                AlertKind.NEEDS_INPUT -> if (_requests.value.none { it.sessionId == event.sessionId }) {
-                    attention { Notifier.needsInput(appContext, event.sessionId, event.text, session(event.sessionId)) }
-                }
-                AlertKind.DONE -> if (!foreground) Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId))
-            }
+            is ServerEvent.Alert -> onAlert(event)
             is ServerEvent.AskChanged -> _asks.update { it.withAskEvent(event) }
+        }
+    }
+
+    /** A live alert, or one replayed by a snapshot; each id is handled once. */
+    private fun onAlert(event: ServerEvent.Alert) {
+        val id = event.id
+        if (id != null) {
+            if (id in seenAlertIds) return
+            seenAlertIds.addLast(id)
+            if (seenAlertIds.size > ALERT_IDS_KEPT) seenAlertIds.removeFirst()
+        }
+        when (event.alert) {
+            AlertKind.NEEDS_INPUT -> if (_requests.value.none { it.sessionId == event.sessionId }) {
+                attention { Notifier.needsInput(appContext, event.sessionId, event.text, session(event.sessionId)) }
+            }
+            AlertKind.DONE -> if (!foreground) Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId))
         }
     }
 

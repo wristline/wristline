@@ -259,12 +259,14 @@ data class ApiError(val error: String)
  * decoding throws on an unknown `type`, while the protocol requires skipping it.
  */
 sealed interface ServerEvent {
+    /** [alerts] are the bridge's recent alerts, oldest first, for the ones a closed socket missed. */
     @Serializable
     data class Snapshot(
         val apiVersion: Int,
         val sessions: List<Session> = emptyList(),
         val requests: List<PendingRequest> = emptyList(),
         val usage: List<Usage> = emptyList(),
+        val alerts: List<Alert> = emptyList(),
     ) : ServerEvent
 
     @Serializable
@@ -286,9 +288,20 @@ sealed interface ServerEvent {
     @Serializable
     data class UsageChanged(val usage: Usage) : ServerEvent
 
-    /** [alert] is `needs_input` | `done`. [title], when present, heads a done notification. */
+    /**
+     * [alert] is `needs_input` | `done`. [title], when present, heads a done notification. [id]
+     * and [at] (ISO 8601) come with bridges that replay alerts in the snapshot: the id tells a
+     * replayed alert from one already handled, the time keeps old ones from being replayed.
+     */
     @Serializable
-    data class Alert(val sessionId: String, val alert: String, val text: String? = null, val title: String? = null) : ServerEvent
+    data class Alert(
+        val sessionId: String,
+        val alert: String,
+        val text: String? = null,
+        val title: String? = null,
+        val id: String? = null,
+        val at: String? = null,
+    ) : ServerEvent
 
     /** Sent only to the device that asked. [text] is the answer, present when [status] is done. */
     @Serializable
