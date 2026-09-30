@@ -518,7 +518,7 @@ private fun limitColor(percent: Int): Color =
 @Composable
 private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<Boolean> {
     // Not scrolled for the last GAUGE_SETTLE_MS.
-    var resting by remember(listState) { mutableStateOf(false) }
+    var resting by remember(listState) { mutableStateOf(!listState.isScrollInProgress) }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
             if (!scrolling) delay(GAUGE_SETTLE_MS)
