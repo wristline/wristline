@@ -198,8 +198,8 @@ internal fun glanceUsage(usage: List<Usage>): List<Usage> =
 @Composable
 private fun GlanceLine(u: Usage) {
     val colors = MaterialTheme.colorScheme
-    val number = SpanStyle(fontSize = MaterialTheme.typography.titleLarge.fontSize, fontFeatureSettings = "tnum")
-    val muted = SpanStyle(fontSize = MaterialTheme.typography.labelSmall.fontSize, color = colors.onSurfaceVariant)
+    val number = SpanStyle(fontSize = MaterialTheme.typography.titleMedium.fontSize, fontFeatureSettings = "tnum")
+    val muted = SpanStyle(fontSize = MaterialTheme.typography.bodySmall.fontSize, color = colors.onSurfaceVariant)
     val windows = buildAnnotatedString {
         u.windows.forEachIndexed { i, w ->
             if (i > 0) withStyle(muted) { append(" · ") }
@@ -208,17 +208,11 @@ private fun GlanceLine(u: Usage) {
             withStyle(if (percent >= NEAR_LIMIT_PERCENT) number.copy(color = colors.error) else number) { append("$percent%") }
         }
     }
-    // The numbers always show whole; a long provider name gives way first.
+    // The provider name is measured first and always shows whole; the numbers take the rest.
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Start-aligned: a button centers its label text.
-        Text(
-            providerLabel(u.provider),
-            Modifier.weight(1f).alignByBaseline(),
-            textAlign = TextAlign.Start,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(windows, Modifier.alignByBaseline(), maxLines = 1)
+        Text(providerLabel(u.provider), Modifier.alignByBaseline(), maxLines = 1)
+        // End-aligned: a button centers its label text.
+        Text(windows, Modifier.weight(1f).alignByBaseline(), textAlign = TextAlign.End, maxLines = 1)
     }
 }
 
