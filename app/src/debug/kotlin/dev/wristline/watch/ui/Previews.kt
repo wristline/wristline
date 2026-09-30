@@ -3,7 +3,6 @@ package dev.wristline.watch.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.wear.compose.material3.AppScaffold
-import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.tooling.preview.devices.WearDevices
 import dev.wristline.watch.data.Account
 import dev.wristline.watch.data.Ask
@@ -132,7 +131,7 @@ private val thread = listOf(
 
 @Composable
 private fun Frame(content: @Composable () -> Unit) {
-    MaterialTheme { AppScaffold { content() } }
+    WristlineTheme { AppScaffold { content() } }
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
@@ -154,7 +153,7 @@ private fun CodePreview() = Frame { CodeContent(busy = false, error = null, onSu
 private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "not_found", onSubmit = {}) }
 
 // The icon row (Settings, Ask, recent questions) heads the list; the request banner sits right
-// under it, then the one-line limit card, where Codex's 93% takes the error color, and the
+// under it, then the one-line limit card, where Codex's 93% is yellow (near its limit), and the
 // two-line session cards.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
@@ -226,7 +225,7 @@ private fun AskGoneKoPreview() = AskFrame(null)
 @Composable
 private fun AskHistoryPreview() = Frame { AskHistoryContent(thread.asReversed() + asks.drop(1), { now }, onAsk = {}, onDelete = {}) }
 
-// Edge gauges: context 60% on the left, Codex's primary window at 93% (error) on the right. The
+// Edge gauges: context 60% on the left, Codex's primary window at 93% (yellow) on the right. The
 // top text is the model and effort; the newest card rests near the middle, above the actions.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable

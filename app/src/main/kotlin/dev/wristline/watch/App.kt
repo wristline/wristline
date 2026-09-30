@@ -11,7 +11,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.wear.compose.material3.AppScaffold
-import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
@@ -27,6 +26,7 @@ import dev.wristline.watch.ui.SessionListScreen
 import dev.wristline.watch.ui.SettingsScreen
 import dev.wristline.watch.ui.UsageScreen
 import dev.wristline.watch.ui.WelcomeScreen
+import dev.wristline.watch.ui.WristlineTheme
 import kotlinx.coroutines.launch
 
 /** Navigation routes. The onboarding steps are separate routes so a swipe goes back one step. */
@@ -60,7 +60,7 @@ object Route {
  */
 @Composable
 fun App(openRoute: String?, onOpened: () -> Unit) {
-    MaterialTheme {
+    WristlineTheme {
         AppScaffold {
             val nav = rememberSwipeDismissableNavController()
             val start = remember { if (Bridge.prefs.isPaired) Route.SESSIONS else Route.ONBOARDING }

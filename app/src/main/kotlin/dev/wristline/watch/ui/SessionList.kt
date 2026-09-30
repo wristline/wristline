@@ -31,6 +31,7 @@ import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.FilledTonalIconButton
 import androidx.wear.compose.material3.Icon
@@ -204,8 +205,11 @@ internal fun SessionListContent(
 internal fun sessionTitle(session: Session): String =
     session.title.ifBlank { basename(session.cwd) }.ifBlank { stringResource(R.string.session_untitled) }
 
-/** Percentages from here up are shown in the error color. */
+/** A limit window's percentage from here up is shown in yellow (see [limitColor]). */
 internal const val NEAR_LIMIT_PERCENT = 80
+
+/** A limit window's percentage from here up is shown in red (see [limitColor]). */
+internal const val AT_LIMIT_PERCENT = 95
 
 /**
  * The usage card's entries: one per provider, in provider order. Of a provider's accounts only the
@@ -222,8 +226,8 @@ internal fun glanceUsage(usage: List<Usage>): List<Usage> =
 /**
  * `[C] 5h 14% · 7d 40%`, `[C] 12% · 40%`: a provider's badge and its windows. Claude Code windows
  * keep their short ids, other providers' ids are long (`primary`) so only the percentages show,
- * except for a lone window, named by its label or length (`[C] 7d 2%`). The names are muted; a
- * number near its limit takes the error color.
+ * except for a lone window, named by its label or length (`[C] 7d 2%`). The names are muted; the
+ * numbers take [limitColor].
  */
 @Composable
 private fun GlanceEntry(u: Usage) {
@@ -239,7 +243,7 @@ private fun GlanceEntry(u: Usage) {
             }
             if (name != null) withStyle(muted) { append("$name ") }
             val percent = w.usedPercent.roundToInt()
-            if (percent >= NEAR_LIMIT_PERCENT) withStyle(SpanStyle(color = colors.error)) { append("$percent%") } else append("$percent%")
+            withStyle(SpanStyle(color = limitColor(percent))) { append("$percent%") }
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -266,6 +270,8 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             .animateItem()
             .then(if (stale) Modifier.alpha(0.6f) else Modifier),
         transformation = SurfaceTransformation(spec),
+        // A card's content is gray by default; the name is white, the line under it gray.
+        colors = CardDefaults.cardColors(contentColor = MaterialTheme.colorScheme.onSurface),
     ) {
         // Line 1: the status dot and the session's name, which tells cards apart: the largest text.
         // The dot sits on the top line: near the screen's bottom edge the list morphs the card's

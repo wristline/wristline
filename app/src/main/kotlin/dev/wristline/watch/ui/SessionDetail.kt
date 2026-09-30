@@ -468,10 +468,15 @@ internal fun windowShort(window: UsageWindow): String {
 private fun contextPercent(context: ContextUsage?): Double? =
     context?.takeIf { it.window > 0 }?.let { it.used * 100.0 / it.window }
 
-/** The limit window's color: tertiary, or the error color near the limit. */
-@Composable
-private fun limitColor(percent: Int): Color =
-    if (percent >= NEAR_LIMIT_PERCENT) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+/**
+ * A limit window's color for its rounded [percent], the same on the gauge, the rings and the list's
+ * usage card: white, yellow from [NEAR_LIMIT_PERCENT], red from [AT_LIMIT_PERCENT].
+ */
+internal fun limitColor(percent: Int): Color = when {
+    percent >= AT_LIMIT_PERCENT -> WristlineColors.error
+    percent >= NEAR_LIMIT_PERCENT -> Status.Attention
+    else -> WristlineColors.onSurface
+}
 
 /** Which parts of the edge gauges show: see [rememberGaugesShown]. */
 private data class GaugesShown(val arcs: Boolean, val labels: Boolean)
@@ -713,10 +718,11 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                 transformation = if (expanded) null else SurfaceTransformation(spec),
                 // Tighter than a Card's 12dp: more of the message on the narrow screen.
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                // A card's content is gray by default; a message is the screen's main text.
                 colors = if (item.kind == ItemKind.USER) {
                     CardDefaults.cardColors(containerColor = colors.primaryContainer, contentColor = colors.onPrimaryContainer)
                 } else {
-                    CardDefaults.cardColors()
+                    CardDefaults.cardColors(contentColor = colors.onSurface)
                 },
             ) {
                 ItemTime(item.ts)
@@ -742,7 +748,8 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                     item.text,
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = FontFamily.Monospace,
-                    color = if (item.error) colors.error else Color.Unspecified,
+                    // Gray, as its low card is dark: tool calls step back behind the messages.
+                    color = if (item.error) colors.error else colors.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

@@ -70,6 +70,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.format.TextStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /**
@@ -203,15 +204,12 @@ fun StatusDot(status: String, modifier: Modifier = Modifier) {
     )
 }
 
-@Composable
-fun statusColor(status: String): Color {
-    val colors = MaterialTheme.colorScheme
-    return when (status) {
-        SessionStatus.NEEDS_INPUT -> colors.error
-        SessionStatus.RUNNING -> colors.primary
-        SessionStatus.IDLE -> colors.onSurfaceVariant
-        else -> colors.outline
-    }
+/** A session status's fixed color (see [Status]); the dot's description says the same in words. */
+fun statusColor(status: String): Color = when (status) {
+    SessionStatus.NEEDS_INPUT -> Status.Attention
+    SessionStatus.RUNNING -> Status.Running
+    SessionStatus.IDLE -> Status.Idle
+    else -> Status.Ended
 }
 
 @Composable
@@ -222,18 +220,17 @@ fun statusDescription(status: String): String = when (status) {
     else -> stringResource(R.string.status_ended)
 }
 
-/** Circular arc for a percentage; the indicator animates later changes itself. */
+/**
+ * Circular arc for a limit window's percentage, in [limitColor] of the number shown; the indicator
+ * animates later changes itself.
+ */
 @Composable
 fun PercentRing(percent: Double, modifier: Modifier = Modifier, strokeWidth: Dp = 4.dp) {
     val fraction = (percent / 100).toFloat().coerceIn(0f, 1f)
     // The indicator keeps the first progress lambda and observes only the State it reads: a lambda
     // over a plain Float would never report a later percent.
     val progress by rememberUpdatedState(fraction)
-    val colors = if (percent >= 90) {
-        ProgressIndicatorDefaults.colors(indicatorColor = MaterialTheme.colorScheme.error)
-    } else {
-        ProgressIndicatorDefaults.colors()
-    }
+    val colors = ProgressIndicatorDefaults.colors(indicatorColor = limitColor(percent.roundToInt()))
     CircularProgressIndicator(progress = { progress }, modifier = modifier, colors = colors, strokeWidth = strokeWidth)
 }
 

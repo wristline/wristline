@@ -22,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -185,14 +186,20 @@ private fun PermissionContent(
                     val secondary: (@Composable RowScope.() -> Unit)? =
                         option.description?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
                     val transformation = SurfaceTransformation(spec)
+                    // Allow is green with black text, Deny red text on the dark tonal button.
                     when (option.id) {
                         Decision.ALLOW -> Button(
                             onClick = answer, modifier = modifier, enabled = !sending, transformation = transformation,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Status.Running,
+                                contentColor = Color.Black,
+                                secondaryContentColor = Color.Black,
+                            ),
                             secondaryLabel = secondary, label = label,
                         )
-                        Decision.DENY -> Button(
+                        Decision.DENY -> FilledTonalButton(
                             onClick = answer, modifier = modifier, enabled = !sending, transformation = transformation,
-                            colors = ButtonDefaults.buttonColors(containerColor = colors.errorContainer, contentColor = colors.onErrorContainer),
+                            colors = ButtonDefaults.filledTonalButtonColors(contentColor = colors.error),
                             secondaryLabel = secondary, label = label,
                         )
                         Decision.DEFER -> OutlinedButton(

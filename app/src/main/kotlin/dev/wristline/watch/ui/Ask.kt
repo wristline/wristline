@@ -42,6 +42,7 @@ import androidx.wear.compose.material3.AlertDialog
 import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.CompactButton
 import androidx.wear.compose.material3.FilledTonalButton
@@ -427,6 +428,8 @@ private fun TransformingLazyColumnScope.askItems(ask: Ask, spec: TransformationS
                 onClick = {},
                 modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
                 transformation = SurfaceTransformation(spec),
+                // A card's content is gray by default; the answer is the screen's main text.
+                colors = CardDefaults.cardColors(contentColor = MaterialTheme.colorScheme.onSurface),
             ) {
                 Text(answer, style = MaterialTheme.typography.bodyMedium)
             }
