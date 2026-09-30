@@ -154,9 +154,6 @@ private const val GAUGE_LABEL_GAP = 3f
 private val GAUGE_STROKE = 6.dp
 // How long the list stays still before the gauges show.
 private const val GAUGE_SETTLE_MS = 300L
-// The gauges' lower ends (GAUGE_START, 20 degrees above 9 and 3 o'clock) lie about a third of the
-// way down the screen: an item whose top edge is above that runs under them.
-private const val GAUGE_BOTTOM_FRACTION = 0.33f
 // The list's first item: inset and centered, it sits between the gauges.
 private const val HEADER_KEY = "header"
 
@@ -428,8 +425,8 @@ internal fun SessionDetailContent(
                 }
             }
         }
-        // The content is a Box: what is composed after the list is drawn over it. The gauges hide
-        // while a card reaches them.
+        // The content is a Box: what is composed after the list is drawn over it. The gauges show
+        // only at the top, with the header.
         if (session != null) EdgeGauges(listState, session.context, limit)
         // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
         // it does not dim them; with no pointer input, touches on it reach the list.
@@ -506,8 +503,7 @@ private fun limitColor(percent: Int): Color =
  * percentage just past its upper end; the header spells out the same numbers. Clear of the time
  * text and the scroll indicator; both fill upwards, towards the time. They show only while the list
  * is at rest (they fade out as soon as it scrolls and back in [GAUGE_SETTLE_MS] after it stops),
- * and only while no item but the header reaches up to their lower ends: a card there would run
- * under them.
+ * and only at the top of the transcript, while the header (the first item) is on screen.
  */
 @Composable
 private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextUsage?, limit: UsageWindow?) {
@@ -519,12 +515,8 @@ private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextU
             resting = !scrolling
         }
     }
-    val gaugesBottom = LocalWindowInfo.current.containerSize.height * GAUGE_BOTTOM_FRACTION
-    val shown by remember(listState, gaugesBottom) {
-        derivedStateOf {
-            val first = listState.layoutInfo.visibleItems.firstOrNull { it.key != HEADER_KEY }
-            resting && (first == null || first.offset >= gaugesBottom)
-        }
+    val shown by remember(listState) {
+        derivedStateOf { resting && listState.layoutInfo.visibleItems.firstOrNull()?.index == 0 }
     }
     AnimatedVisibility(shown, enter = fadeIn(), exit = fadeOut()) {
         contextPercent(context)?.let { percent ->
