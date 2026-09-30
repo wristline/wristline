@@ -426,7 +426,7 @@ internal fun SessionDetailContent(
             }
         }
         // The content is a Box: what is composed after the list is drawn over it. The gauges show
-        // only at the top, with the header.
+        // only at the top, with the whole header.
         if (session != null) EdgeGauges(listState, session.context, limit)
         // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
         // it does not dim them; with no pointer input, touches on it reach the list.
@@ -503,7 +503,7 @@ private fun limitColor(percent: Int): Color =
  * percentage just past its upper end; the header spells out the same numbers. Clear of the time
  * text and the scroll indicator; both fill upwards, towards the time. They show only while the list
  * is at rest (they fade out as soon as it scrolls and back in [GAUGE_SETTLE_MS] after it stops),
- * and only at the top of the transcript, while the header (the first item) is on screen.
+ * and only at the top of the transcript, while the header (the first item) is fully on screen.
  */
 @Composable
 private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextUsage?, limit: UsageWindow?) {
@@ -516,7 +516,13 @@ private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextU
         }
     }
     val shown by remember(listState) {
-        derivedStateOf { resting && listState.layoutInfo.visibleItems.firstOrNull()?.index == 0 }
+        derivedStateOf {
+            // An item's offset is its top from the top of the list's viewport (the screen), not from
+            // the content padding: the header, at LIST_TOP when scrolled to the top, is fully in view
+            // until its top goes past the screen's.
+            val first = listState.layoutInfo.visibleItems.firstOrNull()
+            resting && first?.let { it.index == 0 && it.offset >= 0 } == true
+        }
     }
     AnimatedVisibility(shown, enter = fadeIn(), exit = fadeOut()) {
         contextPercent(context)?.let { percent ->
