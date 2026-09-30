@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -80,7 +81,6 @@ import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.FilledTonalIconButton
 import androidx.wear.compose.material3.Icon
-import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ProgressIndicatorDefaults
 import androidx.wear.compose.material3.ScreenScaffold
@@ -131,6 +131,12 @@ private val ACTIONS_BOTTOM = 6.dp
 private const val END_PADDING_FRACTION = 0.3f
 // Behind the actions, rising well above them: content scrolling under them fades out.
 private val SCRIM_HEIGHT = 72.dp
+// The list's top padding: under the small top text (2dp from the edge, about 13dp at 11sp) with
+// a few dp to spare.
+private val LIST_TOP = 20.dp
+// The list's side padding comes this much inside the default. No more: the round edge clips
+// wider cards.
+private val LIST_SIDE_TRIM = 2.dp
 
 // The curved top text (model and effort, in the time text's place) at its widest, centered on 12
 // o'clock (270 degrees clockwise from 3 o'clock); its background's round ends add about 5 degrees
@@ -148,6 +154,11 @@ private const val GAUGE_LABEL_GAP = 3f
 private val GAUGE_STROKE = 6.dp
 // How long the list stays still before the gauges show.
 private const val GAUGE_SETTLE_MS = 300L
+// The gauges' lower ends (GAUGE_START, 20 degrees above 9 and 3 o'clock) lie about a third of the
+// way down the screen: an item whose top edge is above that runs under them.
+private const val GAUGE_BOTTOM_FRACTION = 0.33f
+// The list's first item: inset and centered, it sits between the gauges.
+private const val HEADER_KEY = "header"
 
 /** Holds the session open (its items) exactly as long as the screen is composed. */
 private class OpenedSession(val id: String) : RememberObserver {
@@ -348,20 +359,18 @@ internal fun SessionDetailContent(
         TransformingLazyColumn(
             state = listState,
             contentPadding = PaddingValues(
-                start = contentPadding.calculateStartPadding(layoutDirection),
-                top = contentPadding.calculateTopPadding(),
-                end = contentPadding.calculateEndPadding(layoutDirection),
+                start = contentPadding.calculateStartPadding(layoutDirection) - LIST_SIDE_TRIM,
+                top = LIST_TOP,
+                end = contentPadding.calculateEndPadding(layoutDirection) - LIST_SIDE_TRIM,
                 bottom = endPadding,
             ),
         ) {
-            item(key = "header") {
+            item(key = HEADER_KEY) {
                 DetailHeader(
                     session = session,
                     limit = limit,
                     gone = gone,
-                    modifier = Modifier
-                        .edgeTransform(this, spec)
-                        .minimumVerticalContentPadding(ListHeaderDefaults.minimumTopListContentPadding),
+                    modifier = Modifier.edgeTransform(this, spec),
                 )
             }
             if (showEarlier) {
@@ -419,8 +428,8 @@ internal fun SessionDetailContent(
                 }
             }
         }
-        // The content is a Box: what is composed after the list is drawn over it. A card lying
-        // at rest under the gauges is covered there.
+        // The content is a Box: what is composed after the list is drawn over it. The gauges hide
+        // while a card reaches them.
         if (session != null) EdgeGauges(listState, session.context, limit)
         // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
         // it does not dim them; with no pointer input, touches on it reach the list.
@@ -496,8 +505,9 @@ private fun limitColor(percent: Int): Color =
  * Context use (left) and the limit window (right) as bare arcs on the upper flanks, each with its
  * percentage just past its upper end; the header spells out the same numbers. Clear of the time
  * text and the scroll indicator; both fill upwards, towards the time. They show only while the list
- * is at rest, wherever it is: they fade out as soon as it scrolls and back in [GAUGE_SETTLE_MS]
- * after it stops.
+ * is at rest (they fade out as soon as it scrolls and back in [GAUGE_SETTLE_MS] after it stops),
+ * and only while no item but the header reaches up to their lower ends: a card there would run
+ * under them.
  */
 @Composable
 private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextUsage?, limit: UsageWindow?) {
@@ -509,7 +519,14 @@ private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextU
             resting = !scrolling
         }
     }
-    AnimatedVisibility(resting, enter = fadeIn(), exit = fadeOut()) {
+    val gaugesBottom = LocalWindowInfo.current.containerSize.height * GAUGE_BOTTOM_FRACTION
+    val shown by remember(listState, gaugesBottom) {
+        derivedStateOf {
+            val first = listState.layoutInfo.visibleItems.firstOrNull { it.key != HEADER_KEY }
+            resting && (first == null || first.offset >= gaugesBottom)
+        }
+    }
+    AnimatedVisibility(shown, enter = fadeIn(), exit = fadeOut()) {
         contextPercent(context)?.let { percent ->
             EdgeGauge(percent, MaterialTheme.colorScheme.primary, right = false)
         }
@@ -567,7 +584,8 @@ private fun DetailTopText(session: Session?) {
     val model = session.model
     val effort = session.effort
     val provider = providerLabel(session.provider)
-    val style = TimeTextDefaults.timeTextStyle()
+    // Small and muted, well under the time text's 15sp: it takes little of the screen's top.
+    val style = TimeTextDefaults.timeTextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
     TimeText(maxSweepAngle = TIME_TEXT_SWEEP) {
         if (model == null && effort == null) {
             curvedText(provider, overflow = TextOverflow.Ellipsis, style = style)
@@ -575,7 +593,7 @@ private fun DetailTopText(session: Session?) {
         }
         // Weighted, the model takes what the effort and separator leave.
         if (model != null) curvedText(model, CurvedModifier.weight(1f), overflow = TextOverflow.Ellipsis, style = style)
-        if (model != null && effort != null) timeTextSeparator()
+        if (model != null && effort != null) timeTextSeparator(style)
         if (effort != null) curvedText(effort, style = style)
     }
 }
@@ -706,6 +724,8 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                 onClick = onToggle,
                 modifier = Modifier.fillMaxWidth().then(if (expanded) Modifier else Modifier.transformedHeight(this, spec)).then(appear),
                 transformation = if (expanded) null else SurfaceTransformation(spec),
+                // Tighter than a Card's 12dp: more of the message on the narrow screen.
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                 colors = if (item.kind == ItemKind.USER) {
                     CardDefaults.cardColors(containerColor = colors.primaryContainer, contentColor = colors.onPrimaryContainer)
                 } else {
