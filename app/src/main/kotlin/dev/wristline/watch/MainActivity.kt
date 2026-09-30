@@ -32,7 +32,9 @@ class MainActivity : ComponentActivity() {
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> Bridge.toBackground()
+                // Paused, the activity already went to the background in onPause.
+                Intent.ACTION_SCREEN_OFF ->
+                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) Bridge.toBackground()
                 Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT ->
                     if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) Bridge.foreground = true
             }

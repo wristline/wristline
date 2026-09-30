@@ -160,6 +160,13 @@ internal fun attentionFor(looking: Boolean, done: Boolean, sessionId: String, op
     if (looking && (!done || sessionId == openSession)) Attention.TICK else Attention.POST
 
 /**
+ * The [requests] to post when the app goes to the background: those this process has not posted
+ * yet ([posted] ids). One already posted stays quiet even when the user dismissed it.
+ */
+internal fun requestsToPost(requests: List<PendingRequest>, posted: Set<String>): List<PendingRequest> =
+    requests.filter { it.id !in posted }
+
+/**
  * Who holds the connection. With an activity the bridge is told `foreground` and pushes
  * everything; with only the service, `background`: requests, alerts and needs-input changes.
  */
@@ -328,6 +335,9 @@ object Bridge {
     private val latestJobs = HashMap<String, Job>()
     private val seenAlertIds = ArrayDeque<String>()
 
+    /** Requests whose notification this process posted, until they are resolved; see [requestsToPost]. */
+    private val postedRequests = HashSet<String>()
+
     /** MainActivity is resumed and the screen is on; see [looking]. */
     @Volatile
     var foreground = false
@@ -339,12 +349,15 @@ object Bridge {
      */
     private fun looking(): Boolean = foreground && appContext.getSystemService(PowerManager::class.java).isInteractive
 
-    /** MainActivity is paused, or the screen went off: the requests its screens were showing become notifications. */
+    /**
+     * MainActivity is paused, or the screen went off: the requests its screens were showing (only
+     * ticked) become notifications. Idempotent: the ones already posted are not posted again.
+     */
     fun toBackground() {
         foreground = false
         scope.launch {
             if (demo != null) return@launch
-            _requests.value.forEach { Notifier.request(appContext, it, session(it.sessionId)) }
+            requestsToPost(_requests.value, postedRequests).forEach { postRequest(it) }
         }
     }
 
@@ -621,13 +634,14 @@ object Bridge {
                 val known = _requests.value.mapTo(HashSet()) { it.id }
                 _sessions.value = sortSessions(event.sessions)
                 _requests.value = event.requests
+                postedRequests.retainAll(event.requests.mapTo(HashSet()) { it.id })
                 _usage.value = event.usage
                 _conn.value = Conn.Online
                 // Requests that arrived or ended while the socket was down.
                 Notifier.reconcile(appContext, event.requests, event.sessions)
                 val looking = looking()
                 event.requests.filter { it.id !in known }.forEach {
-                    logReceived("request", it.id, looking, posted = !looking && Notifier.request(appContext, it, session(it.sessionId)))
+                    logReceived("request", it.id, looking, posted = !looking && postRequest(it))
                 }
                 // Alerts the closed socket missed, oldest first; the ones already handled are skipped.
                 replayableAlerts(event.alerts, event.sessions, System.currentTimeMillis()).forEach(::onAlert)
@@ -653,9 +667,7 @@ object Bridge {
                 _requests.value = _requests.value.filterNot { it.id == event.request.id } + event.request
                 if (isNew) {
                     val looking = looking()
-                    val posted = attention(looking, event.request.sessionId) {
-                        Notifier.request(appContext, event.request, session(event.request.sessionId))
-                    }
+                    val posted = attention(looking, event.request.sessionId) { postRequest(event.request) }
                     logReceived("request", event.request.id, looking, posted)
                 }
             }
@@ -707,8 +719,13 @@ object Bridge {
 
     private fun session(id: String): Session? = _sessions.value.firstOrNull { it.id == id }
 
+    /** Posts [request]'s notification and remembers it in [postedRequests]; true when posted. */
+    private fun postRequest(request: PendingRequest): Boolean =
+        Notifier.request(appContext, request, session(request.sessionId)).also { if (it) postedRequests += request.id }
+
     private fun removeRequest(id: String) {
         _requests.update { list -> list.filterNot { it.id == id } }
+        postedRequests -= id
         Notifier.cancelRequest(appContext, id)
     }
 
@@ -989,6 +1006,7 @@ object Bridge {
     private fun clearState() {
         _sessions.value = emptyList()
         _requests.value = emptyList()
+        postedRequests.clear()
         _usage.value = emptyList()
         _asks.value = emptyList()
         synchronized(lock) { itemFlows.values.forEach { it.value = SessionItems() } }
