@@ -12,19 +12,19 @@ class AddressTest {
 
     @Test
     fun bareHostGetsHttps() {
-        assertEquals("https://siso-work.tail43ebc0.ts.net", ok("siso-work.tail43ebc0.ts.net"))
+        assertEquals("https://example.tail0000.ts.net", ok("example.tail0000.ts.net"))
     }
 
     @Test
     fun httpsIsKeptAndTrailingSlashesStripped() {
-        assertEquals("https://siso-work.tail43ebc0.ts.net", ok("https://siso-work.tail43ebc0.ts.net/"))
-        assertEquals("https://siso-work.tail43ebc0.ts.net", ok("https://siso-work.tail43ebc0.ts.net//"))
+        assertEquals("https://example.tail0000.ts.net", ok("https://example.tail0000.ts.net/"))
+        assertEquals("https://example.tail0000.ts.net", ok("https://example.tail0000.ts.net//"))
     }
 
     @Test
     fun caseAndWhitespaceAreNormalized() {
-        assertEquals("https://siso-work.tail43ebc0.ts.net", ok("  HTTPS://Siso-Work.Tail43ebc0.TS.net "))
-        assertEquals("https://siso-work.tail43ebc0.ts.net", ok("siso-work. tail43ebc0 .ts.net"))
+        assertEquals("https://example.tail0000.ts.net", ok("  HTTPS://Example.Tail0000.TS.net "))
+        assertEquals("https://example.tail0000.ts.net", ok("example. tail0000 .ts.net"))
     }
 
     @Test

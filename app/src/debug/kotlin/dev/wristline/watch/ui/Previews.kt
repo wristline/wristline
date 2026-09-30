@@ -119,7 +119,7 @@ private fun WelcomePreview() = Frame { WelcomeScreen(onSetUp = {}, onDemo = {}) 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
 @Composable
 private fun AddressFoundPreview() = Frame {
-    AddressContent("https://siso-work.tail43ebc0.ts.net", AddressState.Found, onEnter = {}, onNext = {}, onToken = {})
+    AddressContent("https://example.tail0000.ts.net", AddressState.Found, onEnter = {}, onNext = {}, onToken = {})
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
@@ -213,7 +213,7 @@ private fun UsageAccountsKoPreview() = Frame { UsageContent(accountUsage, now) }
 @Composable
 private fun SettingsPreview() = Frame {
     SettingsContent(
-        demo = false, address = "https://siso-work.tail43ebc0.ts.net", paired = true, deviceName = "Galaxy Watch Ultra",
+        demo = false, address = "https://example.tail0000.ts.net", paired = true, deviceName = "Galaxy Watch Ultra",
         monitoring = false, canMonitor = true, notificationsOff = true, busy = false, tokenNeedsAddress = false,
         onAddress = {}, onDeviceName = {}, onMonitoring = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
         onDisconnect = {}, onExitDemo = {},
