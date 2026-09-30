@@ -35,6 +35,19 @@ nothing about it is stored or sent.
 There is no start-at-boot: after the watch restarts, or if the system stops the service, monitoring
 resumes the next time you open Wristline. Unpairing or a revoked pairing turns it off.
 
+## Quick Ask
+
+The **Ask** button at the bottom of the session list takes a spoken (or typed) question and has the
+bridge run `claude -p` (Haiku) or `codex exec` once on the PC, with no tools and no saved session,
+returning a short answer to the watch. Tap the provider badge on the confirm screen, or **Settings >
+Quick Ask provider**, to switch between Claude and Codex; each question uses your plan's quota.
+Recent answers stay in **Recent questions** until the bridge restarts.
+
+Manual check after changes: speak a question, confirm; toggle the badge and confirm it is remembered;
+the answer arrives; **Ask again**; ask the other provider; open Recent questions; lower and raise the
+wrist while a question runs and see the answer fill in; restart the bridge and open an old answer
+("no longer on the bridge").
+
 ## Development setup
 
 The watch app builds from the command line with the Android SDK command-line tools and the Gradle wrapper in this repository (no Android Studio). See [docs/dev-setup.md](docs/dev-setup.md) for the SDK install, environment variables, build commands, wireless adb pairing and emulator notes.

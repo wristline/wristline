@@ -6,6 +6,7 @@ import android.net.Network
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import dev.wristline.watch.Notifier
+import dev.wristline.watch.R
 import java.io.IOException
 import java.time.Instant
 import java.util.TreeMap
@@ -94,6 +95,16 @@ sealed interface Sent {
     data object Unreachable : Sent
 }
 
+/** Outcome of `POST /api/ask`. */
+sealed interface AskSent {
+    data class Started(val askId: String) : AskSent
+
+    /** [code] is the bridge's error code (`busy`, `ask_unavailable`, ...) or one of the local codes. */
+    data class Refused(val code: String) : AskSent
+
+    data object Unreachable : AskSent
+}
+
 /** Result of `GET /api/health` without a token during onboarding. */
 enum class Probe { FOUND, NOT_BRIDGE, RATE_LIMITED, UNREACHABLE }
 
@@ -104,6 +115,12 @@ const val PAGE_SIZE = 40
 
 /** Upper bound of items kept in memory per open session. */
 const val ITEM_CAP = 200
+
+/** Quick Asks kept per device, newest first; the same number the bridge keeps. */
+const val ASK_KEEP = 20
+
+/** How long the demo "thinks" before its canned answer. */
+private const val DEMO_ASK_MS = 1_500L
 
 /** The item kinds of a transcript without tool calls and notices ([Prefs.showToolCalls] off). */
 val CONVERSATION_KINDS = listOf(ItemKind.USER, ItemKind.ASSISTANT)
@@ -176,6 +193,31 @@ internal fun SessionItems.withEarlier(page: ItemPage): SessionItems {
     return copy(items = kept + items, hasMore = page.hasMore || kept.size < older.size, loading = false)
 }
 
+/** Replaces the ask with the same id, or puts a new one first; never more than [ASK_KEEP]. */
+internal fun List<Ask>.withAsk(ask: Ask): List<Ask> {
+    val index = indexOfFirst { it.id == ask.id }
+    if (index >= 0) return toMutableList().apply { set(index, ask) }
+    return (listOf(ask) + this).take(ASK_KEEP)
+}
+
+/**
+ * Applies an `ask` event. An unknown askId (the bridge answered after a reconnect) gets a record
+ * without its question; the next `GET /api/asks` fills it in.
+ */
+internal fun List<Ask>.withAskEvent(event: ServerEvent.AskChanged): List<Ask> {
+    val current = firstOrNull { it.id == event.askId }
+        ?: Ask(event.askId, event.provider, status = event.status, createdAt = Instant.now().toString())
+    return withAsk(
+        current.copy(
+            status = event.status,
+            answer = event.text ?: current.answer,
+            model = event.model ?: current.model,
+            durationMs = event.durationMs ?: current.durationMs,
+            error = event.error,
+        ),
+    )
+}
+
 /**
  * Process-wide client for the paired bridge: one OkHttp client, one WebSocket while something
  * holds [acquire], and the state the screens observe.
@@ -206,6 +248,10 @@ object Bridge {
     val requests: StateFlow<List<PendingRequest>> = _requests.asStateFlow()
     private val _usage = MutableStateFlow<List<Usage>>(emptyList())
     val usage: StateFlow<List<Usage>> = _usage.asStateFlow()
+
+    /** This device's Quick Asks, newest first (the bridge keeps them in memory only). */
+    private val _asks = MutableStateFlow<List<Ask>>(emptyList())
+    val asks: StateFlow<List<Ask>> = _asks.asStateFlow()
 
     // Items exist only for sessions a screen shows; the last closeSession() drops them.
     private val lock = Any()
@@ -447,6 +493,8 @@ object Bridge {
                 onOnline()
                 // The subscription alone does not replay what the socket missed.
                 subscribed?.let { loadLatest(it) }
+                // Asks are not in the snapshot; an answer that arrived while the socket was down is fetched.
+                loadAsks()
             }
             is ServerEvent.SessionChanged -> {
                 _sessions.value = sortSessions(_sessions.value.filterNot { it.id == event.session.id } + event.session)
@@ -475,6 +523,7 @@ object Bridge {
                 }
                 AlertKind.DONE -> if (!foreground) Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId))
             }
+            is ServerEvent.AskChanged -> _asks.update { it.withAskEvent(event) }
         }
     }
 
@@ -687,6 +736,56 @@ object Bridge {
         }
     }
 
+    // ---- Quick Ask ----
+
+    /**
+     * Sends one question to the PC's CLI. Finishes even when the confirm dialog's screen closes,
+     * like prompt(). On 202 the ask is listed as running at once; the `ask` events move it on.
+     */
+    suspend fun ask(provider: String, text: String): AskSent = withContext(dispatcher + NonCancellable) {
+        if (demo != null) return@withContext AskSent.Started(demoAsk(provider, text))
+        val body = WireJson.encodeToString(AskBody.serializer(), AskBody(provider, text))
+        val result = send(authed(apiUrl(prefs.baseUrl, "ask")).post(body.toRequestBody(jsonType)).build())
+            ?: return@withContext AskSent.Unreachable
+        when (result.code) {
+            202 -> {
+                val accepted = decodeOrNull(AskAccepted.serializer(), result.body)
+                    ?: return@withContext AskSent.Refused("bad_response")
+                val ask = Ask(accepted.askId, provider, text, AskStatus.RUNNING, createdAt = Instant.now().toString())
+                _asks.update { it.withAsk(ask) }
+                AskSent.Started(ask.id)
+            }
+            401 -> {
+                unauthorized()
+                AskSent.Refused("unauthorized")
+            }
+            else -> AskSent.Refused(errorCode(result))
+        }
+    }
+
+    /** `DELETE /api/asks/:id`; the outcome arrives as an `ask` event (`error: cancelled`). */
+    fun cancelAsk(id: String): Job =
+        scope.launch {
+            if (demo != null) {
+                _asks.update { list ->
+                    val ask = list.firstOrNull { it.id == id } ?: return@update list
+                    if (ask.status != AskStatus.RUNNING) list else list.withAsk(ask.copy(status = AskStatus.ERROR, error = "cancelled"))
+                }
+                return@launch
+            }
+            send(authed(apiUrl(prefs.baseUrl, "asks", id)).delete().build())
+        }
+
+    private fun loadAsks() {
+        scope.launch {
+            val result = send(authed(apiUrl(prefs.baseUrl, "asks")).get().build()) ?: return@launch
+            if (result.code == 401) unauthorized()
+            if (result.code != 200) return@launch
+            val list = decodeOrNull(AskList.serializer(), result.body) ?: return@launch
+            _asks.value = list.asks.take(ASK_KEEP)
+        }
+    }
+
     /** Unregisters this watch on the bridge when reachable, then forgets the pairing either way. */
     suspend fun disconnect() = withContext(dispatcher + NonCancellable) {
         if (demo == null && prefs.isPaired) send(authed(apiUrl(prefs.baseUrl, "device")).delete().build())
@@ -701,6 +800,7 @@ object Bridge {
         _sessions.value = emptyList()
         _requests.value = emptyList()
         _usage.value = emptyList()
+        _asks.value = emptyList()
         synchronized(lock) { itemFlows.values.forEach { it.value = SessionItems() } }
         Notifier.reconcile(appContext, emptyList(), emptyList())
     }
@@ -739,6 +839,29 @@ object Bridge {
                 if (it.id == request.sessionId) it.copy(status = SessionStatus.RUNNING, promptBlock = null) else it
             },
         )
+    }
+
+    /** A canned answer after a short "thinking" pause; the answer follows the app language. */
+    private fun demoAsk(provider: String, text: String): String {
+        val id = "ask-demo-" + System.currentTimeMillis()
+        _asks.update { it.withAsk(Ask(id, provider, text, AskStatus.RUNNING, createdAt = Instant.now().toString())) }
+        scope.launch {
+            delay(DEMO_ASK_MS)
+            _asks.update { list ->
+                val ask = list.firstOrNull { it.id == id } ?: return@update list
+                if (ask.status != AskStatus.RUNNING) return@update list
+                val model = if (provider == ProviderId.CLAUDE_CODE) "Haiku 4.5" else null
+                list.withAsk(
+                    ask.copy(
+                        status = AskStatus.DONE,
+                        answer = appContext.getString(R.string.demo_ask_answer),
+                        model = model,
+                        durationMs = DEMO_ASK_MS,
+                    ),
+                )
+            }
+        }
+        return id
     }
 
     // ---- HTTP ----

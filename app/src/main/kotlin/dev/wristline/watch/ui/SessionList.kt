@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -13,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -34,6 +38,7 @@ import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
 import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
@@ -58,6 +63,8 @@ internal fun SessionListScreen(
     onSession: (String) -> Unit,
     onRequest: (String) -> Unit,
     onUsage: () -> Unit,
+    onAsk: (String) -> Unit,
+    onAskHistory: () -> Unit,
     onSettings: () -> Unit,
     onRepair: () -> Unit,
 ) {
@@ -65,6 +72,8 @@ internal fun SessionListScreen(
     val sessions by Bridge.sessions.collectAsStateWithLifecycle()
     val requests by Bridge.requests.collectAsStateWithLifecycle()
     val usage by Bridge.usage.collectAsStateWithLifecycle()
+    val asks by Bridge.asks.collectAsStateWithLifecycle()
+    val ask = rememberQuickAsk(onStarted = onAsk)
     // Read by the cards' time only, so the minute tick recomposes just the visible cards' time.
     val now = rememberNowState()
     SessionListContent(
@@ -76,6 +85,9 @@ internal fun SessionListScreen(
         onSession = onSession,
         onRequest = onRequest,
         onUsage = onUsage,
+        hasAsks = asks.isNotEmpty(),
+        onAsk = ask,
+        onAskHistory = onAskHistory,
         onSettings = onSettings,
         onRetry = Bridge::retryNow,
         onRepair = onRepair,
@@ -92,6 +104,9 @@ internal fun SessionListContent(
     onSession: (String) -> Unit,
     onRequest: (String) -> Unit,
     onUsage: () -> Unit,
+    hasAsks: Boolean,
+    onAsk: () -> Unit,
+    onAskHistory: () -> Unit,
     onSettings: () -> Unit,
     onRetry: () -> Unit,
     onRepair: () -> Unit,
@@ -104,8 +119,13 @@ internal fun SessionListContent(
     val glance = remember(usage) { glanceUsage(usage) }
     ScreenScaffold(
         scrollState = listState,
+        // Quick Ask takes the edge button; Settings is the last item of the list.
         edgeButton = {
-            EdgeButton(onClick = onSettings, buttonSize = EdgeButtonSize.Small) { Text(stringResource(R.string.settings_title)) }
+            EdgeButton(onClick = onAsk, buttonSize = EdgeButtonSize.Small) {
+                Icon(painterResource(R.drawable.ic_mic), contentDescription = null, modifier = Modifier.size(ButtonDefaults.SmallIconSize))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.ask_button))
+            }
         },
     ) { contentPadding ->
         TransformingLazyColumn(
@@ -174,6 +194,24 @@ internal fun SessionListContent(
                     now = now,
                     spec = spec,
                     onClick = { onSession(session.id) },
+                )
+            }
+            if (hasAsks) {
+                item(key = "asks") {
+                    FilledTonalButton(
+                        onClick = onAskHistory,
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
+                        transformation = SurfaceTransformation(spec),
+                        label = { Text(stringResource(R.string.ask_history_title)) },
+                    )
+                }
+            }
+            item(key = "settings") {
+                FilledTonalButton(
+                    onClick = onSettings,
+                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                    label = { Text(stringResource(R.string.settings_title)) },
                 )
             }
         }

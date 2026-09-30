@@ -61,6 +61,7 @@ internal fun SettingsScreen(
     val conn by Bridge.conn.collectAsStateWithLifecycle()
     var deviceName by remember { mutableStateOf(prefs.deviceName) }
     var showToolCalls by remember { mutableStateOf(prefs.showToolCalls) }
+    var askProvider by remember { mutableStateOf(prefs.askProvider) }
     // The service turns the setting off itself when the pairing is gone.
     val monitoring by prefs.monitoringState.collectAsStateWithLifecycle()
     // Re-read on every resume: the user may have changed it in the system settings.
@@ -95,6 +96,7 @@ internal fun SettingsScreen(
         paired = prefs.isPaired,
         deviceName = deviceName,
         showToolCalls = showToolCalls,
+        askProvider = askProvider,
         monitoring = monitoring,
         canMonitor = prefs.isPaired && conn !is Conn.Unauthorized,
         notificationsOff = !notificationsOn,
@@ -105,6 +107,10 @@ internal fun SettingsScreen(
         onShowToolCalls = {
             showToolCalls = it
             prefs.showToolCalls = it
+        },
+        onAskProvider = {
+            askProvider = otherProvider(askProvider)
+            prefs.askProvider = askProvider
         },
         onMonitoring = { on ->
             when {
@@ -151,6 +157,7 @@ internal fun SettingsContent(
     paired: Boolean,
     deviceName: String,
     showToolCalls: Boolean,
+    askProvider: String,
     monitoring: Boolean,
     canMonitor: Boolean,
     notificationsOff: Boolean,
@@ -159,6 +166,7 @@ internal fun SettingsContent(
     onAddress: () -> Unit,
     onDeviceName: () -> Unit,
     onShowToolCalls: (Boolean) -> Unit,
+    onAskProvider: () -> Unit,
     onMonitoring: (Boolean) -> Unit,
     onNotificationSettings: () -> Unit,
     onRepair: () -> Unit,
@@ -227,6 +235,16 @@ internal fun SettingsContent(
                     transformation = SurfaceTransformation(spec),
                     label = { Text(stringResource(R.string.settings_tool_calls)) },
                     secondaryLabel = { Text(stringResource(R.string.settings_tool_calls_detail), maxLines = 2) },
+                )
+            }
+            item(key = "askProvider") {
+                // Two values only: a tap toggles rather than opening a chooser.
+                FilledTonalButton(
+                    onClick = onAskProvider,
+                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                    label = { Text(stringResource(R.string.settings_ask_provider)) },
+                    secondaryLabel = { Text(providerLabel(askProvider)) },
                 )
             }
             if (!demo) {

@@ -116,12 +116,35 @@
     <string name="usage_updated_now">Updated just now</string>
     <string name="account_estimated">%1$s (estimated)</string>
 
+    <!-- Quick Ask -->
+    <string name="ask_button">Ask</string>
+    <string name="ask_prompt_label">Question</string>
+    <string name="ask_confirm_title">Send this question?</string>
+    <string name="ask_uses_plan">Uses your plan\'s quota.</string>
+    <string name="ask_thinking">Thinking…</string>
+    <string name="ask_cancel">Cancel</string>
+    <string name="ask_again">Ask again</string>
+    <string name="ask_other_claude">Ask Claude</string>
+    <string name="ask_other_codex">Ask Codex</string>
+    <string name="ask_took">%1$s s</string>
+    <string name="ask_gone">This answer is no longer on the bridge.</string>
+    <string name="ask_history_title">Recent questions</string>
+    <string name="ask_history_empty">No questions yet.</string>
+    <string name="ask_status_running">Thinking…</string>
+    <string name="ask_status_error">Failed</string>
+    <string name="error_ask_unavailable">That CLI isn\'t installed on the PC.</string>
+    <string name="error_timeout">No answer within 90 seconds.</string>
+    <string name="error_cancelled">Cancelled.</string>
+    <string name="error_bad_output">The PC returned something unreadable.</string>
+    <string name="demo_ask_answer">This is a demo answer. Pair with a bridge to ask Claude or Codex for real.</string>
+
     <!-- Settings -->
     <string name="settings_title">Settings</string>
     <string name="settings_not_set">Not set</string>
     <string name="settings_device_name">Watch name</string>
     <string name="settings_tool_calls">Show tool calls</string>
     <string name="settings_tool_calls_detail">Also list commands, file edits and system notices</string>
+    <string name="settings_ask_provider">Quick Ask provider</string>
     <string name="settings_monitoring">Background alerts</string>
     <string name="settings_monitoring_detail">Stays connected when closed; uses more battery</string>
     <string name="settings_notifications_off">Notifications are off</string>

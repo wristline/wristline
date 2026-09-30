@@ -16,6 +16,8 @@ import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.ui.AddressScreen
+import dev.wristline.watch.ui.AskHistoryScreen
+import dev.wristline.watch.ui.AskScreen
 import dev.wristline.watch.ui.CodeScreen
 import dev.wristline.watch.ui.NotifyScreen
 import dev.wristline.watch.ui.RequestScreen
@@ -36,6 +38,8 @@ object Route {
     const val SESSION = "session/{id}"
     const val REQUEST = "request/{id}"
     const val USAGE = "usage"
+    const val ASK = "ask/{id}"
+    const val ASKS = "asks"
     const val SETTINGS = "settings"
 
     /** Pairing screen for the bridge at [url]. */
@@ -44,6 +48,8 @@ object Route {
     fun session(id: String) = "session/" + Uri.encode(id)
 
     fun request(id: String) = "request/" + Uri.encode(id)
+
+    fun ask(id: String) = "ask/" + Uri.encode(id)
 }
 
 /**
@@ -92,6 +98,8 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
                         onSession = { nav.navigate(Route.session(it)) },
                         onRequest = { nav.navigate(Route.request(it)) },
                         onUsage = { nav.navigate(Route.USAGE) },
+                        onAsk = { nav.navigate(Route.ask(it)) },
+                        onAskHistory = { nav.navigate(Route.ASKS) },
                         onSettings = { nav.navigate(Route.SETTINGS) },
                         onRepair = { nav.navigate(Route.code(Bridge.prefs.baseUrl)) },
                     )
@@ -105,6 +113,12 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
                     RequestScreen(requestId = id, onDone = { nav.popBackStack() })
                 }
                 composable(Route.USAGE) { UsageScreen() }
+                composable(Route.ASK) { entry ->
+                    val id = entry.arguments?.getString("id").orEmpty()
+                    // A new question from this screen replaces it, so a swipe back lands on the list.
+                    AskScreen(askId = id, onReplaced = { nav.navigate(Route.ask(it)) { popUpTo(Route.ASK) { inclusive = true } } })
+                }
+                composable(Route.ASKS) { AskHistoryScreen(onAsk = { nav.navigate(Route.ask(it)) }) }
                 composable(Route.SETTINGS) {
                     SettingsScreen(
                         onAddress = { nav.navigate(Route.ADDRESS) },

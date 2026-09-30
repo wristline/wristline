@@ -112,12 +112,35 @@
     <string name="usage_updated_now">방금 갱신</string>
     <string name="account_estimated">%1$s (추정)</string>
 
+    <!-- Quick Ask -->
+    <string name="ask_button">물어보기</string>
+    <string name="ask_prompt_label">질문</string>
+    <string name="ask_confirm_title">이 질문을 보낼까요?</string>
+    <string name="ask_uses_plan">플랜 사용량을 씁니다.</string>
+    <string name="ask_thinking">생각 중…</string>
+    <string name="ask_cancel">취소</string>
+    <string name="ask_again">다시 묻기</string>
+    <string name="ask_other_claude">Claude에 묻기</string>
+    <string name="ask_other_codex">Codex에 묻기</string>
+    <string name="ask_took">%1$s초</string>
+    <string name="ask_gone">이 질문의 답이 더 이상 없습니다.</string>
+    <string name="ask_history_title">질문 기록</string>
+    <string name="ask_history_empty">아직 질문이 없습니다.</string>
+    <string name="ask_status_running">생각 중…</string>
+    <string name="ask_status_error">실패</string>
+    <string name="error_ask_unavailable">PC에 해당 CLI가 없습니다.</string>
+    <string name="error_timeout">90초 안에 답이 오지 않았습니다.</string>
+    <string name="error_cancelled">취소했습니다.</string>
+    <string name="error_bad_output">PC의 응답을 읽을 수 없습니다.</string>
+    <string name="demo_ask_answer">데모 답변입니다. 브릿지와 페어링하면 Claude나 Codex에 실제로 물어볼 수 있습니다.</string>
+
     <!-- Settings -->
     <string name="settings_title">설정</string>
     <string name="settings_not_set">설정 안 됨</string>
     <string name="settings_device_name">워치 이름</string>
     <string name="settings_tool_calls">도구 호출 표시</string>
     <string name="settings_tool_calls_detail">명령 실행, 파일 수정과 시스템 메시지도 보여 줍니다</string>
+    <string name="settings_ask_provider">물어보기 제공자</string>
     <string name="settings_monitoring">백그라운드 알림</string>
     <string name="settings_monitoring_detail">앱을 닫아도 연결을 유지해 배터리를 더 씁니다</string>
     <string name="settings_notifications_off">알림이 꺼져 있음</string>

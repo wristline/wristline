@@ -6,6 +6,8 @@ import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.tooling.preview.devices.WearDevices
 import dev.wristline.watch.data.Account
+import dev.wristline.watch.data.Ask
+import dev.wristline.watch.data.AskStatus
 import dev.wristline.watch.data.ContextUsage
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.Item
@@ -104,6 +106,17 @@ private val items = SessionItems(
     loaded = true,
 )
 
+private val asks = listOf(
+    Ask(
+        "ask-1", ProviderId.CLAUDE_CODE, "What does a mutex do?", AskStatus.DONE,
+        answer = "A mutex is a lock: only one thread can hold it at a time, so the code it guards runs by one thread at once. " +
+            "Others wait until it is released. It prevents two threads from changing the same data together.",
+        model = "Haiku 4.5", durationMs = 2_926, createdAt = "2026-09-29T12:59:30Z",
+    ),
+    Ask("ask-2", ProviderId.CODEX, "뮤텍스가 뭐야?", AskStatus.RUNNING, createdAt = "2026-09-29T12:59:00Z"),
+    Ask("ask-3", ProviderId.CODEX, "Explain a semaphore", AskStatus.ERROR, durationMs = 90_000, error = "timeout", createdAt = "2026-09-29T12:40:00Z"),
+)
+
 @Composable
 private fun Frame(content: @Composable () -> Unit) {
     MaterialTheme { AppScaffold { content() } }
@@ -133,7 +146,7 @@ private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "no
 private fun SessionListPreview() = Frame {
     SessionListContent(
         Conn.Online, sessions, listOf(permission, question), usage, { now },
-        onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
+        onSession = {}, onRequest = {}, onUsage = {}, hasAsks = true, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
 
@@ -142,9 +155,29 @@ private fun SessionListPreview() = Frame {
 private fun SessionListUnreachablePreview() = Frame {
     SessionListContent(
         Conn.Unreachable(System.currentTimeMillis() + 12_000), sessions, emptyList(), usage, { now },
-        onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
+        onSession = {}, onRequest = {}, onUsage = {}, hasAsks = false, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun AskRunningPreview() = Frame { AskContent(asks[1], sending = false, onCancel = {}, onAgain = {}, onOther = {}) }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun AskDonePreview() = Frame { AskContent(asks[0], sending = false, onCancel = {}, onAgain = {}, onOther = {}) }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun AskErrorKoPreview() = Frame { AskContent(asks[2], sending = false, onCancel = {}, onAgain = {}, onOther = {}) }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun AskGoneKoPreview() = Frame { AskContent(null, sending = false, onCancel = {}, onAgain = {}, onOther = {}) }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun AskHistoryPreview() = Frame { AskHistoryContent(asks, { now }, onAsk = {}) }
 
 // Edge gauges: context 60% on the left, Codex's primary window at 93% (error) on the right. The
 // top text is the model and effort; the newest card rests near the middle, above the actions.
@@ -218,8 +251,9 @@ private fun UsageAccountsKoPreview() = Frame { UsageContent(accountUsage, now) }
 private fun SettingsPreview() = Frame {
     SettingsContent(
         demo = false, address = "https://example.tail0000.ts.net", paired = true, deviceName = "Galaxy Watch Ultra",
-        showToolCalls = false, monitoring = false, canMonitor = true, notificationsOff = true, busy = false, tokenNeedsAddress = false,
-        onAddress = {}, onDeviceName = {}, onShowToolCalls = {}, onMonitoring = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
+        showToolCalls = false, askProvider = ProviderId.CLAUDE_CODE, monitoring = false, canMonitor = true, notificationsOff = true,
+        busy = false, tokenNeedsAddress = false,
+        onAddress = {}, onDeviceName = {}, onShowToolCalls = {}, onAskProvider = {}, onMonitoring = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
         onDisconnect = {}, onExitDemo = {},
     )
 }

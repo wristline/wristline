@@ -74,6 +74,12 @@ object AlertKind {
     const val DONE = "done"
 }
 
+object AskStatus {
+    const val RUNNING = "running"
+    const val DONE = "done"
+    const val ERROR = "error"
+}
+
 @Immutable
 @Serializable
 data class ContextUsage(val used: Long, val window: Long)
@@ -176,6 +182,25 @@ data class Usage(
 /** Identity of a usage entry: a `usage` event replaces the entry with the same key. */
 val Usage.key: String get() = provider + ":" + (account?.id ?: "")
 
+/** A Quick Ask: one headless question to `claude -p` or `codex exec` on the PC, kept per device. */
+@Immutable
+@Serializable
+data class Ask(
+    val id: String,
+    val provider: String,
+    /** The text the watch sent; empty until the next `GET /api/asks` when only an event was seen. */
+    val question: String = "",
+    val status: String,
+    /** Present when done. */
+    val answer: String? = null,
+    /** Display name of the model when done, e.g. `Haiku 4.5`; absent for Codex without a configured model. */
+    val model: String? = null,
+    val durationMs: Long? = null,
+    /** When failed: `timeout` | `cancelled` | `exit_<code>` | `bad_output` | a short CLI message. */
+    val error: String? = null,
+    val createdAt: String,
+)
+
 // REST bodies.
 
 @Serializable
@@ -216,6 +241,15 @@ data class AnswerBody(val answers: Answers)
 @Serializable
 data class UsageList(val usage: List<Usage>)
 
+@Serializable
+data class AskBody(val provider: String, val text: String, val model: String? = null)
+
+@Serializable
+data class AskAccepted(val askId: String)
+
+@Serializable
+data class AskList(val asks: List<Ask>)
+
 /** Error body of a 4xx response; [error] is an ErrorCode or a PromptBlock code. */
 @Serializable
 data class ApiError(val error: String)
@@ -255,6 +289,18 @@ sealed interface ServerEvent {
     /** [alert] is `needs_input` | `done`. [title], when present, heads a done notification. */
     @Serializable
     data class Alert(val sessionId: String, val alert: String, val text: String? = null, val title: String? = null) : ServerEvent
+
+    /** Sent only to the device that asked. [text] is the answer, present when [status] is done. */
+    @Serializable
+    data class AskChanged(
+        val askId: String,
+        val provider: String,
+        val status: String,
+        val text: String? = null,
+        val model: String? = null,
+        val durationMs: Long? = null,
+        val error: String? = null,
+    ) : ServerEvent
 }
 
 /**
@@ -283,6 +329,7 @@ fun decodeServerEvent(obj: JsonObject): ServerEvent? {
         "resolved" -> WireJson.decodeFromJsonElement(ServerEvent.Resolved.serializer(), obj)
         "usage" -> WireJson.decodeFromJsonElement(ServerEvent.UsageChanged.serializer(), obj)
         "alert" -> WireJson.decodeFromJsonElement(ServerEvent.Alert.serializer(), obj)
+        "ask" -> WireJson.decodeFromJsonElement(ServerEvent.AskChanged.serializer(), obj)
         else -> null
     }
 }

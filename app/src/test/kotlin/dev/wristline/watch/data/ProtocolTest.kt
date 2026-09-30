@@ -50,6 +50,7 @@ class ProtocolTest {
             ServerEvent.Resolved::class.java,
             ServerEvent.UsageChanged::class.java,
             ServerEvent.Alert::class.java,
+            ServerEvent.AskChanged::class.java,
         )
         assertEquals("fixtures should cover every event type", known, eventTypes)
     }
@@ -78,9 +79,13 @@ class ProtocolTest {
             "items" in obj -> decode<ItemPage>(obj)
             "requests" in obj -> decode<RequestList>(obj)
             "usage" in obj -> decode<UsageList>(obj)
+            "asks" in obj -> decode<AskList>(obj)
             "answers" in obj -> decode<AnswerBody>(obj)
             "code" in obj && "deviceName" in obj -> decode<PairRequest>(obj)
             "error" in obj -> decode<ApiError>(obj)
+            "askId" in obj && obj.size == 1 -> decode<AskAccepted>(obj)
+            // Before PromptBody: an ask body also carries `text`.
+            "provider" in obj && "text" in obj -> decode<AskBody>(obj)
             "text" in obj && obj.size == 1 -> decode<PromptBody>(obj)
             else -> fail("unrecognised fixture shape with keys ${obj.keys}")
         }
@@ -158,6 +163,29 @@ class ProtocolTest {
                "account":{"id":"chatgpt-1","label":"school"}}}""",
         ) as ServerEvent.UsageChanged
         assertEquals(Account("chatgpt-1", "school"), event.usage.account)
+    }
+
+    // Hand-written on purpose: the fixtures carry a cancelled error and a done answer with a model;
+    // a CLI message as the error and a Codex answer without a model are covered here.
+    @Test
+    fun askEventDecodesErrorAndDoneWithoutModel() {
+        val failed = parseServerEvent(
+            """{"type":"ask","askId":"ask-1","provider":"codex","status":"error","durationMs":312,"error":"exit_1"}""",
+        ) as ServerEvent.AskChanged
+        assertEquals("exit_1", failed.error)
+        assertEquals(312L, failed.durationMs)
+        assertNull(failed.text)
+        val done = parseServerEvent(
+            """{"type":"ask","askId":"ask-2","provider":"codex","status":"done","text":"OK","durationMs":2000}""",
+        ) as ServerEvent.AskChanged
+        assertEquals("OK", done.text)
+        assertNull(done.model)
+        assertNull(done.error)
+        val list = decode<AskList>(WireJson.parseToJsonElement(File(dir, "asks.json").readText()) as JsonObject).asks
+        assertEquals(AskStatus.ERROR, list[0].status)
+        assertEquals("cancelled", list[0].error)
+        assertEquals("Haiku 4.5", list[1].model)
+        assertEquals("OK", list[1].answer)
     }
 
     @Test

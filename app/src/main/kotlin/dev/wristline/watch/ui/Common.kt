@@ -4,6 +4,8 @@ import android.app.Activity
 import android.app.RemoteInput
 import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
+import android.speech.RecognizerIntent
 import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -258,6 +260,11 @@ fun errorMessage(code: String): String = when (code) {
     "busy" -> stringResource(R.string.block_busy)
     "unsupported" -> stringResource(R.string.block_unsupported)
     "unsafe_prefix" -> stringResource(R.string.block_unsafe_prefix)
+    // Quick Ask
+    "ask_unavailable" -> stringResource(R.string.error_ask_unavailable)
+    "timeout" -> stringResource(R.string.error_timeout)
+    "cancelled" -> stringResource(R.string.error_cancelled)
+    "bad_output" -> stringResource(R.string.error_bad_output)
     else -> stringResource(R.string.error_generic, code)
 }
 
@@ -298,6 +305,37 @@ fun rememberTextInputLauncher(label: String, onText: (String) -> Unit): () -> Bo
                 false
             } catch (_: SecurityException) {
                 // The activity exists but this watch does not let third-party apps start it.
+                false
+            }
+        }
+    }
+}
+
+/**
+ * Returns a launcher for the system speech recognizer (free-form, device language, one result).
+ * [onText] gets the trimmed, non-empty transcript. Returns false when the watch has no recognizer
+ * (or will not let this app start it), so the caller can offer typing instead.
+ */
+@Composable
+internal fun rememberSpeechInput(prompt: String, onText: (String) -> Unit): () -> Boolean {
+    val latest by rememberUpdatedState(onText)
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
+        if (!text.isNullOrEmpty()) latest(text)
+    }
+    return remember(launcher, prompt) {
+        {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
+                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            try {
+                launcher.launch(intent)
+                true
+            } catch (_: ActivityNotFoundException) {
+                false
+            } catch (_: SecurityException) {
                 false
             }
         }

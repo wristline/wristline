@@ -1,11 +1,5 @@
 package dev.wristline.watch.ui
 
-import android.app.Activity
-import android.content.ActivityNotFoundException
-import android.content.Intent
-import android.speech.RecognizerIntent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -266,37 +260,6 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(stringResource(R.string.detail_retry)) },
             )
-        }
-    }
-}
-
-/**
- * Returns a launcher for the system speech recognizer (free-form, device language, one result).
- * [onText] gets the trimmed, non-empty transcript. Returns false when the watch has no recognizer
- * (or will not let this app start it), so the caller can offer typing instead.
- */
-@Composable
-private fun rememberSpeechInput(prompt: String, onText: (String) -> Unit): () -> Boolean {
-    val latest by rememberUpdatedState(onText)
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
-        val text = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim()
-        if (!text.isNullOrEmpty()) latest(text)
-    }
-    return remember(launcher, prompt) {
-        {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
-                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            try {
-                launcher.launch(intent)
-                true
-            } catch (_: ActivityNotFoundException) {
-                false
-            } catch (_: SecurityException) {
-                false
-            }
         }
     }
 }
