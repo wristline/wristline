@@ -60,6 +60,7 @@ internal fun SettingsScreen(
     val prefs = Bridge.prefs
     val conn by Bridge.conn.collectAsStateWithLifecycle()
     var deviceName by remember { mutableStateOf(prefs.deviceName) }
+    var showToolCalls by remember { mutableStateOf(prefs.showToolCalls) }
     // The service turns the setting off itself when the pairing is gone.
     val monitoring by prefs.monitoringState.collectAsStateWithLifecycle()
     // Re-read on every resume: the user may have changed it in the system settings.
@@ -93,6 +94,7 @@ internal fun SettingsScreen(
         address = prefs.baseUrl,
         paired = prefs.isPaired,
         deviceName = deviceName,
+        showToolCalls = showToolCalls,
         monitoring = monitoring,
         canMonitor = prefs.isPaired && conn !is Conn.Unauthorized,
         notificationsOff = !notificationsOn,
@@ -100,6 +102,10 @@ internal fun SettingsScreen(
         tokenNeedsAddress = tokenNeedsAddress,
         onAddress = onAddress,
         onDeviceName = editName,
+        onShowToolCalls = {
+            showToolCalls = it
+            prefs.showToolCalls = it
+        },
         onMonitoring = { on ->
             when {
                 // Without notifications monitoring has no way to reach the user.
@@ -144,6 +150,7 @@ internal fun SettingsContent(
     address: String,
     paired: Boolean,
     deviceName: String,
+    showToolCalls: Boolean,
     monitoring: Boolean,
     canMonitor: Boolean,
     notificationsOff: Boolean,
@@ -151,6 +158,7 @@ internal fun SettingsContent(
     tokenNeedsAddress: Boolean,
     onAddress: () -> Unit,
     onDeviceName: () -> Unit,
+    onShowToolCalls: (Boolean) -> Unit,
     onMonitoring: (Boolean) -> Unit,
     onNotificationSettings: () -> Unit,
     onRepair: () -> Unit,
@@ -209,6 +217,16 @@ internal fun SettingsContent(
                     transformation = SurfaceTransformation(spec),
                     label = { Text(stringResource(R.string.settings_device_name)) },
                     secondaryLabel = { Text(deviceName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                )
+            }
+            item(key = "toolCalls") {
+                SwitchButton(
+                    checked = showToolCalls,
+                    onCheckedChange = onShowToolCalls,
+                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                    label = { Text(stringResource(R.string.settings_tool_calls)) },
+                    secondaryLabel = { Text(stringResource(R.string.settings_tool_calls_detail), maxLines = 2) },
                 )
             }
             if (!demo) {

@@ -120,6 +120,8 @@
     <string name="settings_title">Settings</string>
     <string name="settings_not_set">Not set</string>
     <string name="settings_device_name">Watch name</string>
+    <string name="settings_tool_calls">Show tool calls</string>
+    <string name="settings_tool_calls_detail">Also list commands and file edits in transcripts</string>
     <string name="settings_monitoring">Background alerts</string>
     <string name="settings_monitoring_detail">Stays connected when closed; uses more battery</string>
     <string name="settings_notifications_off">Notifications are off</string>

@@ -105,6 +105,9 @@ const val PAGE_SIZE = 40
 /** Upper bound of items kept in memory per open session. */
 const val ITEM_CAP = 200
 
+/** The item kinds of a transcript without tool calls ([Prefs.showToolCalls] off). */
+val CONVERSATION_KINDS = listOf(ItemKind.USER, ItemKind.ASSISTANT, ItemKind.NOTICE)
+
 private const val MIN_BACKOFF_MS = 1_000L
 private const val MAX_BACKOFF_MS = 30_000L
 private const val JITTER = 0.2
@@ -386,7 +389,7 @@ object Bridge {
                     scope.launch {
                         if (ended.isCompleted || !job.isActive) return@launch
                         socket = webSocket
-                        subscribed?.let { webSocket.send(subscribeMessage(it)) }
+                        subscribed?.let { webSocket.send(subscribeMessage(it, itemKinds())) }
                     }
                 }
 
@@ -556,8 +559,14 @@ object Bridge {
     private fun subscribe(id: String?) {
         if (subscribed == id) return
         subscribed = id
-        socket?.send(subscribeMessage(id))
+        socket?.send(subscribeMessage(id, id?.let { itemKinds() }))
     }
+
+    /**
+     * The item kinds to ask for, null for all. Read on every request, so a changed setting applies
+     * from the next opened session on (Settings is never shown over an open one).
+     */
+    private fun itemKinds(): List<String>? = if (prefs.showToolCalls) null else CONVERSATION_KINDS
 
     /** Loads the newest page. A fetch still in flight is replaced, so a reconnect never skips the reload. */
     private fun loadLatest(id: String) {
@@ -571,10 +580,16 @@ object Bridge {
     }
 
     private suspend fun fetchItems(id: String, before: Long?): ItemPage? {
-        demo?.let { return ItemPage(if (before == null) it.items[id].orEmpty() else emptyList()) }
+        val kinds = itemKinds()
+        demo?.let { data ->
+            // The demo filters locally what a bridge filters for the `kinds` parameter.
+            val items = if (before == null) data.items[id].orEmpty() else emptyList()
+            return ItemPage(if (kinds == null) items else items.filter { it.kind in kinds })
+        }
         val url = apiUrl(prefs.baseUrl, "sessions", id, "items").newBuilder()
             .apply { if (before != null) addQueryParameter("before", before.toString()) }
             .addQueryParameter("limit", PAGE_SIZE.toString())
+            .apply { if (kinds != null) addQueryParameter("kinds", kinds.joinToString(",")) }
             .build()
         val result = send(authed(url).get().build()) ?: return null
         if (result.code == 401) unauthorized()

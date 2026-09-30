@@ -13,8 +13,8 @@ internal class DemoData(
 
 /**
  * Demo mode ("Try demo", store review): the protocol fixtures in assets/protocol/ stand in for a
- * bridge. The first snapshot event supplies sessions, requests and usage; the first item page is
- * shown in every session. Timestamps are shifted so the newest activity reads as a minute ago.
+ * bridge. The first snapshot event supplies sessions, requests and usage; the unfiltered item page
+ * is shown in every session. Timestamps are shifted so the newest activity reads as a minute ago.
  */
 internal object Demo {
     private const val DIR = "protocol"
@@ -30,7 +30,10 @@ internal object Demo {
             try {
                 when {
                     "type" in obj -> if (snapshot == null) snapshot = decodeServerEvent(obj) as? ServerEvent.Snapshot
-                    "items" in obj -> if (page == null) page = WireJson.decodeFromJsonElement(ItemPage.serializer(), obj)
+                    // items.json is the unfiltered page; items-filtered.json, sorted first, is a subset.
+                    "items" in obj -> if (page == null || name == "items.json") {
+                        page = WireJson.decodeFromJsonElement(ItemPage.serializer(), obj)
+                    }
                 }
             } catch (_: IllegalArgumentException) {
                 // A fixture this build cannot read; demo mode shows what it can.

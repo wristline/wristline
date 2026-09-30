@@ -41,6 +41,11 @@ class Prefs(context: Context) {
             sp.edit().putBoolean(KEY_MONITORING, value).apply()
         }
 
+    /** Transcripts include tool calls; off by default, when they show only the conversation. */
+    var showToolCalls: Boolean
+        get() = sp.getBoolean(KEY_SHOW_TOOL_CALLS, false)
+        set(value) = sp.edit().putBoolean(KEY_SHOW_TOOL_CALLS, value).apply()
+
     /** Demo mode is on; like a pairing it survives the process (see Bridge.init). */
     var demo: Boolean
         get() = sp.getBoolean(KEY_DEMO, false)
@@ -68,5 +73,6 @@ class Prefs(context: Context) {
         const val KEY_DEVICE_NAME = "deviceName"
         const val KEY_MONITORING = "monitoring"
         const val KEY_DEMO = "demo"
+        const val KEY_SHOW_TOOL_CALLS = "showToolCalls"
     }
 }

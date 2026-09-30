@@ -17,9 +17,11 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 
 const val API_VERSION = 1
 
@@ -287,11 +289,15 @@ fun decodeServerEvent(obj: JsonObject): ServerEvent? {
 fun parseServerEvent(text: String): ServerEvent? =
     (WireJson.parseToJsonElement(text) as? JsonObject)?.let(::decodeServerEvent)
 
-/** `{type:'subscribe', sessionId}`; built by hand so a null sessionId is sent as JSON null. */
-fun subscribeMessage(sessionId: String?): String =
+/**
+ * `{type:'subscribe', sessionId, kinds?}`; built by hand so a null sessionId is sent as JSON null.
+ * Without [kinds] every item kind is sent.
+ */
+fun subscribeMessage(sessionId: String?, kinds: List<String>? = null): String =
     buildJsonObject {
         put("type", "subscribe")
         put("sessionId", sessionId)
+        if (kinds != null) putJsonArray("kinds") { kinds.forEach { add(it) } }
     }.toString()
 
 /** Epoch millis of an ISO 8601 timestamp, or null when it does not parse. */

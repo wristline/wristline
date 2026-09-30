@@ -200,6 +200,13 @@ class ProtocolTest {
     }
 
     @Test
+    fun subscribeWithKindsMatchesTheFixture() {
+        val fixture = WireJson.parseToJsonElement(File(dir, "client-subscribe-kinds.json").readText()) as JsonObject
+        val sessionId = fixture.getValue("sessionId").jsonPrimitive.content
+        assertEquals(fixture, WireJson.parseToJsonElement(subscribeMessage(sessionId, CONVERSATION_KINDS)))
+    }
+
+    @Test
     fun isoTimestampsParse() {
         assertEquals(1790686680000L, isoToMillis("2026-09-29T12:58:00.000Z"))
         assertEquals(1790686680000L, isoToMillis("2026-09-29T21:58:00+09:00"))
