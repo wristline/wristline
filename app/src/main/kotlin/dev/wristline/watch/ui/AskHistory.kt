@@ -1,6 +1,7 @@
 package dev.wristline.watch.ui
 
 import android.widget.Toast
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -132,13 +133,16 @@ internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String)
                 }
             }
             items(threads, key = { it.id }) { thread ->
+                val interaction = remember { MutableInteractionSource() }
+                val depth = rememberPressDepth(interaction)
                 TitleCard(
                     onClick = { onAsk(thread.id) },
                     onLongClick = { deleting = thread.id },
                     onLongClickLabel = stringResource(R.string.ask_thread_delete_label),
-                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
+                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this).pressScale(depth),
                     transformation = SurfaceTransformation(spec),
                     colors = CardDefaults.cardColors(subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                    interactionSource = interaction,
                     title = {
                         Text(
                             thread.first.question.ifBlank { "…" },

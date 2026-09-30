@@ -1,5 +1,6 @@
 package dev.wristline.watch.ui
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -130,13 +131,15 @@ internal fun SessionListContent(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val iconSize = IconButtonDefaults.iconSizeFor(ACTION_SIZE)
-                    FilledTonalIconButton(onClick = onSettings, modifier = Modifier.size(ACTION_SIZE)) {
+                    // Round, squarer while pressed.
+                    val shapes = IconButtonDefaults.animatedShapes()
+                    FilledTonalIconButton(onClick = onSettings, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                         Icon(painterResource(R.drawable.ic_settings), stringResource(R.string.settings_title), Modifier.size(iconSize))
                     }
-                    FilledIconButton(onClick = onAsk, modifier = Modifier.size(ACTION_SIZE)) {
+                    FilledIconButton(onClick = onAsk, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                         Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.ask_button), Modifier.size(iconSize))
                     }
-                    FilledTonalIconButton(onClick = onAskHistory, modifier = Modifier.size(ACTION_SIZE)) {
+                    FilledTonalIconButton(onClick = onAskHistory, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                         Icon(painterResource(R.drawable.ic_history), stringResource(R.string.ask_history_title), Modifier.size(iconSize))
                     }
                 }
@@ -146,7 +149,7 @@ internal fun SessionListContent(
                     val colors = MaterialTheme.colorScheme
                     Button(
                         onClick = { onRequest(oldestRequest.id) },
-                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this),
                         transformation = SurfaceTransformation(spec),
                         colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
                         label = {
@@ -164,11 +167,14 @@ internal fun SessionListContent(
             }
             if (glance.isNotEmpty()) {
                 item(key = "usage") {
+                    val interaction = remember { MutableInteractionSource() }
+                    val depth = rememberPressDepth(interaction)
                     Card(
                         onClick = onUsage,
-                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this).pressScale(depth),
                         transformation = SurfaceTransformation(spec),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        interactionSource = interaction,
                     ) {
                         // One line for both providers; the second wraps under the first only when
                         // they do not fit side by side.
@@ -262,16 +268,20 @@ private fun TransformingLazyColumnItemScope.SessionCard(
     spec: TransformationSpec,
     onClick: () -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val depth = rememberPressDepth(interaction)
     Card(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
             .transformedHeight(this, spec)
-            .animateItem()
+            .animateItemCalmly(this)
+            .pressScale(depth)
             .then(if (stale) Modifier.alpha(0.6f) else Modifier),
         transformation = SurfaceTransformation(spec),
         // A card's content is gray by default; the name is white, the line under it gray.
         colors = CardDefaults.cardColors(contentColor = MaterialTheme.colorScheme.onSurface),
+        interactionSource = interaction,
     ) {
         // Line 1: the status dot and the session's name, which tells cards apart: the largest text.
         // The dot sits on the top line: near the screen's bottom edge the list morphs the card's

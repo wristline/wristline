@@ -365,7 +365,9 @@ internal fun AskContent(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val iconSize = IconButtonDefaults.iconSizeFor(ACTION_SIZE)
-                        FilledTonalIconButton(onClick = onAgain, enabled = !sending, modifier = Modifier.size(ACTION_SIZE)) {
+                        // Round, squarer while pressed.
+                        val shapes = IconButtonDefaults.animatedShapes()
+                        FilledTonalIconButton(onClick = onAgain, enabled = !sending, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                             if (sending) SmallSpinner() else Icon(painterResource(R.drawable.ic_replay), stringResource(R.string.ask_again), Modifier.size(iconSize))
                         }
                         val other = otherProvider(newest.provider)
@@ -377,17 +379,18 @@ internal fun AskContent(
                                 contentDescription = askOther
                                 role = Role.Button
                             },
+                            shapes = shapes,
                         ) {
                             ProviderBadge(other, size = 20.dp)
                         }
-                        FilledTonalIconButton(onClick = onSpeak, enabled = newest.answer != null, modifier = Modifier.size(ACTION_SIZE)) {
+                        FilledTonalIconButton(onClick = onSpeak, enabled = newest.answer != null, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                             if (speaking) {
                                 Icon(painterResource(R.drawable.ic_stop), stringResource(R.string.ask_stop_reading), Modifier.size(iconSize))
                             } else {
                                 Icon(painterResource(R.drawable.ic_speaker), stringResource(R.string.ask_read_aloud), Modifier.size(iconSize))
                             }
                         }
-                        FilledTonalIconButton(onClick = onFollowUp, enabled = !sending, modifier = Modifier.size(ACTION_SIZE)) {
+                        FilledTonalIconButton(onClick = onFollowUp, enabled = !sending, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                             Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.ask_follow_up), Modifier.size(iconSize))
                         }
                     }

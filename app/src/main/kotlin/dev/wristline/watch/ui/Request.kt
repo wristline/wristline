@@ -329,7 +329,7 @@ private fun TransformingLazyColumnScope.errorItem(error: String?, spec: Transfor
     item(key = "error") {
         CaptionText(
             errorMessage(error),
-            Modifier.edgeTransform(this, spec).animateItem(),
+            Modifier.edgeTransform(this, spec).animateItemCalmly(this),
             color = MaterialTheme.colorScheme.error,
         )
     }

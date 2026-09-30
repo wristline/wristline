@@ -3,9 +3,12 @@ package dev.wristline.watch.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,6 +77,7 @@ import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.FilledTonalIconButton
 import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ProgressIndicatorDefaults
 import androidx.wear.compose.material3.ScreenScaffold
@@ -154,6 +158,9 @@ private val GAUGE_STROKE = 6.dp
 private const val GAUGE_SETTLE_MS = 300L
 // The list's first item: inset and centered, it sits between the gauges.
 private const val HEADER_KEY = "header"
+// What shows and hides as the list scrolls or a tool call opens: never overshooting.
+private val CalmFadeIn = fadeIn(CalmMotion.defaultEffectsSpec())
+private val CalmFadeOut = fadeOut(CalmMotion.defaultEffectsSpec())
 
 /** Holds the session open (its items) exactly as long as the screen is composed. */
 private class OpenedSession(val id: String) : RememberObserver {
@@ -327,7 +334,7 @@ internal fun SessionDetailContent(
         // The scaffold keeps the indicator (at 3 o'clock, under the right gauge) for 2s after a
         // scroll, the gauges come back after GAUGE_SETTLE_MS: hidden while they show.
         scrollIndicator = {
-            AnimatedVisibility(!gaugesShown.arcs, enter = fadeIn(), exit = fadeOut()) { ScrollIndicator(listState) }
+            AnimatedVisibility(!gaugesShown.arcs, enter = CalmFadeIn, exit = CalmFadeOut) { ScrollIndicator(listState) }
         },
     ) { contentPadding ->
         val layoutDirection = LocalLayoutDirection.current
@@ -354,7 +361,7 @@ internal fun SessionDetailContent(
                     CompactButton(
                         onClick = onEarlier,
                         enabled = !state.loading,
-                        modifier = Modifier.transformedHeight(this, spec).animateItem(),
+                        modifier = Modifier.transformedHeight(this, spec).animateItemCalmly(this),
                         transformation = SurfaceTransformation(spec),
                         label = { if (state.loading) SmallSpinner() else Text(stringResource(R.string.detail_earlier)) },
                     )
@@ -383,7 +390,7 @@ internal fun SessionDetailContent(
             }
             if (working) {
                 item(key = "working") {
-                    CaptionText(stringResource(R.string.detail_working), Modifier.edgeTransform(this, spec).animateItem())
+                    CaptionText(stringResource(R.string.detail_working), Modifier.edgeTransform(this, spec).animateItemCalmly(this))
                 }
             }
             if (blockCode != null) {
@@ -398,7 +405,7 @@ internal fun SessionDetailContent(
                     }
                     CaptionText(
                         text,
-                        Modifier.edgeTransform(this, spec).animateItem(),
+                        Modifier.edgeTransform(this, spec).animateItemCalmly(this),
                         color = if (outcome == Sent.Ok) colors.primary else colors.error,
                     )
                 }
@@ -429,14 +436,17 @@ internal fun SessionDetailContent(
             )
         } else if (session != null) {
             Row(actions, horizontalArrangement = Arrangement.spacedBy(ACTION_GAP)) {
-                FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.size(ACTION_SIZE)) {
+                // Round, squarer while pressed, but only so far: square corners this low would reach
+                // past the round screen's edge. The same size, so the pair never shifts.
+                val shapes = IconButtonDefaults.animatedShapes(pressedShape = MaterialTheme.shapes.medium)
+                FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                     if (sending) {
                         SmallSpinner()
                     } else {
                         Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.detail_speak))
                     }
                 }
-                FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.size(ACTION_SIZE)) {
+                FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                     Icon(painterResource(R.drawable.ic_keyboard), stringResource(R.string.detail_type))
                 }
             }
@@ -529,7 +539,7 @@ private fun EdgeGauges(
     fillIn: Boolean,
     onFillStarted: () -> Unit,
 ) {
-    AnimatedVisibility(shown.arcs, enter = fadeIn(), exit = fadeOut()) {
+    AnimatedVisibility(shown.arcs, enter = CalmFadeIn, exit = CalmFadeOut) {
         contextPercent(context)?.let { percent ->
             EdgeGauge(
                 percent,
@@ -591,7 +601,7 @@ private fun EdgeGauge(
     // Not mirrored, so it reads left to right on both sides: on the left it starts past the upper
     // end, on the right it ends before it.
     val upperEnd = GAUGE_START + GAUGE_SWEEP
-    AnimatedVisibility(labelShown, enter = fadeIn(), exit = fadeOut()) {
+    AnimatedVisibility(labelShown, enter = CalmFadeIn, exit = CalmFadeOut) {
         CurvedLayout(
             Modifier.fillMaxSize().padding(edge).clearAndSetSemantics {},
             anchor = if (right) 540f - upperEnd - GAUGE_LABEL_GAP else upperEnd + GAUGE_LABEL_GAP,
@@ -718,7 +728,11 @@ private fun TransformingLazyColumnItemScope.ItemRow(
     val colors = MaterialTheme.colorScheme
     // New items fade in. No placement animation: the rows already follow a neighbour's animated
     // size exactly, and a placement spring would trail it.
-    val appear = Modifier.animateItem(placementSpec = null)
+    val appear = Modifier.animateItemCalmly(this, placement = false)
+    // Cards give a little under the finger, but not expanded: a card far taller than the screen
+    // would slide rather than shrink.
+    val interaction = remember { MutableInteractionSource() }
+    val press = Modifier.pressScale(rememberPressDepth(interaction, enabled = !expanded))
     when (item.kind) {
         ItemKind.USER, ItemKind.ASSISTANT -> {
             // An expanded message can be far taller than the screen, and the edge transformation
@@ -726,8 +740,9 @@ private fun TransformingLazyColumnItemScope.ItemRow(
             // back for the few frames a long message takes to shrink after collapsing.)
             Card(
                 onClick = onToggle,
-                modifier = Modifier.fillMaxWidth().then(if (expanded) Modifier else Modifier.transformedHeight(this, spec)).then(appear),
+                modifier = Modifier.fillMaxWidth().then(if (expanded) Modifier else Modifier.transformedHeight(this, spec)).then(appear).then(press),
                 transformation = if (expanded) null else SurfaceTransformation(spec),
+                interactionSource = interaction,
                 // Tighter than a Card's 12dp: more of the message on the narrow screen.
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                 // A card's content is gray by default; a message is the screen's main text.
@@ -740,7 +755,7 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                 ItemTime(item.ts)
                 Text(
                     if (expanded) item.text else collapsedText(item.text),
-                    modifier = Modifier.animateContentSize(),
+                    modifier = Modifier.animateContentSize(CalmMotion.defaultSpatialSpec()),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = if (expanded) Int.MAX_VALUE else COLLAPSED_LINES,
                     overflow = TextOverflow.Ellipsis,
@@ -749,9 +764,10 @@ private fun TransformingLazyColumnItemScope.ItemRow(
         }
         ItemKind.TOOL -> Card(
             onClick = onToggle,
-            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).then(appear),
+            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).then(appear).then(press),
             transformation = SurfaceTransformation(spec),
             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            interactionSource = interaction,
             colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerLow),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -768,7 +784,11 @@ private fun TransformingLazyColumnItemScope.ItemRow(
             }
             val detail = item.detail
             if (!detail.isNullOrEmpty()) {
-                AnimatedVisibility(visible = expanded) {
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = CalmFadeIn + expandVertically(CalmMotion.defaultSpatialSpec()),
+                    exit = shrinkVertically(CalmMotion.defaultSpatialSpec()) + CalmFadeOut,
+                ) {
                     Text(
                         detail,
                         modifier = Modifier.padding(top = 4.dp),

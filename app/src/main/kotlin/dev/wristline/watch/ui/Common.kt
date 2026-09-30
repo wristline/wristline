@@ -11,8 +11,12 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.Interaction
+import androidx.compose.foundation.interaction.InteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -78,6 +82,7 @@ import java.time.format.TextStyle
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The list's scale-and-fade near the round edge, for items without a Surface (plain text, rows).
@@ -87,6 +92,71 @@ fun Modifier.edgeTransform(scope: TransformingLazyColumnItemScope, spec: Transfo
     transformedHeight(scope, spec).graphicsLayer {
         with(scope) { with(spec) { applyContainerTransformation(scrollProgress) } }
     }
+
+/**
+ * [TransformingLazyColumnItemScope.animateItem] in [CalmMotion]: the item fades in and out, and
+ * (unless not [placement]) slides as others come, go or reorder, never overshooting.
+ */
+fun Modifier.animateItemCalmly(scope: TransformingLazyColumnItemScope, placement: Boolean = true): Modifier =
+    with(scope) {
+        this@animateItemCalmly.animateItem(
+            fadeInSpec = CalmMotion.defaultEffectsSpec(),
+            placementSpec = if (placement) CalmMotion.defaultSpatialSpec() else null,
+            fadeOutSpec = CalmMotion.defaultEffectsSpec(),
+        )
+    }
+
+/** The scale of a card pressed all the way (see [pressScale]): enough to feel it give. */
+internal const val PRESSED_SCALE = 0.96f
+
+/**
+ * Where [interaction] sends a card's press depth: 1 on a press (none when not [enabled]), 0 when
+ * the press ends, whatever [enabled]; null for anything else.
+ */
+internal fun pressTarget(interaction: Interaction, enabled: Boolean): Float? = when (interaction) {
+    is PressInteraction.Press -> if (enabled) 1f else null
+    is PressInteraction.Release, is PressInteraction.Cancel -> 0f
+    else -> null
+}
+
+/** A card's scale at press [depth]: 1 at 0, [PRESSED_SCALE] at 1, past either as the spring overshoots. */
+internal fun pressedScale(depth: Float): Float = 1f - (1f - PRESSED_SCALE) * depth
+
+/**
+ * How far a card is pressed, as [interactionSource] reports it: to 1 while pressed and back to 0
+ * when let go, on the theme's fast spatial spring (a little bounce as it settles; see
+ * [wristlineMotion]). Never pressed with reduced motion, nor, from the next press, when not
+ * [enabled]. For [pressScale].
+ */
+@Composable
+fun rememberPressDepth(interactionSource: InteractionSource, enabled: Boolean = true): State<Float> {
+    // A depth rather than the scale itself: a spring ends within 0.01 of its target, a quarter of
+    // the scale's travel.
+    val depth = remember { Animatable(0f) }
+    val spec = MaterialTheme.motionScheme.fastSpatialSpec<Float>()
+    val reduceMotion = LocalReduceMotion.current
+    val latestEnabled by rememberUpdatedState(enabled)
+    LaunchedEffect(interactionSource, spec, reduceMotion) {
+        depth.snapTo(0f)
+        if (reduceMotion) return@LaunchedEffect
+        interactionSource.interactions.collect { interaction ->
+            val target = pressTarget(interaction, latestEnabled) ?: return@collect
+            // Takes over from the spring before, from where it got to.
+            launch { depth.animateTo(target, spec) }
+        }
+    }
+    return depth.asState()
+}
+
+/**
+ * Shrinks the content a little as it is pressed, [depth] from [rememberPressDepth]. Read only while
+ * drawing: a press redraws the card, never recomposes it.
+ */
+fun Modifier.pressScale(depth: State<Float>): Modifier = graphicsLayer {
+    val scale = pressedScale(depth.value)
+    scaleX = scale
+    scaleY = scale
+}
 
 /** Wall-clock time refreshed every [periodMs] while the screen is at least STARTED. */
 @Composable
@@ -404,8 +474,8 @@ fun TransformingLazyColumnItemScope.ConnBanner(
     onRepair: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
-    val surface = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem()
-    val plain = Modifier.fillMaxWidth().edgeTransform(this, spec).animateItem()
+    val surface = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this)
+    val plain = Modifier.fillMaxWidth().edgeTransform(this, spec).animateItemCalmly(this)
     when (conn) {
         is Conn.Unreachable -> {
             val now = rememberNow(periodMs = 1_000)

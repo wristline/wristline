@@ -263,7 +263,7 @@ internal fun SettingsContent(
                     item(key = "notificationsOff") {
                         FilledTonalButton(
                             onClick = onNotificationSettings,
-                            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
+                            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this),
                             transformation = SurfaceTransformation(spec),
                             label = { Text(stringResource(R.string.settings_notifications_off), color = colors.error) },
                             secondaryLabel = { Text(stringResource(R.string.settings_notifications_open), maxLines = 2) },
@@ -292,7 +292,7 @@ internal fun SettingsContent(
                     item(key = "tokenError") {
                         CaptionText(
                             stringResource(R.string.settings_token_needs_address),
-                            Modifier.edgeTransform(this, spec).animateItem(),
+                            Modifier.edgeTransform(this, spec).animateItemCalmly(this),
                             color = colors.error,
                         )
                     }

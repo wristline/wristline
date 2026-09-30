@@ -2,8 +2,10 @@ package dev.wristline.watch.ui
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.wear.compose.foundation.LocalReduceMotion
 import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.MotionScheme
 
 /**
  * Colors whose meaning is fixed on every screen, whatever the theme's accent: a session's state
@@ -58,8 +60,25 @@ val WristlineColors = ColorScheme(
     onErrorContainer = Color(0xFFFFDAD6),
 )
 
-/** The app's theme: [WristlineColors] with the library's type, shapes and motion. */
+/**
+ * Motion that never overshoots: for what moves on its own as the data changes (items coming,
+ * going and reordering, text growing, the gauges showing), whatever the theme's motion. Also the
+ * theme's motion with reduced motion. Created once, as is [TouchMotion]: a new scheme on every
+ * recomposition would recompose everything that reads it.
+ */
+internal val CalmMotion = MotionScheme.standard()
+
+/** Springs that overshoot a little as they settle: for what a finger moves (see [wristlineMotion]). */
+private val TouchMotion = MotionScheme.expressive()
+
+/**
+ * The theme's motion, which the library's components and [rememberPressDepth] follow: a little
+ * bounce where a finger acts, none with [reduceMotion].
+ */
+internal fun wristlineMotion(reduceMotion: Boolean): MotionScheme = if (reduceMotion) CalmMotion else TouchMotion
+
+/** The app's theme: [WristlineColors] and [wristlineMotion] with the library's type and shapes. */
 @Composable
 fun WristlineTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = WristlineColors, content = content)
+    MaterialTheme(colorScheme = WristlineColors, motionScheme = wristlineMotion(LocalReduceMotion.current), content = content)
 }

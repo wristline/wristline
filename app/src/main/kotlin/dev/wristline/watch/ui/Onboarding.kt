@@ -244,7 +244,7 @@ internal fun AddressContent(
                 item(key = "change") {
                     OutlinedButton(
                         onClick = onEnter,
-                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this),
                         transformation = SurfaceTransformation(spec),
                         label = { Text(stringResource(R.string.address_change)) },
                     )
@@ -252,7 +252,7 @@ internal fun AddressContent(
                 item(key = "token") {
                     OutlinedButton(
                         onClick = onToken,
-                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this),
                         transformation = SurfaceTransformation(spec),
                         label = { Text(stringResource(R.string.token_use)) },
                     )
