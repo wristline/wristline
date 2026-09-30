@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,7 +32,9 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnScope
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
@@ -218,11 +219,11 @@ private fun ProviderChip(provider: String, onClick: () -> Unit) {
  * The conversation [askId] belongs to, newest at the bottom. Under the newest answer: ask the
  * newest question again (a new thread, same provider), ask it of the other provider (a new
  * thread), read the answer aloud, and a follow-up that continues this thread. A new thread swaps
- * this screen for its own ([onReplaced]). Leaving while a question is still running cancels it;
- * a screen opened on top (a notification tap) is not leaving, so only [isPopped] cancels.
+ * this screen for its own ([onReplaced]). Leaving while a question is still running cancels it
+ * ([AskCanceller]); a screen opened on top (a notification tap) is not leaving.
  */
 @Composable
-internal fun AskScreen(askId: String, onReplaced: (String) -> Unit, isPopped: () -> Boolean) {
+internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
     val asks by Bridge.asks.collectAsStateWithLifecycle()
     val conn by Bridge.conn.collectAsStateWithLifecycle()
     val thread = remember(asks, askId) { askThread(asks, askId) }
@@ -234,10 +235,7 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit, isPopped: ()
     val reader = rememberReader()
 
     val running by rememberUpdatedState(newest?.takeIf { it.status == AskStatus.RUNNING }?.id)
-    val popped by rememberUpdatedState(isPopped)
-    DisposableEffect(askId) {
-        onDispose { if (popped()) running?.let { Bridge.cancelAsk(it) } }
-    }
+    viewModel { AskCanceller(askId) }
 
     val code = error
     if (code != null) {
@@ -293,6 +291,18 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit, isPopped: ()
         onSpeak = { newest?.answer?.let { reader.toggle(it) } },
         onFollowUp = followUp,
     )
+}
+
+/**
+ * Cancels the question still running in [askId]'s thread once the Ask screen's back-stack entry
+ * is popped (back, a swipe, or [AskScreen]'s onReplaced): the entry's ViewModels are cleared then,
+ * not when a screen a notification opened covers it or the activity is recreated. The screen's
+ * own onDispose cannot tell: with predictive back (API 36) it runs before the entry is popped.
+ */
+internal class AskCanceller(private val askId: String) : ViewModel() {
+    override fun onCleared() {
+        askThread(Bridge.asks.value, askId)?.lastOrNull()?.takeIf { it.status == AskStatus.RUNNING }?.let { Bridge.cancelAsk(it.id) }
+    }
 }
 
 /** [thread] null or empty: the bridge no longer has it (restarted, expired or deleted). */
