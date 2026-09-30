@@ -473,7 +473,7 @@ object Bridge {
                 AlertKind.NEEDS_INPUT -> if (_requests.value.none { it.sessionId == event.sessionId }) {
                     attention { Notifier.needsInput(appContext, event.sessionId, event.text, session(event.sessionId)) }
                 }
-                AlertKind.DONE -> if (!foreground) Notifier.done(appContext, event.sessionId, event.text, session(event.sessionId))
+                AlertKind.DONE -> if (!foreground) Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId))
             }
         }
     }

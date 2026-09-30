@@ -108,6 +108,18 @@ class ProtocolTest {
         assertNull(event.session.context)
     }
 
+    // Hand-written on purpose: `title` on a done alert is optional and newer than the fixture.
+    @Test
+    fun alertDecodesWithAndWithoutTitle() {
+        val plain = parseServerEvent("""{"type":"alert","sessionId":"codex:1","alert":"done","text":"Finished."}""") as ServerEvent.Alert
+        assertNull(plain.title)
+        val titled = parseServerEvent(
+            """{"type":"alert","sessionId":"codex:1","alert":"done","title":"Tests fixed","text":"All 12 pass."}""",
+        ) as ServerEvent.Alert
+        assertEquals("Tests fixed", titled.title)
+        assertEquals("All 12 pass.", titled.text)
+    }
+
     // Hand-written on purpose: the fixtures carry `account` on every live session and usage entry,
     // so the single-account (absent) case and an unknown key inside it are covered here.
     @Test

@@ -105,8 +105,8 @@ no push service (such as Firebase Cloud Messaging) is involved.
   title or working-folder name. When an agent waits for input without an open request, the same
   channel shows the session title and the agent's waiting message (up to about 120 characters),
   or "Needs input".
-- **Task updates**: the session title and the first line (up to about 120 characters) of the
-  agent's last reply, or "Finished".
+- **Task updates**: a title the bridge chose for the update, or else the session title, and up to
+  about 500 characters of the agent's last reply (expandable on the watch), or "Finished".
 - **Background connection**: with background alerts on, a silent ongoing notification such as
   "Monitoring sessions · 2 running · 1 waiting".
 
@@ -122,6 +122,13 @@ single WebSocket connection to your bridge while the app is closed, so requests 
 notifications. It runs only while that switch is on, stops itself when the pairing is removed or
 revoked, and does not start at boot (it resumes the next time you open the app). It uses more
 battery than leaving it off.
+
+While that switch is on, the service also listens to the watch's off-body sensor (Android's
+`TYPE_LOW_LATENCY_OFFBODY_DETECT`, which needs no permission). It is used for one thing: when the
+watch is taken off, the connection to the bridge is closed and the ongoing notification reads "Not
+worn"; when it is put back on, the connection resumes. The sensor's on/off value is handled in
+memory on the watch only; it is never stored, logged with any identifying detail, or sent to the
+bridge or anywhere else. No health or body-sensor data (heart rate and the like) is read.
 
 ## Data retention and deletion
 
@@ -259,7 +266,8 @@ Wristline Bridge 자체는 사용자의 PC에서 실행되는 오픈소스 소�
 - **응답 요청**(진동): 요청 제목(보통 "Bash" 같은 도구 이름)과 세션 제목 또는 작업 폴더 이름. 열린
   요청 없이 에이전트가 입력을 기다릴 때는 같은 채널에 세션 제목과 에이전트의 대기 메시지(최대 약
   120자) 또는 "입력 필요"가 표시됩니다.
-- **작업 알림**: 세션 제목과 에이전트의 마지막 답변 첫 줄(최대 약 120자), 또는 "작업을 마쳤습니다".
+- **작업 알림**: 브릿지가 정한 알림 제목(없으면 세션 제목)과 에이전트의 마지막 답변(최대 약 500자,
+  워치에서 펼쳐 볼 수 있음), 또는 "작업을 마쳤습니다".
 - **백그라운드 연결**: 백그라운드 알림이 켜져 있을 때 "세션 모니터링 중 · 실행 2 · 대기 1" 같은
   무음 상시 알림.
 
@@ -273,6 +281,12 @@ Wristline Bridge 자체는 사용자의 PC에서 실행되는 오픈소스 소�
 WebSocket 연결 하나를 유지해 요청이 알림으로 도착하게 합니다. 이 스위치가 켜져 있는 동안만 실행되고,
 페어링이 해제되거나 취소되면 스스로 멈추며, 부팅 시 자동 시작하지 않습니다(다음에 앱을 열 때 다시
 시작). 꺼 둘 때보다 배터리를 더 씁니다.
+
+이 스위치가 켜져 있는 동안 서비스는 워치의 착용 감지 센서(Android의
+`TYPE_LOW_LATENCY_OFFBODY_DETECT`, 권한 불필요)도 사용합니다. 용도는 하나뿐입니다. 워치를 손목에서
+벗으면 브릿지와의 연결을 끊고 상시 알림에 "손목에서 벗음"을 표시하며, 다시 차면 연결을 재개합니다.
+센서의 착용/벗음 값은 워치 메모리 안에서만 처리되고 저장하거나 식별 정보와 함께 기록하거나 브릿지 등
+외부로 보내지 않습니다. 심박수 같은 건강·신체 센서 데이터는 읽지 않습니다.
 
 ## 보관과 삭제
 

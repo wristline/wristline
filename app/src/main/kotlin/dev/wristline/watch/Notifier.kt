@@ -83,10 +83,11 @@ object Notifier {
         )
     }
 
-    fun done(context: Context, sessionId: String, text: String?, session: Session?) {
+    /** [title] is the alert's own title, when the bridge sends one; otherwise the session title. */
+    fun done(context: Context, sessionId: String, title: String?, text: String?, session: Session?) {
         post(
             context, TAG_SESSION, sessionId, CHANNEL_UPDATES, MainActivity.EXTRA_SESSION_ID,
-            title = sessionTitle(context, session),
+            title = title?.takeIf { it.isNotBlank() } ?: sessionTitle(context, session),
             text = text ?: context.getString(R.string.notify_done),
         )
     }
@@ -154,6 +155,8 @@ object Notifier {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
+            // Done alerts carry up to about 500 characters; expanded on the watch they show in full.
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             // The request code keeps the PendingIntents of different notifications apart (extras do not count).
             .setContentIntent(
                 PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),

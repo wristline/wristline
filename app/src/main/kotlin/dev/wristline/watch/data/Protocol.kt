@@ -252,9 +252,9 @@ sealed interface ServerEvent {
     @Serializable
     data class UsageChanged(val usage: Usage) : ServerEvent
 
-    /** [alert] is `needs_input` | `done`. */
+    /** [alert] is `needs_input` | `done`. [title], when present, heads a done notification. */
     @Serializable
-    data class Alert(val sessionId: String, val alert: String, val text: String? = null) : ServerEvent
+    data class Alert(val sessionId: String, val alert: String, val text: String? = null, val title: String? = null) : ServerEvent
 }
 
 /**

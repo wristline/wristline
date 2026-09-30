@@ -7,7 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.wear.ongoing.OngoingActivity
@@ -20,6 +25,7 @@ import dev.wristline.watch.data.SessionStatus
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -49,6 +55,10 @@ internal fun ongoingStatusText(
  * Background monitoring: holds the bridge connection ([Bridge.acquire]) while the app is closed,
  * so requests and alerts arrive as notifications. Shown as an ongoing activity with live counts.
  *
+ * While the watch is off the wrist (the off-body sensor, no permission needed) the hold is
+ * released, so the socket closes and the bridge's presence for this watch goes false; the status
+ * reads "Not worn" meanwhile. Putting the watch back on reconnects.
+ *
  * Runs only while the user has it on in Settings ([dev.wristline.watch.data.Prefs.monitoring]).
  * There is no boot receiver: after a reboot, or when the system stops the service, it starts
  * again the next time Wristline is opened ([sync] from MainActivity). It stops itself, and turns
@@ -57,6 +67,20 @@ internal fun ongoingStatusText(
 class MonitorService : Service() {
     private val scope = MainScope()
     private var running = false
+
+    /** False while the off-body sensor says the watch is not worn; the hold follows it. */
+    private val worn = MutableStateFlow(true)
+    private val offBody = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val on = event.values[0] != 0f
+            if (on == worn.value) return
+            worn.value = on
+            Log.i(TAG, if (on) "On wrist: reconnecting" else "Off wrist: pausing the connection")
+            if (on) Bridge.acquire() else Bridge.release()
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -95,9 +119,17 @@ class MonitorService : Service() {
         }
         running = true
         Bridge.acquire()
+        // An on-change sensor delivers the current state on registration, so a watch already on
+        // the charger releases the hold right away.
+        val sensors = getSystemService(SensorManager::class.java)
+        sensors.getDefaultSensor(Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT)?.let {
+            sensors.registerListener(offBody, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
 
         scope.launch {
-            combine(Bridge.conn, Bridge.sessions, Bridge.requests, ::statusText)
+            combine(Bridge.conn, Bridge.sessions, Bridge.requests, worn) { conn, sessions, requests, worn ->
+                if (worn) statusText(conn, sessions, requests) else getString(R.string.ongoing_off_body)
+            }
                 .distinctUntilChanged()
                 .conflate()
                 .collect { text ->
@@ -122,7 +154,8 @@ class MonitorService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
-        if (running) Bridge.release()
+        getSystemService(SensorManager::class.java).unregisterListener(offBody)
+        if (running && worn.value) Bridge.release()
         super.onDestroy()
     }
 
@@ -144,6 +177,7 @@ class MonitorService : Service() {
     private fun status(text: String): Status = Status.Builder().addTemplate(text).build()
 
     companion object {
+        private const val TAG = "Wristline"
         private const val NOTIFICATION_ID = 1
         private const val STATUS_INTERVAL_MS = 2_000L
 

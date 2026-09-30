@@ -139,4 +139,5 @@
     <string name="ongoing_running">실행 %1$d</string>
     <string name="ongoing_waiting">대기 %1$d</string>
     <string name="ongoing_idle">실행 중인 세션 없음</string>
+    <string name="ongoing_off_body">손목에서 벗음</string>
 </resources>

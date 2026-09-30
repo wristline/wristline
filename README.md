@@ -27,6 +27,11 @@ vibrate (tap one to answer it), and finished tasks as quieter updates. It shows 
 activity such as "2 running · 1 waiting" and uses more battery than leaving it off. Notifications
 must be allowed for it to run.
 
+When you take the watch off (the off-body sensor, no extra permission), the service drops the
+connection and the ongoing activity reads "Not worn", so the bridge sees the watch as absent
+within about 90 seconds; putting it back on reconnects. The sensor is read on the watch only and
+nothing about it is stored or sent.
+
 There is no start-at-boot: after the watch restarts, or if the system stops the service, monitoring
 resumes the next time you open Wristline. Unpairing or a revoked pairing turns it off.
 
