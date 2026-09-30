@@ -110,6 +110,19 @@ object Notifier {
         NotificationManagerCompat.from(context).cancel(TAG_SESSION, notificationId(sessionId))
     }
 
+    /** Cancels [session]'s alert when its status no longer fits it (see [notificationApplies]). */
+    fun cancelStale(context: Context, session: Session) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val id = notificationId(session.id)
+        for (active in manager.activeNotifications) {
+            if (active.tag == TAG_SESSION && active.id == id &&
+                !notificationApplies(active.tag, active.notification.channelId, id, emptyList(), listOf(session))
+            ) {
+                manager.cancel(active.tag, active.id)
+            }
+        }
+    }
+
     /**
      * Cancels the notifications that no longer apply (see [notificationApplies]). Also clears
      * notifications left by an earlier process. Empty lists cancel everything except the

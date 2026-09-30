@@ -48,4 +48,22 @@ class AlertReplayTest {
         )
         assertEquals(listOf("al-5"), replayableAlerts(alerts, sessions, now).map { it.id })
     }
+
+    @Test
+    fun anAlertFilteredOutIsNotReplayedByALaterSnapshot() {
+        val seen = ArrayDeque<String>()
+        val handled = mutableListOf<String>()
+        // What Bridge.onAlert does: each id once.
+        val onAlert = { alert: ServerEvent.Alert -> if (seen.markSeen(alert.id!!)) handled += alert.id!! }
+        val old = alert("al-1", running.id, AlertKind.DONE)
+        // A reconnect while the session runs again: its done alert is stale.
+        seen.replayAlerts(listOf(old), sessions, now, onAlert)
+        // It finishes again; the newer alert comes live.
+        val newer = alert("al-2", running.id, AlertKind.DONE, at = "2026-09-29T12:59:30Z")
+        onAlert(newer)
+        // Another reconnect within the replay window, the session idle now: the old one must not
+        // replace the newer notification.
+        seen.replayAlerts(listOf(old, newer), listOf(running.copy(status = SessionStatus.IDLE)), now, onAlert)
+        assertEquals(listOf("al-2"), handled)
+    }
 }

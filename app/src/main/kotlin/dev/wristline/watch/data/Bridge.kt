@@ -266,11 +266,38 @@ internal fun replayableAlerts(alerts: List<ServerEvent.Alert>, sessions: List<Se
         }
     }
 
+/** Remembers the handled alert [id] among the newest [ALERT_IDS_KEPT]; false when it already was. */
+internal fun ArrayDeque<String>.markSeen(id: String): Boolean {
+    if (id in this) return false
+    addLast(id)
+    if (size > ALERT_IDS_KEPT) removeFirst()
+    return true
+}
+
+/**
+ * Hands [handle] a snapshot's [replayableAlerts], then marks every one of [alerts] seen: the
+ * filtered ones no longer apply and never will, but once their session moves on (idle again after
+ * running) a later snapshot would replay one over the newer alert.
+ */
+internal fun ArrayDeque<String>.replayAlerts(alerts: List<ServerEvent.Alert>, sessions: List<Session>, now: Long, handle: (ServerEvent.Alert) -> Unit) {
+    replayableAlerts(alerts, sessions, now).forEach(handle)
+    alerts.forEach { alert -> alert.id?.let { markSeen(it) } }
+}
+
 /** Replaces the ask with the same id, or puts a new one first; never more than [ASK_KEEP]. */
 internal fun List<Ask>.withAsk(ask: Ask): List<Ask> {
     val index = indexOfFirst { it.id == ask.id }
     if (index >= 0) return toMutableList().apply { set(index, ask) }
     return (listOf(ask) + this).take(ASK_KEEP)
+}
+
+/**
+ * Lists the ask a 202 accepted. An `ask` event can beat the response (a CLI that fails to start at
+ * once): that record keeps its status and gains the question and thread only the watch knew.
+ */
+internal fun List<Ask>.withAccepted(ask: Ask): List<Ask> {
+    val current = firstOrNull { it.id == ask.id } ?: return withAsk(ask)
+    return withAsk(current.copy(question = ask.question, threadId = ask.threadId))
 }
 
 /**
@@ -695,7 +722,7 @@ object Bridge {
                     logReceived("request", it.id, looking, posted = !looking && postRequest(it))
                 }
                 // Alerts the closed socket missed, oldest first; the ones already handled are skipped.
-                replayableAlerts(event.alerts, event.sessions, System.currentTimeMillis()).forEach(::onAlert)
+                seenAlertIds.replayAlerts(event.alerts, event.sessions, System.currentTimeMillis(), ::onAlert)
                 onOnline()
                 // The subscription alone does not replay what the socket missed.
                 subscribed?.let { loadLatest(it) }
@@ -705,8 +732,9 @@ object Bridge {
             }
             is ServerEvent.SessionChanged -> {
                 _sessions.value = sortSessions(_sessions.value.filterNot { it.id == event.session.id } + event.session)
-                // Working again: its needs-input or done alert is stale. (An ended one is removed.)
-                if (event.session.status == SessionStatus.RUNNING) Notifier.cancelSession(appContext, event.session.id)
+                // Working again: its needs-input or done alert is stale; no longer waiting (answered or
+                // dismissed on the PC): its needs-input alert is. (An ended one is removed.)
+                if (event.session.status != SessionStatus.NEEDS_INPUT) Notifier.cancelStale(appContext, event.session)
             }
             is ServerEvent.SessionRemoved -> {
                 _sessions.value = _sessions.value.filterNot { it.id == event.sessionId }
@@ -736,11 +764,7 @@ object Bridge {
     /** A live alert, or one replayed by a snapshot; each id is handled once. */
     private fun onAlert(event: ServerEvent.Alert) {
         val id = event.id
-        if (id != null) {
-            if (id in seenAlertIds) return
-            seenAlertIds.addLast(id)
-            if (seenAlertIds.size > ALERT_IDS_KEPT) seenAlertIds.removeFirst()
-        }
+        if (id != null && !seenAlertIds.markSeen(id)) return
         val looking = looking()
         val posted = when (event.alert) {
             AlertKind.NEEDS_INPUT -> _requests.value.none { it.sessionId == event.sessionId } &&
@@ -997,7 +1021,7 @@ object Bridge {
                     accepted.askId, provider, text, AskStatus.RUNNING,
                     createdAt = Instant.now().toString(), threadId = threadId ?: accepted.askId,
                 )
-                _asks.update { it.withAsk(ask) }
+                _asks.update { it.withAccepted(ask) }
                 AskSent.Started(ask.id)
             }
             401 -> {

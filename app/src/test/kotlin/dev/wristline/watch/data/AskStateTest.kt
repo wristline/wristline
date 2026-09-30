@@ -63,4 +63,25 @@ class AskStateTest {
         assertEquals(ProviderId.CODEX, placeholder.provider)
         assertEquals(AskStatus.RUNNING, placeholder.status)
     }
+
+    @Test
+    fun acceptedAskIsListedAsRunning() {
+        val list = listOf(ask("a")).withAccepted(ask("b").copy(threadId = "a"))
+        assertEquals(listOf("b", "a"), ids(list))
+        assertEquals(AskStatus.RUNNING, list.first().status)
+    }
+
+    @Test
+    fun anEventBeforeThe202KeepsItsStatus() {
+        // The CLI failed to start at once: the error event arrived before the 202.
+        val failed = emptyList<Ask>().withAskEvent(
+            ServerEvent.AskChanged("b", ProviderId.CLAUDE_CODE, AskStatus.ERROR, durationMs = 0, error = "enoent"),
+        )
+        val list = failed.withAccepted(ask("b").copy(threadId = "a"))
+        val ask = list.single()
+        assertEquals(AskStatus.ERROR, ask.status)
+        assertEquals("enoent", ask.error)
+        assertEquals("qb", ask.question)
+        assertEquals("a", ask.threadId)
+    }
 }
