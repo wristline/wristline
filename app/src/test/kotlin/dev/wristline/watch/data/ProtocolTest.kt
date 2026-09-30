@@ -216,24 +216,26 @@ class ProtocolTest {
         assertEquals("OK", list[1].answer)
     }
 
-    // Hand-written on purpose: `threadId` on asks and in the ask body is newer than the fixtures.
+    // The fixtures carry `threadId` on every ask; an older bridge's ask without one is its own thread.
     @Test
     fun askThreadIdIsOptionalAndSent() {
-        val list = decode<AskList>(
+        val list = decode<AskList>(WireJson.parseToJsonElement(File(dir, "asks.json").readText()) as JsonObject).asks
+        val follow = list.first { it.threadId != it.id }
+        assertEquals(follow.threadId, list.first { it.id == follow.threadId }.thread)
+        val bare = decode<Ask>(
             WireJson.parseToJsonElement(
-                """{"asks":[
-                   {"id":"ask-2","provider":"codex","question":"more?","status":"running","createdAt":"2026-09-29T00:01:00Z","threadId":"ask-1"},
-                   {"id":"ask-1","provider":"codex","question":"what?","status":"done","answer":"this","createdAt":"2026-09-29T00:00:00Z"}]}""",
+                """{"id":"ask-1","provider":"codex","question":"what?","status":"done","answer":"this","createdAt":"2026-09-29T00:00:00Z"}""",
             ) as JsonObject,
-        ).asks
-        assertEquals("ask-1", list[0].threadId)
-        assertEquals("ask-1", list[0].thread)
-        assertEquals("", list[1].threadId)
-        assertEquals("ask-1", list[1].thread)
-        assertEquals(
-            """{"provider":"codex","text":"more?","threadId":"ask-1"}""",
-            WireJson.encodeToString(AskBody.serializer(), AskBody("codex", "more?", threadId = "ask-1")),
         )
+        assertEquals("", bare.threadId)
+        assertEquals("ask-1", bare.thread)
+        val fixture = WireJson.parseToJsonElement(File(dir, "ask-thread.json").readText()) as JsonObject
+        val body = AskBody(
+            fixture.getValue("provider").jsonPrimitive.content,
+            fixture.getValue("text").jsonPrimitive.content,
+            threadId = fixture.getValue("threadId").jsonPrimitive.content,
+        )
+        assertEquals(fixture, WireJson.parseToJsonElement(WireJson.encodeToString(AskBody.serializer(), body)))
         assertEquals("""{"provider":"codex","text":"what?"}""", WireJson.encodeToString(AskBody.serializer(), AskBody("codex", "what?")))
     }
 
@@ -297,10 +299,10 @@ class ProtocolTest {
         assertEquals("""{"type":"subscribe","sessionId":"codex:1"}""", subscribeMessage("codex:1"))
     }
 
-    // Hand-written on purpose until the bridge ships a client-mode fixture.
     @Test
-    fun modeMessageNamesTheMode() {
-        assertEquals("""{"type":"mode","mode":"background"}""", modeMessage(background = true))
+    fun modeMessageMatchesTheFixture() {
+        val fixture = WireJson.parseToJsonElement(File(dir, "client-mode.json").readText())
+        assertEquals(fixture, WireJson.parseToJsonElement(modeMessage(background = true)))
         assertEquals("""{"type":"mode","mode":"foreground"}""", modeMessage(background = false))
     }
 
