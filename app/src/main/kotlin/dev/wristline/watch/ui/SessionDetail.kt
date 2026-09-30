@@ -27,7 +27,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -57,8 +56,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.wear.compose.foundation.AnchorType
+import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
@@ -135,14 +137,17 @@ private val SCRIM_HEIGHT = 72.dp
 // on each side, so it spans at most about 234 to 306 degrees.
 private const val TIME_TEXT_SWEEP = 62f
 // Left gauge on the upper flank, in degrees clockwise from 3 o'clock; the right gauge mirrors it
-// (312 to 340). Both stay about 6 degrees (10dp at the edge) clear of the widest time text, and the
-// right one clear of the scroll indicator at 3 o'clock.
+// (320 to 340), clear of the scroll indicator at 3 o'clock. Past each upper end, GAUGE_LABEL_GAP
+// on, its percentage: `100%` at 10sp takes about 13 degrees, so it ends near 236 (304 on the right),
+// short of the widest time text's letters, which start at 239.
 private const val GAUGE_START = 200f
-private const val GAUGE_SWEEP = 28f
+private const val GAUGE_SWEEP = 20f
+// Clears the arc's round end (half the stroke, under 2 degrees) with a little room to spare.
+private const val GAUGE_LABEL_GAP = 3f
 // No thinner than the scroll indicator (5dp, 6dp on screens 225dp and wider).
 private val GAUGE_STROKE = 6.dp
-// How long the gauges stay after scrolling stops, as the scroll indicator does.
-private const val GAUGE_HOLD_MS = 1_200L
+// How long the list stays still before the gauges show.
+private const val GAUGE_SETTLE_MS = 300L
 
 /** Holds the session open (its items) exactly as long as the screen is composed. */
 private class OpenedSession(val id: String) : RememberObserver {
@@ -414,8 +419,8 @@ internal fun SessionDetailContent(
                 }
             }
         }
-        // The content is a Box: what is composed after the list is drawn over it. A card scrolling
-        // under the gauges is covered there while they show.
+        // The content is a Box: what is composed after the list is drawn over it. A card lying
+        // at rest under the gauges is covered there.
         if (session != null) EdgeGauges(listState, session.context, limit)
         // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
         // it does not dim them; with no pointer input, touches on it reach the list.
@@ -488,25 +493,23 @@ private fun limitColor(percent: Int): Color =
     if (percent >= NEAR_LIMIT_PERCENT) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
 
 /**
- * Context use (left) and the limit window (right) as bare arcs on the upper flanks; the header
- * spells out their numbers. Clear of the time text and the scroll indicator; both fill upwards,
- * towards the time. They show at the top of the list, next to the header, and like the scroll
- * indicator while it scrolls and for [GAUGE_HOLD_MS] after; at rest elsewhere they fade out.
+ * Context use (left) and the limit window (right) as bare arcs on the upper flanks, each with its
+ * percentage just past its upper end; the header spells out the same numbers. Clear of the time
+ * text and the scroll indicator; both fill upwards, towards the time. They show only while the list
+ * is at rest, wherever it is: they fade out as soon as it scrolls and back in [GAUGE_SETTLE_MS]
+ * after it stops.
  */
 @Composable
 private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextUsage?, limit: UsageWindow?) {
-    // Scrolling, or scrolled within the last GAUGE_HOLD_MS.
-    var scrolled by remember(listState) { mutableStateOf(false) }
+    // Not scrolled for the last GAUGE_SETTLE_MS.
+    var resting by remember(listState) { mutableStateOf(false) }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
-            if (!scrolling) delay(GAUGE_HOLD_MS)
-            scrolled = scrolling
+            if (!scrolling) delay(GAUGE_SETTLE_MS)
+            resting = !scrolling
         }
     }
-    val visible by remember(listState) {
-        derivedStateOf { scrolled || listState.layoutInfo.visibleItems.firstOrNull()?.index == 0 }
-    }
-    AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
+    AnimatedVisibility(resting, enter = fadeIn(), exit = fadeOut()) {
         contextPercent(context)?.let { percent ->
             EdgeGauge(percent, MaterialTheme.colorScheme.primary, right = false)
         }
@@ -541,6 +544,16 @@ private fun EdgeGauge(percent: Double, color: Color, right: Boolean) {
         ),
         strokeWidth = GAUGE_STROKE,
     )
+    // Not mirrored, so it reads left to right on both sides: on the left it starts past the upper
+    // end, on the right it ends before it.
+    val upperEnd = GAUGE_START + GAUGE_SWEEP
+    CurvedLayout(
+        Modifier.fillMaxSize().padding(edge).clearAndSetSemantics {},
+        anchor = if (right) 540f - upperEnd - GAUGE_LABEL_GAP else upperEnd + GAUGE_LABEL_GAP,
+        anchorType = if (right) AnchorType.End else AnchorType.Start,
+    ) {
+        curvedText("${percent.roundToInt()}%", color = color.copy(alpha = 0.85f), fontSize = 10.sp)
+    }
 }
 
 /**

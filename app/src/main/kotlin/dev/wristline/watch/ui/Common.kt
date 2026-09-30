@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -132,23 +133,37 @@ fun providerLabel(provider: String): String = when (provider) {
     else -> provider
 }
 
-/** Claude's warm orange, darkened from #D97757 to 3.9:1 on the badge's white. */
-private val ClaudeOrange = Color(0xFFC96442)
-
-/** Codex blue: white on it is 4.1:1, and it is 3.2:1 on the cards' dark surface. */
-private val CodexBlue = Color(0xFF2A7FD4)
+// Provider colors sampled from the official icons (sources in branding/README.md). The letters on
+// them are our own monograms, not the logos.
+/**
+ * Claude's orange, #D97757: the whole of https://claude.ai/favicon.ico and the top of the
+ * background of https://claude.ai/apple-touch-icon.png. White on it is 3.1:1.
+ */
+private val ClaudeOrange = Color(0xFFD97757)
 
 /**
- * A provider's 16dp monogram: an orange C on white for Claude Code, a white C on blue for Codex,
- * otherwise the id's first letter in an outlined circle. Read out as the provider's name.
+ * The top and bottom of the blue gradient in the Codex app icon (`icon-codex-light.png` in the
+ * Codex desktop app, https://persistent.oaistatic.com/codex-app-prod/appcast.xml): converted from
+ * Display P3 to sRGB, averaged across the shape 5 to 15% and 85 to 95% of the way down.
+ */
+private val CodexTop = Color(0xFFB7AEFF)
+private val CodexBottom = Color(0xFF3B36FF)
+
+/**
+ * A provider's 16dp monogram: a white C on a Claude-orange circle for Claude Code, a white C on a
+ * square in the Codex icon's gradient for Codex, otherwise the id's first letter in an outlined
+ * circle. Read out as the provider's name.
  */
 @Composable
 fun ProviderBadge(provider: String, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     val label = providerLabel(provider)
     val (fill, letterColor) = when (provider) {
-        ProviderId.CLAUDE_CODE -> Modifier.background(Color.White, CircleShape) to ClaudeOrange
-        ProviderId.CODEX -> Modifier.background(CodexBlue, RoundedCornerShape(4.dp)) to Color.White
+        ProviderId.CLAUDE_CODE -> Modifier.background(ClaudeOrange, CircleShape) to Color.White
+        ProviderId.CODEX -> Modifier.background(
+            Brush.verticalGradient(listOf(CodexTop, CodexBottom)),
+            RoundedCornerShape(4.dp),
+        ) to Color.White
         else -> Modifier.border(1.dp, colors.outline, CircleShape) to colors.onSurfaceVariant
     }
     // A fixed-size mark, so the letter is sized in dp: in sp a large font scale would overflow it.

@@ -14,6 +14,21 @@ no font is needed to render any of these files.
 | Wordmark on dark | `#EDEFF3` | `wristline-lockup-dark.svg` |
 | Wordmark on light | `#14171C` | `wristline-lockup-light.svg` |
 
+## Provider badge colors
+
+The session list and detail screens mark each session with a 16dp provider badge
+(`ProviderBadge` in `app/src/main/kotlin/dev/wristline/watch/ui/Common.kt`). Its colors are sampled
+from each provider's official icon; the white bold "C" on them is our own monogram, not either
+provider's logo.
+
+| Badge | Color | Sampled from |
+| --- | --- | --- |
+| Claude Code: circle | `#D97757` | [claude.ai/favicon.ico](https://claude.ai/favicon.ico) (every opaque pixel) and the top of [claude.ai/apple-touch-icon.png](https://claude.ai/apple-touch-icon.png), whose background runs to `#DB6945` at the bottom. The "Claude by Anthropic" icon on [Google Play](https://play.google.com/store/apps/details?id=com.anthropic.claude) has the same gradient (`#DA7353` to `#DB6A46` after WebP compression). |
+| Codex: rounded square, vertical gradient | `#B7AEFF` (top) to `#3B36FF` (bottom) | `ChatGPT.app/Contents/Resources/icon-codex-light.png` (1024×1024, Display P3) in the Codex desktop app, [ChatGPT-darwin-arm64-26.928.21956.zip](https://persistent.oaistatic.com/codex-app-prod/ChatGPT-darwin-arm64-26.928.21956.zip) from the app's update feed ([appcast.xml](https://persistent.oaistatic.com/codex-app-prod/appcast.xml)). Converted to sRGB, then averaged across the cloud shape in two bands a tenth of its height tall, 5 to 15% and 85 to 95% of the way down. |
+
+White on the orange is 3.1:1; on the Codex gradient it runs from 2.0:1 at the very top to 6.7:1 at
+the bottom (3.7:1 at the middle, behind the letter's center).
+
 ## Clear space
 
 Keep empty space of at least a quarter of the mark's height on every side of the mark or the
