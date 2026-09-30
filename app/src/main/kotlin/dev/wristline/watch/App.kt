@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
@@ -104,19 +105,27 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
                         onRepair = { nav.navigate(Route.code(Bridge.prefs.baseUrl)) },
                     )
                 }
+                // A notification tap (launchSingleTop) reuses the entry on top for another id; keyed by
+                // the id, the screen starts afresh instead of keeping the last one's draft or dialog.
                 composable(Route.SESSION) { entry ->
                     val id = entry.arguments?.getString("id").orEmpty()
-                    SessionDetailScreen(sessionId = id, onRespond = { nav.navigate(Route.request(it)) })
+                    key(id) { SessionDetailScreen(sessionId = id, onRespond = { nav.navigate(Route.request(it)) }) }
                 }
                 composable(Route.REQUEST) { entry ->
                     val id = entry.arguments?.getString("id").orEmpty()
-                    RequestScreen(requestId = id, onDone = { nav.popBackStack() })
+                    key(id) { RequestScreen(requestId = id, onDone = { nav.popBackStack() }) }
                 }
                 composable(Route.USAGE) { UsageScreen() }
                 composable(Route.ASK) { entry ->
                     val id = entry.arguments?.getString("id").orEmpty()
                     // A new question from this screen replaces it, so a swipe back lands on the list.
-                    AskScreen(askId = id, onReplaced = { nav.navigate(Route.ask(it)) { popUpTo(Route.ASK) { inclusive = true } } })
+                    AskScreen(
+                        askId = id,
+                        onReplaced = { nav.navigate(Route.ask(it)) { popUpTo(Route.ASK) { inclusive = true } } },
+                        // Off the back stack, not just covered by a screen a notification opened. There is
+                        // never more than one ask screen on the stack, so the topmost is this one until popped.
+                        isPopped = { runCatching { nav.getBackStackEntry(Route.ASK) }.getOrNull()?.id != entry.id },
+                    )
                 }
                 composable(Route.ASKS) { AskHistoryScreen(onAsk = { nav.navigate(Route.ask(it)) }) }
                 composable(Route.SETTINGS) {

@@ -133,7 +133,7 @@ internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String)
             }
             items(threads, key = { it.id }) { thread ->
                 TitleCard(
-                    onClick = { onAsk(thread.newest.id) },
+                    onClick = { onAsk(thread.id) },
                     onLongClick = { deleting = thread.id },
                     onLongClickLabel = stringResource(R.string.ask_thread_delete_label),
                     modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),

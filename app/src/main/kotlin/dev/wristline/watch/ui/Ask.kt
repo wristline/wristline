@@ -76,12 +76,14 @@ internal fun otherProvider(provider: String): String =
     if (provider == ProviderId.CODEX) ProviderId.CLAUDE_CODE else ProviderId.CODEX
 
 /**
- * The conversation [askId] belongs to, oldest first, or null when the bridge no longer has the
- * ask. [asks] is newest first, so among equal times the later-listed ask is the older one.
+ * The conversation [askId] belongs to, oldest first, or null when the bridge has none of it. A
+ * thread's id is its first ask's id, so the thread is still found by that id once the bridge,
+ * which keeps only its newest asks, has dropped the first one. [asks] is newest first, so among
+ * equal times the later-listed ask is the older one.
  */
 internal fun askThread(asks: List<Ask>, askId: String): List<Ask>? {
-    val ask = asks.firstOrNull { it.id == askId } ?: return null
-    return asks.asReversed().filter { it.thread == ask.thread }.sortedBy { isoToMillis(it.createdAt) ?: 0L }
+    val thread = asks.firstOrNull { it.id == askId }?.thread ?: askId
+    return asks.asReversed().filter { it.thread == thread }.sortedBy { isoToMillis(it.createdAt) ?: 0L }.ifEmpty { null }
 }
 
 /** The icon buttons under the newest answer. */
@@ -216,10 +218,11 @@ private fun ProviderChip(provider: String, onClick: () -> Unit) {
  * The conversation [askId] belongs to, newest at the bottom. Under the newest answer: ask the
  * newest question again (a new thread, same provider), ask it of the other provider (a new
  * thread), read the answer aloud, and a follow-up that continues this thread. A new thread swaps
- * this screen for its own ([onReplaced]). Leaving while a question is still running cancels it.
+ * this screen for its own ([onReplaced]). Leaving while a question is still running cancels it;
+ * a screen opened on top (a notification tap) is not leaving, so only [isPopped] cancels.
  */
 @Composable
-internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
+internal fun AskScreen(askId: String, onReplaced: (String) -> Unit, isPopped: () -> Boolean) {
     val asks by Bridge.asks.collectAsStateWithLifecycle()
     val conn by Bridge.conn.collectAsStateWithLifecycle()
     val thread = remember(asks, askId) { askThread(asks, askId) }
@@ -231,8 +234,9 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
     val reader = rememberReader()
 
     val running by rememberUpdatedState(newest?.takeIf { it.status == AskStatus.RUNNING }?.id)
+    val popped by rememberUpdatedState(isPopped)
     DisposableEffect(askId) {
-        onDispose { running?.let { Bridge.cancelAsk(it) } }
+        onDispose { if (popped()) running?.let { Bridge.cancelAsk(it) } }
     }
 
     val code = error

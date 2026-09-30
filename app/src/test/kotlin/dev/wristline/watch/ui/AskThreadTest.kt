@@ -36,6 +36,14 @@ class AskThreadTest {
     }
 
     @Test
+    fun askThreadFindsTheConversationByItsIdAfterItsFirstAskIsDropped() {
+        // The bridge keeps only its newest asks: a's own ask is gone, its follow-ups are still listed.
+        val dropped = asks.filterNot { it.id == "a" }
+        assertEquals(listOf("b", "c"), askThread(dropped, "a")!!.map { it.id })
+        assertNull(askThread(dropped, "z"))
+    }
+
+    @Test
     fun equalTimesKeepTheBridgeOrder() {
         val same = listOf(ask("b", "12:00", threadId = "a"), ask("a", "12:00"))
         assertEquals(listOf("a", "b"), askThread(same, "a")!!.map { it.id })

@@ -117,8 +117,8 @@ const val PAGE_SIZE = 40
 /** Upper bound of items kept in memory per open session. */
 const val ITEM_CAP = 200
 
-/** Quick Asks kept per device, newest first; the same number the bridge keeps. */
-const val ASK_KEEP = 20
+/** Quick Asks kept per device, newest first; the same number the bridge keeps (ASK_KEEP in its src/ask.ts). */
+const val ASK_KEEP = 10
 
 /** How long the demo "thinks" before its canned answer. */
 private const val DEMO_ASK_MS = 1_500L
