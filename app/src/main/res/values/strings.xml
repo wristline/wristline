@@ -92,7 +92,7 @@
     <string name="detail_empty">No messages yet.</string>
     <string name="detail_load_failed">Couldn\'t load messages.</string>
     <string name="detail_gone">This session is no longer on the bridge.</string>
-    <string name="detail_context">ctx %1$d%%</string>
+    <string name="detail_context">ctx</string>
     <string name="detail_context_description">Context %1$d%%</string>
 
     <!-- Request -->

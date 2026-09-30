@@ -31,26 +31,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.wear.compose.foundation.CurvedAlignment
-import androidx.wear.compose.foundation.CurvedLayout
-import androidx.wear.compose.foundation.CurvedModifier
-import androidx.wear.compose.foundation.CurvedTextStyle
-import androidx.wear.compose.foundation.background
-import androidx.wear.compose.foundation.clearAndSetSemantics
-import androidx.wear.compose.foundation.curvedColumn
-import androidx.wear.compose.foundation.curvedRow
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.items
@@ -63,7 +58,6 @@ import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.CircularProgressIndicatorDefaults
 import androidx.wear.compose.material3.CompactButton
-import androidx.wear.compose.material3.CurvedTextDefaults
 import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.FilledTonalIconButton
@@ -109,17 +103,12 @@ private val ACTION_SIZE = 44.dp
 // the time text spans about 234 to 306 degrees. The title gets what the time and separator leave.
 private const val TIME_TEXT_SWEEP = 62f
 private const val TITLE_SWEEP = 34f
-private const val MODEL_SWEEP = 50f
-private val MODEL_SIZE = 12.sp
 // Left gauge on the upper flank, in degrees clockwise from 3 o'clock; the right gauge mirrors it
 // (312 to 340). Both stay about 6 degrees (10dp at the edge) clear of the widest time text, and the
 // right one clear of the scroll indicator at 3 o'clock.
 private const val GAUGE_START = 200f
 private const val GAUGE_SWEEP = 28f
 private val GAUGE_STROKE = 3.dp
-// Gauge labels are secondary: small, and in their arc's color but faded.
-private val GAUGE_LABEL_SIZE = 11.sp
-private const val GAUGE_LABEL_ALPHA = 0.7f
 
 /** Holds the session open (its items) exactly as long as the screen is composed. */
 private class OpenedSession(val id: String) : RememberObserver {
@@ -305,8 +294,8 @@ internal fun SessionDetailContent(
         }
     }
 
-    // The title and model move into the time text once the header, which shows them too, has
-    // scrolled up under it.
+    // The title moves into the time text once the header, which shows it too, has scrolled up
+    // under it.
     val headerShown by remember(listState) {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -325,6 +314,7 @@ internal fun SessionDetailContent(
             item(key = "header") {
                 DetailHeader(
                     session = session,
+                    limit = limit,
                     gone = gone,
                     modifier = Modifier
                         .edgeTransform(this, spec)
@@ -453,73 +443,57 @@ private fun windowShort(window: UsageWindow): String {
     }
 }
 
+/** Context use in percent, or null when unknown. */
+private fun contextPercent(context: ContextUsage?): Double? =
+    context?.takeIf { it.window > 0 }?.let { it.used * 100.0 / it.window }
+
+/** The limit window's color: tertiary, or the error color near the limit. */
+@Composable
+private fun limitColor(percent: Int): Color =
+    if (percent >= NEAR_LIMIT_PERCENT) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
+
 /**
- * Context use (left) and the limit window (right) as thin arcs on the upper flanks, each with a
- * short curved label (`ctx 64%`, `5h 18%`; spelled out for screen readers) inside it. Clear of the
- * time text and the scroll indicator; both fill upwards, towards the time.
+ * Context use (left) and the limit window (right) as bare thin arcs on the upper flanks; the
+ * header spells out their numbers. Clear of the time text and the scroll indicator; both fill
+ * upwards, towards the time.
  */
 @Composable
 private fun EdgeGauges(context: ContextUsage?, limit: UsageWindow?) {
-    val colors = MaterialTheme.colorScheme
-    if (context != null && context.window > 0) {
-        val percent = context.used * 100.0 / context.window
-        val shown = percent.roundToInt()
+    contextPercent(context)?.let { percent ->
         EdgeGauge(
             percent,
-            stringResource(R.string.detail_context, shown),
-            stringResource(R.string.detail_context_description, shown),
-            colors.primary,
+            stringResource(R.string.detail_context_description, percent.roundToInt()),
+            MaterialTheme.colorScheme.primary,
             right = false,
         )
     }
     if (limit != null) {
         val percent = limit.usedPercent.roundToInt()
-        val color = if (percent >= NEAR_LIMIT_PERCENT) colors.error else colors.tertiary
-        EdgeGauge(limit.usedPercent, "${windowShort(limit)} $percent%", "${windowLabel(limit)} $percent%", color, right = true)
+        EdgeGauge(limit.usedPercent, "${windowLabel(limit)} $percent%", limitColor(percent), right = true)
     }
 }
 
 @Composable
-private fun EdgeGauge(percent: Double, label: String, description: String, color: Color, right: Boolean) {
+private fun EdgeGauge(percent: Double, description: String, color: Color, right: Boolean) {
     // As in PercentRing: the indicator observes only the State its first progress lambda reads.
     val progress by rememberUpdatedState((percent / 100).toFloat().coerceIn(0f, 1f))
     val edge = CircularProgressIndicatorDefaults.FullScreenPadding
     CircularProgressIndicator(
         progress = { progress },
         // The right gauge is the left one mirrored, so it too fills upwards.
-        modifier = Modifier.fillMaxSize().padding(edge).graphicsLayer { if (right) scaleX = -1f },
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(edge)
+            .graphicsLayer { if (right) scaleX = -1f }
+            .clearAndSetSemantics { contentDescription = description },
         startAngle = GAUGE_START,
         endAngle = GAUGE_START + GAUGE_SWEEP,
         colors = ProgressIndicatorDefaults.colors(indicatorColor = color),
         strokeWidth = GAUGE_STROKE,
     )
-    // The label is centered on its arc, just inside it, and never runs past the arc's ends. Its
-    // background keeps it legible over the list scrolling under it.
-    val middle = GAUGE_START + GAUGE_SWEEP / 2
-    val style = CurvedTextStyle(MaterialTheme.typography.labelSmall)
-    val background = CurvedTextDefaults.backgroundColor()
-    CurvedLayout(
-        Modifier.fillMaxSize().padding(edge + GAUGE_STROKE + 2.dp),
-        anchor = if (right) 180f - middle else middle,
-    ) {
-        curvedText(
-            label,
-            modifier = CurvedModifier
-                .clearAndSetSemantics { contentDescription = description }
-                .background(background, StrokeCap.Round),
-            maxSweepAngle = GAUGE_SWEEP,
-            color = color.copy(alpha = GAUGE_LABEL_ALPHA),
-            fontSize = GAUGE_LABEL_SIZE,
-            style = style,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
 }
 
-/**
- * The time with the session's title before it and its model on a second line under both; the plain
- * time without a [session].
- */
+/** The time with the session's title before it, cut short to fit; the plain time without a [session]. */
 @Composable
 private fun DetailTimeText(session: Session?) {
     if (session == null) {
@@ -527,38 +501,16 @@ private fun DetailTimeText(session: Session?) {
         return
     }
     val title = sessionTitle(session)
-    // As in the header; a long one is cut short rather than widen the time text into the gauges.
-    val model = listOfNotNull(session.model, session.effort).joinToString(" · ").ifEmpty { providerLabel(session.provider) }
-    val dotColor = statusColor(session.status)
-    val status = statusDescription(session.status)
-    val titleStyle = TimeTextDefaults.timeTextStyle()
-    val modelStyle = CurvedTextStyle(
-        MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = MODEL_SIZE),
-    )
-    // Each line has its own background: the time text's would be one block around both.
-    val background = CurvedModifier.background(TimeTextDefaults.backgroundColor(), StrokeCap.Round)
-    TimeText(maxSweepAngle = TIME_TEXT_SWEEP, backgroundColor = Color.Transparent) { time ->
-        curvedColumn(angularAlignment = CurvedAlignment.Angular.Center) {
-            curvedRow(background) {
-                curvedText(title, maxSweepAngle = TITLE_SWEEP, overflow = TextOverflow.Ellipsis, style = titleStyle)
-                timeTextSeparator()
-                timeTextCurvedText(time)
-            }
-            curvedRow(background) {
-                curvedText(
-                    "\u2022 ",
-                    modifier = CurvedModifier.clearAndSetSemantics { contentDescription = status },
-                    color = dotColor,
-                    style = modelStyle,
-                )
-                curvedText(model, maxSweepAngle = MODEL_SWEEP, overflow = TextOverflow.Ellipsis, style = modelStyle)
-            }
-        }
+    val style = TimeTextDefaults.timeTextStyle()
+    TimeText(maxSweepAngle = TIME_TEXT_SWEEP) { time ->
+        curvedText(title, maxSweepAngle = TITLE_SWEEP, overflow = TextOverflow.Ellipsis, style = style)
+        timeTextSeparator()
+        timeTextCurvedText(time)
     }
 }
 
 @Composable
-private fun DetailHeader(session: Session?, gone: Boolean, modifier: Modifier) {
+private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, modifier: Modifier) {
     val colors = MaterialTheme.colorScheme
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         if (session != null) {
@@ -586,10 +538,48 @@ private fun DetailHeader(session: Session?, gone: Boolean, modifier: Modifier) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            GaugeNumbers(session.context, limit)
         } else if (gone) {
             CaptionText(stringResource(R.string.detail_gone))
         }
     }
+}
+
+/**
+ * The edge gauges' numbers, `ctx 46% · 5h 6%`: muted labels, each number in its arc's color.
+ * Nothing when neither is known.
+ */
+@Composable
+private fun GaugeNumbers(context: ContextUsage?, limit: UsageWindow?) {
+    val contextShown = contextPercent(context)?.roundToInt()
+    val limitShown = limit?.usedPercent?.roundToInt()
+    if (contextShown == null && limitShown == null) return
+    val contextLabel = stringResource(R.string.detail_context)
+    val contextTint = MaterialTheme.colorScheme.primary
+    val limitTint = limitShown?.let { limitColor(it) } ?: Color.Unspecified
+    val spoken = listOfNotNull(
+        contextShown?.let { stringResource(R.string.detail_context_description, it) },
+        limit?.let { "${windowLabel(it)} $limitShown%" },
+    ).joinToString(", ")
+    val text = buildAnnotatedString {
+        if (contextShown != null) {
+            append("$contextLabel ")
+            withStyle(SpanStyle(color = contextTint)) { append("$contextShown%") }
+        }
+        if (limit != null) {
+            if (contextShown != null) append(" · ")
+            append("${windowShort(limit)} ")
+            withStyle(SpanStyle(color = limitTint)) { append("$limitShown%") }
+        }
+    }
+    Text(
+        text,
+        modifier = Modifier.padding(horizontal = 24.dp).clearAndSetSemantics { contentDescription = spoken },
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 @Composable
