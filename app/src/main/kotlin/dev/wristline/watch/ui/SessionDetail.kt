@@ -10,6 +10,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -36,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
@@ -121,9 +124,11 @@ private val ACTION_SIZE = 44.dp
 private val ACTION_GAP = 10.dp
 // Low in the round screen's bottom chin, the two buttons still inside the circle.
 private val ACTIONS_BOTTOM = 6.dp
-// The list's end padding as a share of the screen height: at rest the newest short card sits near
-// the middle, well above the actions.
-private const val END_PADDING_FRACTION = 0.4f
+// The list's end padding as a share of the screen height: at rest the newest short card ends about
+// 70% down the screen, a little above the actions.
+private const val END_PADDING_FRACTION = 0.3f
+// Behind the actions, rising well above them: content scrolling under them fades out.
+private val SCRIM_HEIGHT = 72.dp
 
 // The curved top text (model and effort, in the time text's place) at its widest, centered on 12
 // o'clock (270 degrees clockwise from 3 o'clock); its background's round ends add about 5 degrees
@@ -331,7 +336,7 @@ internal fun SessionDetailContent(
     }
 
     // No EdgeButton: the actions are small and fixed in the screen's bottom chin, and the list's
-    // end padding keeps the newest card above them, near the middle.
+    // end padding keeps the newest card above them.
     ScreenScaffold(scrollState = listState, timeText = { DetailTopText(session) }) { contentPadding ->
         val layoutDirection = LocalLayoutDirection.current
         // Default rotary behaviour (fling with haptics): long messages are read continuously, not item by item.
@@ -412,6 +417,15 @@ internal fun SessionDetailContent(
         // The content is a Box: what is composed after the list is drawn over it. A card scrolling
         // under the gauges is covered there while they show.
         if (session != null) EdgeGauges(listState, session.context, limit)
+        // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
+        // it does not dim them; with no pointer input, touches on it reach the list.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(SCRIM_HEIGHT)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, colors.background))),
+        )
         // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
         val actions = Modifier.align(Alignment.BottomCenter).padding(bottom = ACTIONS_BOTTOM)
         if (hasRequest) {
@@ -494,22 +508,17 @@ private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextU
     }
     AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
         contextPercent(context)?.let { percent ->
-            EdgeGauge(
-                percent,
-                stringResource(R.string.detail_context_description, percent.roundToInt()),
-                MaterialTheme.colorScheme.primary,
-                right = false,
-            )
+            EdgeGauge(percent, MaterialTheme.colorScheme.primary, right = false)
         }
         if (limit != null) {
             val percent = limit.usedPercent.roundToInt()
-            EdgeGauge(limit.usedPercent, "${windowLabel(limit)} $percent%", limitColor(percent), right = true)
+            EdgeGauge(limit.usedPercent, limitColor(percent), right = true)
         }
     }
 }
 
 @Composable
-private fun EdgeGauge(percent: Double, description: String, color: Color, right: Boolean) {
+private fun EdgeGauge(percent: Double, color: Color, right: Boolean) {
     // As in PercentRing: the indicator observes only the State its first progress lambda reads.
     val progress by rememberUpdatedState((percent / 100).toFloat().coerceIn(0f, 1f))
     val edge = CircularProgressIndicatorDefaults.FullScreenPadding
@@ -520,7 +529,9 @@ private fun EdgeGauge(percent: Double, description: String, color: Color, right:
             .fillMaxSize()
             .padding(edge)
             .graphicsLayer { if (right) scaleX = -1f }
-            .clearAndSetSemantics { contentDescription = description },
+            // Silent: the header reads the numbers, and a full-screen node over the list would hide
+            // everything under it from accessibility services.
+            .clearAndSetSemantics {},
         startAngle = GAUGE_START,
         endAngle = GAUGE_START + GAUGE_SWEEP,
         // A track plainly visible on the black, well short of the fill. The ends are round.
