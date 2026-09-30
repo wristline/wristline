@@ -147,7 +147,7 @@ class ProtocolTest {
         assertEquals(Account("chatgpt-1", "school"), event.usage.account)
     }
 
-    // Hand-written until the bridge fixtures carry them: model and effort are optional.
+    // The fixtures carry model and effort together; one without the other, or neither, is covered here.
     @Test
     fun sessionModelAndEffortDecodeWhenPresent() {
         val list = decode<SessionList>(

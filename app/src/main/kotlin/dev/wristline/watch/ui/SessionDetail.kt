@@ -8,6 +8,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -268,10 +270,17 @@ internal fun SessionDetailContent(
     val atBottom = !listState.canScrollForward
     val lastSeq = items.lastOrNull()?.seq
     var placed by remember { mutableStateOf(false) }
+    // Set while following new items down, so the gauges stay through that scroll.
+    var following by remember { mutableStateOf(false) }
     LaunchedEffect(lastSeq, footers) {
         if (lastSeq == null || !atBottom) return@LaunchedEffect
         if (placed) {
-            listState.animateScrollToItem(lastIndex)
+            following = true
+            try {
+                listState.animateScrollToItem(lastIndex)
+            } finally {
+                following = false
+            }
         } else {
             // First page: start at the bottom without animating.
             listState.scrollToItem(lastIndex)
@@ -281,8 +290,13 @@ internal fun SessionDetailContent(
 
     // No EdgeButton: the actions are small and last in the list, so the transcript keeps the screen.
     ScreenScaffold(scrollState = listState) { contentPadding ->
-        // The content is a Box: the gauges composed first are drawn under the list.
-        if (session != null) EdgeGauges(session.context, limit)
+        // The content is a Box: the gauges composed first are drawn under the list. They show at the
+        // bottom, beside the actions; scrolled-up text would run over their labels.
+        if (session != null) {
+            AnimatedVisibility(visible = atBottom || following, enter = fadeIn(), exit = fadeOut()) {
+                EdgeGauges(session.context, limit)
+            }
+        }
         // Default rotary behaviour (fling with haptics): long messages are read continuously, not item by item.
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item(key = "header") {
@@ -416,8 +430,8 @@ private fun windowShort(window: UsageWindow): String {
 
 /**
  * Context use (left) and the limit window (right) as thin arcs on the lower edge, each with a
- * curved label inside it. Drawn under the list, clear of the time text, the scroll indicator and
- * the actions; both fill upwards.
+ * curved label inside it. Clear of the time text, the scroll indicator and the actions; both fill
+ * upwards.
  */
 @Composable
 private fun EdgeGauges(context: ContextUsage?, limit: UsageWindow?) {

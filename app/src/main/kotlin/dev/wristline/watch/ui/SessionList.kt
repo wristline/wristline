@@ -14,6 +14,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -192,13 +193,13 @@ internal fun glanceUsage(usage: List<Usage>): List<Usage> =
 /**
  * `Claude     5h 14% · 7d 40%`, `Codex     12% · 40%`: Claude Code windows keep their short ids,
  * other providers' ids are long (`primary`) so only the percentages show. The numbers are larger
- * and tabular; one near its limit takes the error color.
+ * and tabular, the ids smaller and muted; a number near its limit takes the error color.
  */
 @Composable
 private fun GlanceLine(u: Usage) {
     val colors = MaterialTheme.colorScheme
     val number = SpanStyle(fontSize = MaterialTheme.typography.titleLarge.fontSize, fontFeatureSettings = "tnum")
-    val muted = SpanStyle(color = colors.onSurfaceVariant)
+    val muted = SpanStyle(fontSize = MaterialTheme.typography.labelSmall.fontSize, color = colors.onSurfaceVariant)
     val windows = buildAnnotatedString {
         u.windows.forEachIndexed { i, w ->
             if (i > 0) withStyle(muted) { append(" · ") }
@@ -209,9 +210,11 @@ private fun GlanceLine(u: Usage) {
     }
     // The numbers always show whole; a long provider name gives way first.
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Start-aligned: a button centers its label text.
         Text(
             providerLabel(u.provider),
             Modifier.weight(1f).alignByBaseline(),
+            textAlign = TextAlign.Start,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
