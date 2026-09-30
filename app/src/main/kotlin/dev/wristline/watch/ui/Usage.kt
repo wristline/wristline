@@ -144,7 +144,7 @@ private fun WindowRow(window: UsageWindow, locale: Locale, modifier: Modifier) {
 }
 
 @Composable
-private fun windowLabel(window: UsageWindow): String {
+internal fun windowLabel(window: UsageWindow): String {
     val minutes = window.minutes ?: when (window.id) {
         "5h" -> 300
         "7d" -> 10_080

@@ -40,10 +40,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.wear.compose.foundation.AnchorType
 import androidx.wear.compose.foundation.CurvedDirection
 import androidx.wear.compose.foundation.CurvedLayout
+import androidx.wear.compose.foundation.CurvedModifier
+import androidx.wear.compose.foundation.CurvedTextStyle
+import androidx.wear.compose.foundation.clearAndSetSemantics
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.items
@@ -96,6 +101,9 @@ private val ACTION_SIZE = 44.dp
 private const val GAUGE_START = 120f
 private const val GAUGE_SWEEP = 40f
 private val GAUGE_STROKE = 4.dp
+// Gauge labels are secondary: small, and in their arc's color but faded.
+private val GAUGE_LABEL_SIZE = 12.sp
+private const val GAUGE_LABEL_ALPHA = 0.7f
 
 /** Holds the session open (its items) exactly as long as the screen is composed. */
 private class OpenedSession(val id: String) : RememberObserver {
@@ -430,25 +438,32 @@ private fun windowShort(window: UsageWindow): String {
 
 /**
  * Context use (left) and the limit window (right) as thin arcs on the lower edge, each with a
- * curved label inside it. Clear of the time text, the scroll indicator and the actions; both fill
- * upwards.
+ * short curved label (`ctx 64%`, `5h 18%`; spelled out for screen readers) inside it. Clear of the
+ * time text, the scroll indicator and the actions; both fill upwards.
  */
 @Composable
 private fun EdgeGauges(context: ContextUsage?, limit: UsageWindow?) {
     val colors = MaterialTheme.colorScheme
     if (context != null && context.window > 0) {
         val percent = context.used * 100.0 / context.window
-        EdgeGauge(percent, stringResource(R.string.detail_context, percent.roundToInt()), colors.primary, right = false)
+        val shown = percent.roundToInt()
+        EdgeGauge(
+            percent,
+            stringResource(R.string.detail_context, shown),
+            stringResource(R.string.detail_context_description, shown),
+            colors.primary,
+            right = false,
+        )
     }
     if (limit != null) {
         val percent = limit.usedPercent.roundToInt()
         val color = if (percent >= NEAR_LIMIT_PERCENT) colors.error else colors.tertiary
-        EdgeGauge(limit.usedPercent, "${windowShort(limit)} $percent%", color, right = true)
+        EdgeGauge(limit.usedPercent, "${windowShort(limit)} $percent%", "${windowLabel(limit)} $percent%", color, right = true)
     }
 }
 
 @Composable
-private fun EdgeGauge(percent: Double, label: String, color: Color, right: Boolean) {
+private fun EdgeGauge(percent: Double, label: String, description: String, color: Color, right: Boolean) {
     // As in PercentRing: the indicator observes only the State its first progress lambda reads.
     val progress by rememberUpdatedState((percent / 100).toFloat().coerceIn(0f, 1f))
     val edge = CircularProgressIndicatorDefaults.FullScreenPadding
@@ -461,14 +476,25 @@ private fun EdgeGauge(percent: Double, label: String, color: Color, right: Boole
         colors = ProgressIndicatorDefaults.colors(indicatorColor = color),
         strokeWidth = GAUGE_STROKE,
     )
-    val middle = GAUGE_START + GAUGE_SWEEP / 2
-    val style = MaterialTheme.typography.arcSmall
+    // The label hangs from the arc's upper end, away from the actions, and never runs past the arc.
+    // Read counterclockwise, it starts there on the left and ends there on the right.
+    val end = GAUGE_START + GAUGE_SWEEP
+    val style = CurvedTextStyle(MaterialTheme.typography.labelSmall)
     CurvedLayout(
         Modifier.fillMaxSize().padding(edge + GAUGE_STROKE + 2.dp),
-        anchor = if (right) 180f - middle else middle,
+        anchor = if (right) 180f - end else end,
+        anchorType = if (right) AnchorType.End else AnchorType.Start,
         angularDirection = CurvedDirection.Angular.CounterClockwise,
     ) {
-        curvedText(label, color = color, style = style)
+        curvedText(
+            label,
+            modifier = CurvedModifier.clearAndSetSemantics { contentDescription = description },
+            maxSweepAngle = GAUGE_SWEEP,
+            color = color.copy(alpha = GAUGE_LABEL_ALPHA),
+            fontSize = GAUGE_LABEL_SIZE,
+            style = style,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
