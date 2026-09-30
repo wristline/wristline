@@ -160,11 +160,32 @@ internal fun attentionFor(looking: Boolean, done: Boolean, sessionId: String, op
     if (looking && (!done || sessionId == openSession)) Attention.TICK else Attention.POST
 
 /**
- * The [requests] to post when the app goes to the background: those this process has not posted
- * yet ([posted] ids). One already posted stays quiet even when the user dismissed it.
+ * The requests whose notification this process posted, until they are resolved. Going to the
+ * background posts only the others ([unposted]): one already posted stays quiet even when the user
+ * dismissed it. Not thread-safe; the bridge uses it on its dispatcher only.
  */
-internal fun requestsToPost(requests: List<PendingRequest>, posted: Set<String>): List<PendingRequest> =
-    requests.filter { it.id !in posted }
+internal class PostedRequests {
+    private val ids = HashSet<String>()
+
+    /** The [requests] not posted yet. */
+    fun unposted(requests: List<PendingRequest>): List<PendingRequest> = requests.filter { it.id !in ids }
+
+    /** Posts [request] with [notify] and remembers it when that returns true; returns what [notify] did. */
+    fun post(request: PendingRequest, notify: (PendingRequest) -> Boolean): Boolean =
+        notify(request).also { if (it) ids += request.id }
+
+    /** A snapshot lists every open request: the ids not among [requests] ended meanwhile. */
+    fun keepOnly(requests: List<PendingRequest>) {
+        ids.retainAll(requests.mapTo(HashSet()) { it.id })
+    }
+
+    /** [id] was resolved: should it come back, it is posted again. */
+    fun forget(id: String) {
+        ids -= id
+    }
+
+    fun clear() = ids.clear()
+}
 
 /**
  * Who holds the connection. With an activity the bridge is told `foreground` and pushes
@@ -283,6 +304,9 @@ object Bridge {
 
     /** Keeps the socket through short interruptions such as the text-input activity. */
     private const val LINGER_MS = 10_000L
+
+    /** How long the requests on screen stay unposted while the user types or dictates; see [toBackground]. */
+    private const val INPUT_GRACE_MS = 60_000L
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
@@ -335,12 +359,21 @@ object Bridge {
     private val latestJobs = HashMap<String, Job>()
     private val seenAlertIds = ArrayDeque<String>()
 
-    /** Requests whose notification this process posted, until they are resolved; see [requestsToPost]. */
-    private val postedRequests = HashSet<String>()
+    private val postedRequests = PostedRequests()
+
+    /** Posts the requests on screen when the app went to the background; see [toBackground]. */
+    private var backgroundJob: Job? = null
 
     /** MainActivity is resumed and the screen is on; see [looking]. */
     @Volatile
     var foreground = false
+
+    /**
+     * Set on the main thread right after the app opened the system text or speech input over
+     * MainActivity, which pauses it next; see [toBackground].
+     */
+    @Volatile
+    var inputOpening = false
 
     /**
      * The user is looking at the app: requests then only tick the vibrator (the screens show them);
@@ -352,12 +385,30 @@ object Bridge {
     /**
      * MainActivity is paused, or the screen went off: the requests its screens were showing (only
      * ticked) become notifications. Idempotent: the ones already posted are not posted again.
+     * Paused for the app's own text or speech input ([inputOpening]), the user has not left: they
+     * wait [INPUT_GRACE_MS], and [toForeground] on the way back drops them.
      */
     fun toBackground() {
         foreground = false
+        val delayMs = if (inputOpening) INPUT_GRACE_MS else 0L
+        inputOpening = false
         scope.launch {
-            if (demo != null) return@launch
-            requestsToPost(_requests.value, postedRequests).forEach { postRequest(it) }
+            backgroundJob?.cancel()
+            backgroundJob = scope.launch {
+                delay(delayMs)
+                if (demo != null) return@launch
+                postedRequests.unposted(_requests.value).forEach { postRequest(it) }
+            }
+        }
+    }
+
+    /** MainActivity is resumed: requests [toBackground] has not posted yet stay unposted. */
+    fun toForeground() {
+        foreground = true
+        inputOpening = false
+        scope.launch {
+            backgroundJob?.cancel()
+            backgroundJob = null
         }
     }
 
@@ -634,7 +685,7 @@ object Bridge {
                 val known = _requests.value.mapTo(HashSet()) { it.id }
                 _sessions.value = sortSessions(event.sessions)
                 _requests.value = event.requests
-                postedRequests.retainAll(event.requests.mapTo(HashSet()) { it.id })
+                postedRequests.keepOnly(event.requests)
                 _usage.value = event.usage
                 _conn.value = Conn.Online
                 // Requests that arrived or ended while the socket was down.
@@ -721,11 +772,11 @@ object Bridge {
 
     /** Posts [request]'s notification and remembers it in [postedRequests]; true when posted. */
     private fun postRequest(request: PendingRequest): Boolean =
-        Notifier.request(appContext, request, session(request.sessionId)).also { if (it) postedRequests += request.id }
+        postedRequests.post(request) { Notifier.request(appContext, it, session(it.sessionId)) }
 
     private fun removeRequest(id: String) {
         _requests.update { list -> list.filterNot { it.id == id } }
-        postedRequests -= id
+        postedRequests.forget(id)
         Notifier.cancelRequest(appContext, id)
     }
 

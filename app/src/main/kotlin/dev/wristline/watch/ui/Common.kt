@@ -58,6 +58,7 @@ import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.input.RemoteInputIntentHelper
 import dev.wristline.watch.R
+import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.SessionStatus
@@ -300,6 +301,8 @@ fun rememberTextInputLauncher(label: String, onText: (String) -> Unit): () -> Bo
             RemoteInputIntentHelper.putRemoteInputsExtra(intent, listOf(RemoteInput.Builder(INPUT_KEY).setLabel(label).build()))
             try {
                 launcher.launch(intent)
+                // The pause that follows is not the user leaving the app.
+                Bridge.inputOpening = true
                 true
             } catch (_: ActivityNotFoundException) {
                 false
@@ -332,6 +335,7 @@ internal fun rememberSpeechInput(prompt: String, onText: (String) -> Unit): () -
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             try {
                 launcher.launch(intent)
+                Bridge.inputOpening = true
                 true
             } catch (_: ActivityNotFoundException) {
                 false

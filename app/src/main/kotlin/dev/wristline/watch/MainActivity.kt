@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        Bridge.foreground = true
+        Bridge.toForeground()
     }
 
     override fun onPause() {
