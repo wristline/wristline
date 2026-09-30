@@ -67,7 +67,7 @@ class ProtocolTest {
         when {
             "type" in obj -> {
                 val type = obj.getValue("type").jsonPrimitive.content
-                if (type == "subscribe") return // ClientEvent: sent by the watch, never decoded
+                if (type == "subscribe" || type == "mode") return // ClientEvent: sent by the watch, never decoded
                 val event = decodeServerEvent(obj)
                 assertNotNull("unknown event type '$type'", event)
                 if (event is ServerEvent.Snapshot) assertEquals(API_VERSION, event.apiVersion)
@@ -274,6 +274,13 @@ class ProtocolTest {
     fun subscribeSendsExplicitNull() {
         assertEquals("""{"type":"subscribe","sessionId":null}""", subscribeMessage(null))
         assertEquals("""{"type":"subscribe","sessionId":"codex:1"}""", subscribeMessage("codex:1"))
+    }
+
+    // Hand-written on purpose until the bridge ships a client-mode fixture.
+    @Test
+    fun modeMessageNamesTheMode() {
+        assertEquals("""{"type":"mode","mode":"background"}""", modeMessage(background = true))
+        assertEquals("""{"type":"mode","mode":"foreground"}""", modeMessage(background = false))
     }
 
     @Test

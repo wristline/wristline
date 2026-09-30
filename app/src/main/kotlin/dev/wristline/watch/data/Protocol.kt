@@ -362,6 +362,17 @@ fun subscribeMessage(sessionId: String?, kinds: List<String>? = null): String =
         if (kinds != null) putJsonArray("kinds") { kinds.forEach { add(it) } }
     }.toString()
 
+/**
+ * `{type:'mode', mode:'foreground'|'background'}`. In the background mode the bridge sends only
+ * `request`, `resolved`, `alert` and the `session` events that enter or leave needs_input; a new
+ * socket starts in the foreground mode.
+ */
+fun modeMessage(background: Boolean): String =
+    buildJsonObject {
+        put("type", "mode")
+        put("mode", if (background) "background" else "foreground")
+    }.toString()
+
 /** Epoch millis of an ISO 8601 timestamp, or null when it does not parse. */
 fun isoToMillis(iso: String?): Long? {
     if (iso.isNullOrEmpty()) return null

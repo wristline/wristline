@@ -133,16 +133,25 @@ val CONVERSATION_KINDS = listOf(ItemKind.USER, ItemKind.ASSISTANT)
 
 private const val MIN_BACKOFF_MS = 1_000L
 private const val MAX_BACKOFF_MS = 30_000L
+
+/** With only the monitoring service holding the connection: later retries, fewer wake-ups. */
+internal const val BACKGROUND_MAX_BACKOFF_MS = 120_000L
 private const val JITTER = 0.2
 
 /**
- * Delay before reconnect attempt number [attempt] (0-based): 1 s doubling up to 30 s, then scaled
- * by `1 + 0.2 * jitter` where [jitter] is uniform in [-1, 1].
+ * Delay before reconnect attempt number [attempt] (0-based): 1 s doubling up to [maxMs], then
+ * scaled by `1 + 0.2 * jitter` where [jitter] is uniform in [-1, 1].
  */
-internal fun reconnectDelayMs(attempt: Int, jitter: Double): Long {
-    val base = min(MAX_BACKOFF_MS, MIN_BACKOFF_MS shl attempt.coerceIn(0, 5))
+internal fun reconnectDelayMs(attempt: Int, jitter: Double, maxMs: Long = MAX_BACKOFF_MS): Long {
+    val base = min(maxMs, MIN_BACKOFF_MS shl attempt.coerceIn(0, 7))
     return (base * (1 + JITTER * jitter.coerceIn(-1.0, 1.0))).roundToLong()
 }
+
+/**
+ * Who holds the connection. With an activity the bridge is told `foreground` and pushes
+ * everything; with only the service, `background`: requests, alerts and needs-input changes.
+ */
+enum class Holder { ACTIVITY, SERVICE }
 
 private val statusOrder = listOf(SessionStatus.NEEDS_INPUT, SessionStatus.RUNNING, SessionStatus.IDLE)
 
@@ -284,6 +293,15 @@ object Bridge {
 
     // Confined to [dispatcher].
     private var users = 0
+    private var activityUsers = 0
+
+    /** The mode last applied: true while only the service holds the connection. */
+    private var background = false
+
+    /** The open socket was made with [quietClient]. */
+    private var quietSocket = false
+    private var quietJob: Job? = null
+    private var refreshJob: Job? = null
     private var lingerJob: Job? = null
     private var connectionJob: Job? = null
     private var socket: WebSocket? = null
@@ -320,6 +338,9 @@ object Bridge {
             .build()
     }
 
+    /** For the background socket: a third of the pings. Shares the connection pool and threads of [client]. */
+    private val quietClient: OkHttpClient by lazy { client.newBuilder().pingInterval(90, TimeUnit.SECONDS).build() }
+
     /** Idempotent; call before reading any state. */
     fun init(context: Context) {
         // On every call: an activity recreated for a new app language renames the channels.
@@ -337,20 +358,24 @@ object Bridge {
 
     // ---- lifecycle ----
 
-    /** Something visible (an activity, later the monitoring service) needs a live connection. */
-    fun acquire() {
+    /** An activity or the monitoring service needs a live connection. */
+    fun acquire(holder: Holder) {
         scope.launch {
             users++
+            if (holder == Holder.ACTIVITY) activityUsers++
             lingerJob?.cancel()
             lingerJob = null
             if (networkCallback == null) registerNetworkCallback()
             connectNow()
+            applyMode()
         }
     }
 
-    fun release() {
+    fun release(holder: Holder) {
         scope.launch {
             users = (users - 1).coerceAtLeast(0)
+            if (holder == Holder.ACTIVITY) activityUsers = (activityUsers - 1).coerceAtLeast(0)
+            applyMode()
             if (users > 0) return@launch
             lingerJob = scope.launch {
                 delay(LINGER_MS)
@@ -358,6 +383,47 @@ object Bridge {
                 stopConnection()
                 val c = _conn.value
                 if (c is Conn.Online || c is Conn.Offline || c is Conn.Unreachable) _conn.value = Conn.Connecting
+            }
+        }
+    }
+
+    /**
+     * Tells the bridge the mode the holders imply when it changes. Going to the background, the
+     * socket (pinging every 30 s) is replaced after a pause by one made with [quietClient]; the
+     * pause covers an activity that comes right back. Coming to the foreground, the lists are
+     * fetched again: the bridge kept quiet about them meanwhile.
+     */
+    private fun applyMode() {
+        val quiet = activityUsers == 0
+        if (quiet == background) return
+        background = quiet
+        socket?.send(modeMessage(quiet))
+        quietJob?.cancel()
+        quietJob = null
+        if (quiet) {
+            if (socket != null && !quietSocket) {
+                quietJob = scope.launch {
+                    delay(LINGER_MS)
+                    if (background && !quietSocket) socket?.cancel()
+                }
+            }
+        } else {
+            refresh()
+        }
+    }
+
+    /**
+     * Fetches the session and usage lists over REST. A background client is not sent their
+     * changes, so a screen that opens reads the current state itself; a snapshot does the same
+     * after a reconnect. One fetch at a time; nothing while the socket is down (the snapshot
+     * will tell) or in the demo.
+     */
+    fun refresh() {
+        scope.launch {
+            if (demo != null || _conn.value !is Conn.Online || refreshJob?.isActive == true) return@launch
+            refreshJob = scope.launch {
+                get(SessionList.serializer(), "sessions")?.let { _sessions.value = sortSessions(it.sessions) }
+                get(UsageList.serializer(), "usage")?.let { _usage.value = it.usage }
             }
         }
     }
@@ -384,6 +450,8 @@ object Bridge {
     private fun stopConnection() {
         connectionJob?.cancel()
         connectionJob = null
+        quietJob?.cancel()
+        quietJob = null
         socket = null
     }
 
@@ -438,7 +506,8 @@ object Bridge {
                 End.CLOSED -> Unit
             }
             if (!networkUp) continue
-            val wait = reconnectDelayMs(attempt++, Random.nextDouble(-1.0, 1.0))
+            val cap = if (background) BACKGROUND_MAX_BACKOFF_MS else MAX_BACKOFF_MS
+            val wait = reconnectDelayMs(attempt++, Random.nextDouble(-1.0, 1.0), cap)
             // A single drop retries quietly; repeated failures show the countdown.
             _conn.value = if (attempt == 1) Conn.Connecting else Conn.Unreachable(System.currentTimeMillis() + wait)
             withTimeoutOrNull(wait) { wake.receive() }
@@ -453,7 +522,9 @@ object Bridge {
             .url(apiUrl(prefs.baseUrl, "ws"))
             .header("Authorization", "Bearer ${prefs.token}")
             .build()
-        val ws = client.newWebSocket(
+        val quiet = background
+        quietSocket = quiet
+        val ws = (if (quiet) quietClient else client).newWebSocket(
             request,
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -461,6 +532,8 @@ object Bridge {
                         if (ended.isCompleted || !job.isActive) return@launch
                         socket = webSocket
                         subscribed?.let { webSocket.send(subscribeMessage(it, itemKinds())) }
+                        // The bridge starts every socket in the foreground mode.
+                        webSocket.send(modeMessage(background))
                     }
                 }
 
@@ -520,8 +593,9 @@ object Bridge {
                 onOnline()
                 // The subscription alone does not replay what the socket missed.
                 subscribed?.let { loadLatest(it) }
-                // Asks are not in the snapshot; an answer that arrived while the socket was down is fetched.
-                loadAsks()
+                // Asks are not in the snapshot; an answer that arrived while the socket was down is
+                // fetched, unless nothing is shown (the service alone never polls).
+                if (!background) loadAsks()
             }
             is ServerEvent.SessionChanged -> {
                 _sessions.value = sortSessions(_sessions.value.filterNot { it.id == event.session.id } + event.session)
@@ -816,10 +890,7 @@ object Bridge {
 
     private fun loadAsks() {
         scope.launch {
-            val result = send(authed(apiUrl(prefs.baseUrl, "asks")).get().build()) ?: return@launch
-            if (result.code == 401) unauthorized()
-            if (result.code != 200) return@launch
-            val list = decodeOrNull(AskList.serializer(), result.body) ?: return@launch
+            val list = get(AskList.serializer(), "asks") ?: return@launch
             _asks.value = list.asks.take(ASK_KEEP)
         }
     }
@@ -924,6 +995,14 @@ object Bridge {
                 }
             },
         )
+    }
+
+    /** An authenticated GET decoded as [serializer]; null when unreachable, refused or malformed. */
+    private suspend fun <T> get(serializer: KSerializer<T>, vararg segments: String): T? {
+        val result = send(authed(apiUrl(prefs.baseUrl, *segments)).get().build()) ?: return null
+        if (result.code == 401) unauthorized()
+        if (result.code != 200) return null
+        return decodeOrNull(serializer, result.body)
     }
 
     private fun apiUrl(baseUrl: String, vararg segments: String): HttpUrl =

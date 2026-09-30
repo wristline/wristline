@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
@@ -43,6 +44,11 @@ import kotlin.math.roundToInt
 @Composable
 internal fun UsageScreen() {
     val usage by Bridge.usage.collectAsStateWithLifecycle()
+    // A background client is not pushed usage changes: read them when the screen comes up.
+    LifecycleStartEffect(Unit) {
+        Bridge.refresh()
+        onStopOrDispose {}
+    }
     UsageContent(usage, rememberNow())
 }
 

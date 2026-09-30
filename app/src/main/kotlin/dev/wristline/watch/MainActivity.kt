@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
 import dev.wristline.watch.data.AddressResult
 import dev.wristline.watch.data.Bridge
+import dev.wristline.watch.data.Holder
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.normalizeAddress
 import kotlinx.coroutines.launch
@@ -34,7 +35,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        Bridge.acquire()
+        Bridge.acquire(Holder.ACTIVITY)
         // Restarts monitoring after a reboot or after the system stopped it (there is no boot receiver).
         MonitorService.sync(this)
     }
@@ -50,7 +51,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        Bridge.release()
+        Bridge.release(Holder.ACTIVITY)
         super.onStop()
     }
 

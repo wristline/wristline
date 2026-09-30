@@ -19,6 +19,7 @@ import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
+import dev.wristline.watch.data.Holder
 import dev.wristline.watch.data.PendingRequest
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
@@ -76,7 +77,7 @@ class MonitorService : Service() {
             if (on == worn.value) return
             worn.value = on
             Log.i(TAG, if (on) "On wrist: reconnecting" else "Off wrist: pausing the connection")
-            if (on) Bridge.acquire() else Bridge.release()
+            if (on) Bridge.acquire(Holder.SERVICE) else Bridge.release(Holder.SERVICE)
         }
 
         override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
@@ -118,7 +119,7 @@ class MonitorService : Service() {
             return START_NOT_STICKY
         }
         running = true
-        Bridge.acquire()
+        Bridge.acquire(Holder.SERVICE)
         // An on-change sensor delivers the current state on registration, so a watch already on
         // the charger releases the hold right away.
         val sensors = getSystemService(SensorManager::class.java)
@@ -155,7 +156,7 @@ class MonitorService : Service() {
     override fun onDestroy() {
         scope.cancel()
         getSystemService(SensorManager::class.java).unregisterListener(offBody)
-        if (running && worn.value) Bridge.release()
+        if (running && worn.value) Bridge.release(Holder.SERVICE)
         super.onDestroy()
     }
 

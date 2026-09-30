@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
@@ -77,6 +78,11 @@ internal fun SessionListScreen(
     val requests by Bridge.requests.collectAsStateWithLifecycle()
     val usage by Bridge.usage.collectAsStateWithLifecycle()
     val ask = rememberQuickAsk(onStarted = onAsk)
+    // A background client is not pushed list changes: read them when the screen comes up.
+    LifecycleStartEffect(Unit) {
+        Bridge.refresh()
+        onStopOrDispose {}
+    }
     // Read by the cards' time only, so the minute tick recomposes just the visible cards' time.
     val now = rememberNowState()
     SessionListContent(
