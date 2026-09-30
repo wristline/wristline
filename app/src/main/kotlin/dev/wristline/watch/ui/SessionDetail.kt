@@ -360,7 +360,7 @@ internal fun SessionDetailContent(
         // The scaffold keeps the indicator (at 3 o'clock, under the right gauge) for 2s after a
         // scroll, the gauges come back after GAUGE_SETTLE_MS: hidden while they show.
         scrollIndicator = {
-            AnimatedVisibility(!gaugesShown, enter = fadeIn(), exit = fadeOut()) { ScrollIndicator(listState) }
+            AnimatedVisibility(!gaugesShown.arcs, enter = fadeIn(), exit = fadeOut()) { ScrollIndicator(listState) }
         },
     ) { contentPadding ->
         val layoutDirection = LocalLayoutDirection.current
@@ -437,8 +437,8 @@ internal fun SessionDetailContent(
                 }
             }
         }
-        // The content is a Box: what is composed after the list is drawn over it. The gauges show
-        // only at the top, with the whole header.
+        // The content is a Box: what is composed after the list is drawn over it. The arcs show
+        // whenever the list is at rest, their labels only at the top, with the whole header.
         if (session != null) EdgeGauges(gaugesShown, session.context, limit)
         // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
         // it does not dim them; with no pointer input, touches on it reach the list.
@@ -510,13 +510,17 @@ private fun contextPercent(context: ContextUsage?): Double? =
 private fun limitColor(percent: Int): Color =
     if (percent >= NEAR_LIMIT_PERCENT) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
 
+/** Which parts of the edge gauges show: see [rememberGaugesShown]. */
+private data class GaugesShown(val arcs: Boolean, val labels: Boolean)
+
 /**
- * Whether the edge gauges show: only while the list is at rest (they fade out as soon as it scrolls
- * and back in [GAUGE_SETTLE_MS] after it stops), and only at the top of the transcript, while the
- * header (the first item) is fully on screen.
+ * Which parts of the edge gauges show. The arcs, only while the list is at rest (they fade out as
+ * soon as it scrolls and back in [GAUGE_SETTLE_MS] after it stops), wherever it is scrolled to;
+ * the labels, also only at the top of the transcript, while the header (the first item) is fully
+ * on screen.
  */
 @Composable
-private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<Boolean> {
+private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<GaugesShown> {
     // Not scrolled for the last GAUGE_SETTLE_MS.
     var resting by remember(listState) { mutableStateOf(!listState.isScrollInProgress) }
     LaunchedEffect(listState) {
@@ -531,7 +535,8 @@ private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<B
             // the content padding: the header, at LIST_TOP when scrolled to the top, is fully in view
             // until its top goes past the screen's.
             val first = listState.layoutInfo.visibleItems.firstOrNull()
-            resting && first?.let { it.index == 0 && it.offset >= 0 } == true
+            val atTop = first?.let { it.index == 0 && it.offset >= 0 } == true
+            GaugesShown(arcs = resting, labels = resting && atTop)
         }
     }
 }
@@ -542,20 +547,20 @@ private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<B
  * upwards, towards the time text.
  */
 @Composable
-private fun EdgeGauges(shown: Boolean, context: ContextUsage?, limit: UsageWindow?) {
-    AnimatedVisibility(shown, enter = fadeIn(), exit = fadeOut()) {
+private fun EdgeGauges(shown: GaugesShown, context: ContextUsage?, limit: UsageWindow?) {
+    AnimatedVisibility(shown.arcs, enter = fadeIn(), exit = fadeOut()) {
         contextPercent(context)?.let { percent ->
-            EdgeGauge(percent, MaterialTheme.colorScheme.primary, right = false)
+            EdgeGauge(percent, MaterialTheme.colorScheme.primary, right = false, labelShown = shown.labels)
         }
         if (limit != null) {
             val percent = limit.usedPercent.roundToInt()
-            EdgeGauge(limit.usedPercent, limitColor(percent), right = true)
+            EdgeGauge(limit.usedPercent, limitColor(percent), right = true, labelShown = shown.labels)
         }
     }
 }
 
 @Composable
-private fun EdgeGauge(percent: Double, color: Color, right: Boolean) {
+private fun EdgeGauge(percent: Double, color: Color, right: Boolean, labelShown: Boolean) {
     // As in PercentRing: the indicator observes only the State its first progress lambda reads.
     val progress by rememberUpdatedState((percent / 100).toFloat().coerceIn(0f, 1f))
     val edge = CircularProgressIndicatorDefaults.FullScreenPadding
@@ -581,12 +586,14 @@ private fun EdgeGauge(percent: Double, color: Color, right: Boolean) {
     // Not mirrored, so it reads left to right on both sides: on the left it starts past the upper
     // end, on the right it ends before it.
     val upperEnd = GAUGE_START + GAUGE_SWEEP
-    CurvedLayout(
-        Modifier.fillMaxSize().padding(edge).clearAndSetSemantics {},
-        anchor = if (right) 540f - upperEnd - GAUGE_LABEL_GAP else upperEnd + GAUGE_LABEL_GAP,
-        anchorType = if (right) AnchorType.End else AnchorType.Start,
-    ) {
-        curvedText("${percent.roundToInt()}%", color = color.copy(alpha = 0.85f), fontSize = 10.sp)
+    AnimatedVisibility(labelShown, enter = fadeIn(), exit = fadeOut()) {
+        CurvedLayout(
+            Modifier.fillMaxSize().padding(edge).clearAndSetSemantics {},
+            anchor = if (right) 540f - upperEnd - GAUGE_LABEL_GAP else upperEnd + GAUGE_LABEL_GAP,
+            anchorType = if (right) AnchorType.End else AnchorType.Start,
+        ) {
+            curvedText("${percent.roundToInt()}%", color = color.copy(alpha = 0.85f), fontSize = 10.sp)
+        }
     }
 }
 
