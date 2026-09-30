@@ -105,8 +105,8 @@ const val PAGE_SIZE = 40
 /** Upper bound of items kept in memory per open session. */
 const val ITEM_CAP = 200
 
-/** The item kinds of a transcript without tool calls ([Prefs.showToolCalls] off). */
-val CONVERSATION_KINDS = listOf(ItemKind.USER, ItemKind.ASSISTANT, ItemKind.NOTICE)
+/** The item kinds of a transcript without tool calls and notices ([Prefs.showToolCalls] off). */
+val CONVERSATION_KINDS = listOf(ItemKind.USER, ItemKind.ASSISTANT)
 
 private const val MIN_BACKOFF_MS = 1_000L
 private const val MAX_BACKOFF_MS = 30_000L

@@ -8,6 +8,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -55,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnState
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.weight
@@ -105,6 +110,7 @@ import java.time.format.FormatStyle
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 private const val COLLAPSED_LINES = 6
@@ -128,7 +134,10 @@ private const val TIME_TEXT_SWEEP = 62f
 // right one clear of the scroll indicator at 3 o'clock.
 private const val GAUGE_START = 200f
 private const val GAUGE_SWEEP = 28f
-private val GAUGE_STROKE = 3.dp
+// No thinner than the scroll indicator (5dp, 6dp on screens 225dp and wider).
+private val GAUGE_STROKE = 6.dp
+// How long the gauges stay after scrolling stops, as the scroll indicator does.
+private const val GAUGE_HOLD_MS = 1_200L
 
 /** Holds the session open (its items) exactly as long as the screen is composed. */
 private class OpenedSession(val id: String) : RememberObserver {
@@ -400,9 +409,9 @@ internal fun SessionDetailContent(
                 }
             }
         }
-        // The content is a Box: what is composed after the list is drawn over it. The gauges always
-        // show; a card scrolling under them is covered there.
-        if (session != null) EdgeGauges(session.context, limit)
+        // The content is a Box: what is composed after the list is drawn over it. A card scrolling
+        // under the gauges is covered there while they show.
+        if (session != null) EdgeGauges(listState, session.context, limit)
         // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
         val actions = Modifier.align(Alignment.BottomCenter).padding(bottom = ACTIONS_BOTTOM)
         if (hasRequest) {
@@ -465,23 +474,37 @@ private fun limitColor(percent: Int): Color =
     if (percent >= NEAR_LIMIT_PERCENT) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
 
 /**
- * Context use (left) and the limit window (right) as bare thin arcs on the upper flanks; the
- * header spells out their numbers. Clear of the time text and the scroll indicator; both fill
- * upwards, towards the time.
+ * Context use (left) and the limit window (right) as bare arcs on the upper flanks; the header
+ * spells out their numbers. Clear of the time text and the scroll indicator; both fill upwards,
+ * towards the time. They show at the top of the list, next to the header, and like the scroll
+ * indicator while it scrolls and for [GAUGE_HOLD_MS] after; at rest elsewhere they fade out.
  */
 @Composable
-private fun EdgeGauges(context: ContextUsage?, limit: UsageWindow?) {
-    contextPercent(context)?.let { percent ->
-        EdgeGauge(
-            percent,
-            stringResource(R.string.detail_context_description, percent.roundToInt()),
-            MaterialTheme.colorScheme.primary,
-            right = false,
-        )
+private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextUsage?, limit: UsageWindow?) {
+    // Scrolling, or scrolled within the last GAUGE_HOLD_MS.
+    var scrolled by remember(listState) { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
+            if (!scrolling) delay(GAUGE_HOLD_MS)
+            scrolled = scrolling
+        }
     }
-    if (limit != null) {
-        val percent = limit.usedPercent.roundToInt()
-        EdgeGauge(limit.usedPercent, "${windowLabel(limit)} $percent%", limitColor(percent), right = true)
+    val visible by remember(listState) {
+        derivedStateOf { scrolled || listState.layoutInfo.visibleItems.firstOrNull()?.index == 0 }
+    }
+    AnimatedVisibility(visible, enter = fadeIn(), exit = fadeOut()) {
+        contextPercent(context)?.let { percent ->
+            EdgeGauge(
+                percent,
+                stringResource(R.string.detail_context_description, percent.roundToInt()),
+                MaterialTheme.colorScheme.primary,
+                right = false,
+            )
+        }
+        if (limit != null) {
+            val percent = limit.usedPercent.roundToInt()
+            EdgeGauge(limit.usedPercent, "${windowLabel(limit)} $percent%", limitColor(percent), right = true)
+        }
     }
 }
 
@@ -500,8 +523,11 @@ private fun EdgeGauge(percent: Double, description: String, color: Color, right:
             .clearAndSetSemantics { contentDescription = description },
         startAngle = GAUGE_START,
         endAngle = GAUGE_START + GAUGE_SWEEP,
-        // A track a step lighter than the cards, so it shows on the black around them.
-        colors = ProgressIndicatorDefaults.colors(indicatorColor = color, trackColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        // A track plainly visible on the black, well short of the fill. The ends are round.
+        colors = ProgressIndicatorDefaults.colors(
+            indicatorColor = color,
+            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
+        ),
         strokeWidth = GAUGE_STROKE,
     )
 }

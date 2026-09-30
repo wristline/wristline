@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -211,7 +212,10 @@ class ProtocolTest {
     fun subscribeWithKindsMatchesTheFixture() {
         val fixture = WireJson.parseToJsonElement(File(dir, "client-subscribe-kinds.json").readText()) as JsonObject
         val sessionId = fixture.getValue("sessionId").jsonPrimitive.content
-        assertEquals(fixture, WireJson.parseToJsonElement(subscribeMessage(sessionId, CONVERSATION_KINDS)))
+        val kinds = fixture.getValue("kinds").jsonArray.map { it.jsonPrimitive.content }
+        assertEquals(fixture, WireJson.parseToJsonElement(subscribeMessage(sessionId, kinds)))
+        // The app asks for a subset of the kinds the bridge's example names.
+        assertTrue(kinds.containsAll(CONVERSATION_KINDS))
     }
 
     @Test
