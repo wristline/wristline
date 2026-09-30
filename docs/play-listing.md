@@ -223,9 +223,11 @@ receives text only. No location, Bluetooth, storage, contacts or boot permission
       permission request and question shots (demo has none). Capture a ko-KR set too
       (`adb shell cmd locale set-app-locales dev.wristline.watch --locales ko-KR`). **verify** the
       current Wear OS screenshot rules in the console.
-- [ ] **App icon** 512×512 PNG (32-bit, ≤1 MB) exported from the launcher icon assets.
-- [ ] **Feature graphic** 1024×500 PNG or JPEG (required for every store listing, Wear-only
-      included).
+- [x] **App icon** 512×512 PNG (32-bit, ≤1 MB) exported from the launcher icon assets:
+      `branding/png/icon-512.png` (white mark on navy, like the launcher icon).
+- [x] **Feature graphic** 1024×500 PNG or JPEG (required for every store listing, Wear-only
+      included): `branding/png/feature-graphic-1024x500.png` (24-bit PNG, no alpha).
+      Regenerate both with `python3 branding/tools/render.py`; see `branding/README.md`.
 - [ ] **Privacy policy URL** live: https://wristline.github.io/wristline/privacy.
 - [ ] Short and full descriptions for en-US and ko-KR (section 1), default language en-US.
 - [ ] Developer contact email and, if applicable, physical address (required for paid/

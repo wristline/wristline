@@ -4,6 +4,8 @@ permalink: /
 layout: default
 ---
 
+<img src="assets/wristline-mark.svg" alt="" width="96" height="96">
+
 # Wristline
 
 Wristline is a Wear OS app for Galaxy Watch that lets you follow and control AI coding-agent

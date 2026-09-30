@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="branding/wristline-lockup-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="branding/wristline-lockup-light.svg">
+    <img alt="Wristline" src="branding/wristline-lockup-light.svg" width="360">
+  </picture>
+</p>
+
 # Wristline
 
 Wristline is a Wear OS app for Galaxy Watch that lets you browse and control AI coding-agent sessions running on your PC through Wristline Bridge: https://github.com/wristline/wristline-bridge

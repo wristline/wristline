@@ -1,23 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Watch face ring on a band line, with a terminal prompt (">_") inside.
-     Single color, kept inside the 66dp adaptive-icon safe zone; also used as the monochrome layer. -->
+<!-- Wristline mark (branding/wristline-mark.svg): a solid squircle watch case with a round dial
+     knocked out, and a terminal prompt (">_") in the dial. The 512-unit mark is scaled 0.1273
+     about the canvas center, so its farthest point is 32.5dp from center (safe zone r = 33dp).
+     Single color; also used as the monochrome layer. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Case outline, then the dial circle as a hole (even-odd). -->
     <path
-        android:pathData="M54,34a20,20 0,1 1,0 40a20,20 0,1 1,0 -40z"
-        android:strokeWidth="4"
-        android:strokeColor="#FFFFFFFF" />
+        android:pathData="M44.33,26.5H63.67C75.39,26.5 81.5,32.61 81.5,44.33V63.67C81.5,75.39 75.39,81.5 63.67,81.5H44.33C32.61,81.5 26.5,75.39 26.5,63.67V44.33C26.5,32.61 32.61,26.5 44.33,26.5ZM54,30.32A23.68,23.68 0,1 0,54 77.68A23.68,23.68 0,1 0,54 30.32Z"
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd" />
     <path
-        android:pathData="M24,54H34M74,54H84"
-        android:strokeWidth="4"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeLineCap="round" />
-    <path
-        android:pathData="M46,47L53,54L46,61M56,61H63"
-        android:strokeWidth="4"
+        android:pathData="M43.31,45.6L51.71,54L43.31,62.4M56.55,62.4H64.69"
+        android:strokeWidth="5.86"
         android:strokeColor="#FFFFFFFF"
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />

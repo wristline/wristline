@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Wristline mark F2: solid case, large dial (mono)</title>
+  <!-- Filled squircle case with a large round dial knocked out (wall 30 at the flat sides), ">_" prompt in the dial. -->
+  <g id="mark-f2" fill="#000000" stroke="#000000" stroke-linecap="round" stroke-linejoin="round">
+    <path id="case" stroke="none" fill-rule="evenodd" d="M180 40H332C424 40 472 88 472 180V332C472 424 424 472 332 472H180C88 472 40 424 40 332V180C40 88 88 40 180 40ZM256 70A186 186 0 1 0 256 442A186 186 0 1 0 256 70Z"/>
+    <path id="prompt" fill="none" stroke-width="46" d="M172 190L238 256L172 322M276 322H340"/>
+  </g>
+</svg>
