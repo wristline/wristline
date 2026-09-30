@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -84,6 +85,7 @@ import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ProgressIndicatorDefaults
 import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.ScrollIndicator
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
@@ -142,12 +144,13 @@ private val LIST_SIDE_TRIM = 2.dp
 // o'clock (270 degrees clockwise from 3 o'clock); its background's round ends add about 5 degrees
 // on each side, so it spans at most about 234 to 306 degrees.
 private const val TIME_TEXT_SWEEP = 62f
-// Left gauge on the upper flank, in degrees clockwise from 3 o'clock; the right gauge mirrors it
-// (320 to 340), clear of the scroll indicator at 3 o'clock. Past each upper end, GAUGE_LABEL_GAP
-// on, its percentage: `100%` at 10sp takes about 13 degrees, so it ends near 236 (304 on the right),
-// short of the widest time text's letters, which start at 239.
-private const val GAUGE_START = 200f
-private const val GAUGE_SWEEP = 20f
+// Left gauge centered on 9 o'clock, in degrees clockwise from 3 o'clock; the right gauge mirrors it
+// (338 to 22, centered on 3 o'clock, where the scroll indicator is: it is hidden while the gauges
+// show). Past each upper end, GAUGE_LABEL_GAP on, its percentage: `100%` at 10sp takes about 13
+// degrees, so it ends near 218 (322 on the right), well short of the widest time text's letters,
+// which start at 239.
+private const val GAUGE_START = 158f
+private const val GAUGE_SWEEP = 44f
 // Clears the arc's round end (half the stroke, under 2 degrees) with a little room to spare.
 private const val GAUGE_LABEL_GAP = 3f
 // No thinner than the scroll indicator (5dp, 6dp on screens 225dp and wider).
@@ -350,7 +353,16 @@ internal fun SessionDetailContent(
 
     // No EdgeButton: the actions are small and fixed in the screen's bottom chin, and the list's
     // end padding keeps the newest card above them.
-    ScreenScaffold(scrollState = listState, timeText = { DetailTopText(session) }) { contentPadding ->
+    val gaugesShown by rememberGaugesShown(listState)
+    ScreenScaffold(
+        scrollState = listState,
+        timeText = { DetailTopText(session) },
+        // The scaffold keeps the indicator (at 3 o'clock, under the right gauge) for 2s after a
+        // scroll, the gauges come back after GAUGE_SETTLE_MS: hidden while they show.
+        scrollIndicator = {
+            AnimatedVisibility(!gaugesShown, enter = fadeIn(), exit = fadeOut()) { ScrollIndicator(listState) }
+        },
+    ) { contentPadding ->
         val layoutDirection = LocalLayoutDirection.current
         // Default rotary behaviour (fling with haptics): long messages are read continuously, not item by item.
         TransformingLazyColumn(
@@ -427,7 +439,7 @@ internal fun SessionDetailContent(
         }
         // The content is a Box: what is composed after the list is drawn over it. The gauges show
         // only at the top, with the whole header.
-        if (session != null) EdgeGauges(listState, session.context, limit)
+        if (session != null) EdgeGauges(gaugesShown, session.context, limit)
         // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
         // it does not dim them; with no pointer input, touches on it reach the list.
         Box(
@@ -499,14 +511,12 @@ private fun limitColor(percent: Int): Color =
     if (percent >= NEAR_LIMIT_PERCENT) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.tertiary
 
 /**
- * Context use (left) and the limit window (right) as bare arcs on the upper flanks, each with its
- * percentage just past its upper end; the header spells out the same numbers. Clear of the time
- * text and the scroll indicator; both fill upwards, towards the time. They show only while the list
- * is at rest (they fade out as soon as it scrolls and back in [GAUGE_SETTLE_MS] after it stops),
- * and only at the top of the transcript, while the header (the first item) is fully on screen.
+ * Whether the edge gauges show: only while the list is at rest (they fade out as soon as it scrolls
+ * and back in [GAUGE_SETTLE_MS] after it stops), and only at the top of the transcript, while the
+ * header (the first item) is fully on screen.
  */
 @Composable
-private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextUsage?, limit: UsageWindow?) {
+private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<Boolean> {
     // Not scrolled for the last GAUGE_SETTLE_MS.
     var resting by remember(listState) { mutableStateOf(false) }
     LaunchedEffect(listState) {
@@ -515,7 +525,7 @@ private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextU
             resting = !scrolling
         }
     }
-    val shown by remember(listState) {
+    return remember(listState) {
         derivedStateOf {
             // An item's offset is its top from the top of the list's viewport (the screen), not from
             // the content padding: the header, at LIST_TOP when scrolled to the top, is fully in view
@@ -524,6 +534,15 @@ private fun EdgeGauges(listState: TransformingLazyColumnState, context: ContextU
             resting && first?.let { it.index == 0 && it.offset >= 0 } == true
         }
     }
+}
+
+/**
+ * Context use (left) and the limit window (right) as bare arcs centered on 9 and 3 o'clock, each
+ * with its percentage just past its upper end; the header spells out the same numbers. Both fill
+ * upwards, towards the time text.
+ */
+@Composable
+private fun EdgeGauges(shown: Boolean, context: ContextUsage?, limit: UsageWindow?) {
     AnimatedVisibility(shown, enter = fadeIn(), exit = fadeOut()) {
         contextPercent(context)?.let { percent ->
             EdgeGauge(percent, MaterialTheme.colorScheme.primary, right = false)
