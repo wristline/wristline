@@ -140,13 +140,24 @@ private fun CodePreview() = Frame { CodeContent(busy = false, error = null, onSu
 @Composable
 private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "not_found", onSubmit = {}) }
 
-// Glance card: Codex's 93% takes the error color.
+// The icon row (Settings, Ask, recent questions) heads the list; the request banner sits right
+// under it, then the tinted limit card, where Codex's 93% takes the error color.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {
     SessionListContent(
         Conn.Online, sessions, listOf(permission, question), usage, { now },
-        onSession = {}, onRequest = {}, onUsage = {}, hasAsks = true, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+// Without a request the limit card follows the icon row directly.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun SessionListKoPreview() = Frame {
+    SessionListContent(
+        Conn.Online, sessions, emptyList(), usage, { now },
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
 
@@ -155,7 +166,7 @@ private fun SessionListPreview() = Frame {
 private fun SessionListUnreachablePreview() = Frame {
     SessionListContent(
         Conn.Unreachable(System.currentTimeMillis() + 12_000), sessions, emptyList(), usage, { now },
-        onSession = {}, onRequest = {}, onUsage = {}, hasAsks = false, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
 

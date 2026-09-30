@@ -64,7 +64,6 @@
     <string name="conn_demo">데모 모드</string>
 
     <!-- Session list -->
-    <string name="sessions_title">세션</string>
     <string name="sessions_empty">아직 세션이 없습니다. PC에서 Claude Code나 Codex를 시작해 주세요.</string>
     <plurals name="requests_waiting">
         <item quantity="other">요청 %d개 대기 중</item>

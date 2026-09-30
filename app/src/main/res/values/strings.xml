@@ -67,7 +67,6 @@
     <string name="conn_demo">Demo mode</string>
 
     <!-- Session list -->
-    <string name="sessions_title">Sessions</string>
     <string name="sessions_empty">No sessions yet. Start Claude Code or Codex on your PC.</string>
     <plurals name="requests_waiting">
         <item quantity="one">%d request waiting</item>

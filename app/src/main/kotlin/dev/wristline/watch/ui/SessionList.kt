@@ -1,12 +1,8 @@
 package dev.wristline.watch.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -15,7 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.painter.BrushPainter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -25,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
@@ -34,13 +32,12 @@ import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.CardDefaults
-import androidx.wear.compose.material3.EdgeButton
-import androidx.wear.compose.material3.EdgeButtonSize
-import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.FilledIconButton
+import androidx.wear.compose.material3.FilledTonalIconButton
 import androidx.wear.compose.material3.Icon
-import androidx.wear.compose.material3.ListHeader
-import androidx.wear.compose.material3.ListHeaderDefaults
+import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
@@ -58,6 +55,13 @@ import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.Usage
 import kotlin.math.roundToInt
 
+/** The icon buttons at the top of the list. */
+private val ACTION_SIZE = 40.dp
+private val ACTION_GAP = 8.dp
+
+/** The usage card's percentages: a step above the session titles. */
+private val GLANCE_NUMBER_SIZE = 17.sp
+
 @Composable
 internal fun SessionListScreen(
     onSession: (String) -> Unit,
@@ -72,7 +76,6 @@ internal fun SessionListScreen(
     val sessions by Bridge.sessions.collectAsStateWithLifecycle()
     val requests by Bridge.requests.collectAsStateWithLifecycle()
     val usage by Bridge.usage.collectAsStateWithLifecycle()
-    val asks by Bridge.asks.collectAsStateWithLifecycle()
     val ask = rememberQuickAsk(onStarted = onAsk)
     // Read by the cards' time only, so the minute tick recomposes just the visible cards' time.
     val now = rememberNowState()
@@ -85,7 +88,6 @@ internal fun SessionListScreen(
         onSession = onSession,
         onRequest = onRequest,
         onUsage = onUsage,
-        hasAsks = asks.isNotEmpty(),
         onAsk = ask,
         onAskHistory = onAskHistory,
         onSettings = onSettings,
@@ -104,7 +106,6 @@ internal fun SessionListContent(
     onSession: (String) -> Unit,
     onRequest: (String) -> Unit,
     onUsage: () -> Unit,
-    hasAsks: Boolean,
     onAsk: () -> Unit,
     onAskHistory: () -> Unit,
     onSettings: () -> Unit,
@@ -117,34 +118,31 @@ internal fun SessionListContent(
     val stale = conn is Conn.Offline || conn is Conn.Unreachable || conn is Conn.Unauthorized
     val oldestRequest = remember(requests) { requests.minByOrNull { it.createdAt } }
     val glance = remember(usage) { glanceUsage(usage) }
-    ScreenScaffold(
-        scrollState = listState,
-        // Quick Ask takes the edge button; Settings is the last item of the list.
-        edgeButton = {
-            EdgeButton(onClick = onAsk, buttonSize = EdgeButtonSize.Small) {
-                Icon(painterResource(R.drawable.ic_mic), contentDescription = null, modifier = Modifier.size(ButtonDefaults.SmallIconSize))
-                Spacer(Modifier.width(6.dp))
-                Text(stringResource(R.string.ask_button))
-            }
-        },
-    ) { contentPadding ->
+    ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(
             state = listState,
             contentPadding = contentPadding,
             flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState),
             rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
         ) {
-            item(key = "title") {
-                ListHeader(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .transformedHeight(this, spec)
-                        .minimumVerticalContentPadding(ListHeaderDefaults.minimumTopListContentPadding),
-                    transformation = SurfaceTransformation(spec),
-                ) { Text(stringResource(R.string.sessions_title)) }
-            }
-            if (conn.hasBanner()) {
-                item(key = "conn", contentType = "conn") { ConnBanner(conn, spec, onRetry, onRepair) }
+            // In place of a title: Settings, Quick Ask (the primary action) and the recent questions.
+            item(key = "actions") {
+                Row(
+                    Modifier.fillMaxWidth().edgeTransform(this, spec),
+                    horizontalArrangement = Arrangement.spacedBy(ACTION_GAP, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val iconSize = IconButtonDefaults.iconSizeFor(ACTION_SIZE)
+                    FilledTonalIconButton(onClick = onSettings, modifier = Modifier.size(ACTION_SIZE)) {
+                        Icon(painterResource(R.drawable.ic_settings), stringResource(R.string.settings_title), Modifier.size(iconSize))
+                    }
+                    FilledIconButton(onClick = onAsk, modifier = Modifier.size(ACTION_SIZE)) {
+                        Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.ask_button), Modifier.size(iconSize))
+                    }
+                    FilledTonalIconButton(onClick = onAskHistory, modifier = Modifier.size(ACTION_SIZE)) {
+                        Icon(painterResource(R.drawable.ic_history), stringResource(R.string.ask_history_title), Modifier.size(iconSize))
+                    }
+                }
             }
             if (oldestRequest != null) {
                 item(key = "requests") {
@@ -164,21 +162,25 @@ internal fun SessionListContent(
                     )
                 }
             }
+            if (conn.hasBanner()) {
+                item(key = "conn", contentType = "conn") { ConnBanner(conn, spec, onRetry, onRepair) }
+            }
             if (glance.isNotEmpty()) {
                 item(key = "usage") {
-                    FilledTonalButton(
+                    val colors = MaterialTheme.colorScheme
+                    // Lit from the top and outlined, so the limits stand apart from the session cards below.
+                    val tint = remember(colors) {
+                        BrushPainter(Brush.verticalGradient(listOf(colors.surfaceContainerHigh, colors.surfaceContainer)))
+                    }
+                    Card(
                         onClick = onUsage,
+                        containerPainter = tint,
                         modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
                         transformation = SurfaceTransformation(spec),
-                        // The cards' start padding, so the badges line up with the session cards' below.
-                        contentPadding = PaddingValues(
-                            start = CardDefaults.ContentPadding.calculateStartPadding(LocalLayoutDirection.current),
-                            top = ButtonDefaults.ButtonVerticalPadding,
-                            end = ButtonDefaults.ButtonHorizontalPadding,
-                            bottom = ButtonDefaults.ButtonVerticalPadding,
-                        ),
-                        label = { Column { glance.forEach { GlanceLine(it) } } },
-                    )
+                        border = BorderStroke(1.dp, colors.outlineVariant),
+                    ) {
+                        glance.forEach { GlanceLine(it) }
+                    }
                 }
             }
             // Only an up-to-date list can say there are none; otherwise the banner explains.
@@ -194,24 +196,6 @@ internal fun SessionListContent(
                     now = now,
                     spec = spec,
                     onClick = { onSession(session.id) },
-                )
-            }
-            if (hasAsks) {
-                item(key = "asks") {
-                    FilledTonalButton(
-                        onClick = onAskHistory,
-                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
-                        transformation = SurfaceTransformation(spec),
-                        label = { Text(stringResource(R.string.ask_history_title)) },
-                    )
-                }
-            }
-            item(key = "settings") {
-                FilledTonalButton(
-                    onClick = onSettings,
-                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-                    transformation = SurfaceTransformation(spec),
-                    label = { Text(stringResource(R.string.settings_title)) },
                 )
             }
         }
@@ -246,7 +230,7 @@ internal fun glanceUsage(usage: List<Usage>): List<Usage> =
 @Composable
 private fun GlanceLine(u: Usage) {
     val colors = MaterialTheme.colorScheme
-    val number = SpanStyle(fontSize = MaterialTheme.typography.titleMedium.fontSize, fontFeatureSettings = "tnum")
+    val number = SpanStyle(fontSize = GLANCE_NUMBER_SIZE, fontFeatureSettings = "tnum")
     val muted = SpanStyle(fontSize = MaterialTheme.typography.bodySmall.fontSize, color = colors.onSurfaceVariant)
     val windows = buildAnnotatedString {
         u.windows.forEachIndexed { i, w ->
@@ -264,7 +248,6 @@ private fun GlanceLine(u: Usage) {
     // The badge is measured first and always shows whole; the numbers take the rest.
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         ProviderBadge(u.provider)
-        // End-aligned: a button centers its label text.
         Text(windows, Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1)
     }
 }
