@@ -98,6 +98,7 @@ private val items = SessionItems(
         Item(4, ItemKind.TOOL, "2026-09-29T12:50:40Z", "Bash npm run lint", "1 error", error = true),
         Item(5, ItemKind.NOTICE, "2026-09-29T12:52:00Z", "Context compacted"),
         Item(6, ItemKind.TOOL, "2026-09-29T12:58:10Z", "Bash npm run test", pending = true),
+        Item(7, ItemKind.ASSISTANT, "2026-09-29T12:58:30Z", "Tests are running; I'll report once they pass."),
     ),
     hasMore = true,
     loaded = true,
@@ -145,7 +146,8 @@ private fun SessionListUnreachablePreview() = Frame {
     )
 }
 
-// Edge gauges: context 60% on the left, Codex's primary window at 93% (error) on the right.
+// Edge gauges: context 60% on the left, Codex's primary window at 93% (error) on the right. The
+// top text is the model and effort; the newest card rests near the middle, above the actions.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionDetailPreview() = Frame {
@@ -166,7 +168,8 @@ private fun SessionDetailKoPreview() = Frame {
     )
 }
 
-// A waiting request: a compact [Respond] replaces the speak and type buttons.
+// A waiting request: a compact [Respond] replaces the speak and type buttons. Without a model or
+// effort the top text names the provider.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionDetailRespondPreview() = Frame {

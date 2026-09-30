@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -33,7 +34,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -47,10 +52,12 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.foundation.weight
 import androidx.wear.compose.material3.AlertDialog
 import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.ButtonDefaults
@@ -63,7 +70,6 @@ import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.FilledTonalIconButton
 import androidx.wear.compose.material3.Icon
-import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ProgressIndicatorDefaults
@@ -73,7 +79,6 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
 import androidx.wear.compose.material3.TimeTextDefaults
 import androidx.wear.compose.material3.curvedText
-import androidx.wear.compose.material3.timeTextCurvedText
 import androidx.wear.compose.material3.timeTextSeparator
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
@@ -91,6 +96,13 @@ import dev.wristline.watch.data.SessionItems
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.isoToMillis
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -100,12 +112,17 @@ private const val COLLAPSED_LINES = 6
 private const val COLLAPSED_CHARS = 1_000
 private const val SENT_NOTICE_MS = 4_000L
 private val ACTION_SIZE = 44.dp
+private val ACTION_GAP = 10.dp
+// Low in the round screen's bottom chin, the two buttons still inside the circle.
+private val ACTIONS_BOTTOM = 6.dp
+// The list's end padding as a share of the screen height: at rest the newest short card sits near
+// the middle, well above the actions.
+private const val END_PADDING_FRACTION = 0.4f
 
-// The time text's content at its widest, centered on 12 o'clock (270 degrees clockwise from 3
-// o'clock); its background's round ends add about 5 degrees on each side, so with the title in it
-// the time text spans about 234 to 306 degrees. The title gets what the time and separator leave.
+// The curved top text (model and effort, in the time text's place) at its widest, centered on 12
+// o'clock (270 degrees clockwise from 3 o'clock); its background's round ends add about 5 degrees
+// on each side, so it spans at most about 234 to 306 degrees.
 private const val TIME_TEXT_SWEEP = 62f
-private const val TITLE_SWEEP = 34f
 // Left gauge on the upper flank, in degrees clockwise from 3 o'clock; the right gauge mirrors it
 // (312 to 340). Both stay about 6 degrees (10dp at the edge) clear of the widest time text, and the
 // right one clear of the scroll indicator at 3 o'clock.
@@ -280,10 +297,10 @@ internal fun SessionDetailContent(
     val working = session?.status == SessionStatus.RUNNING
     val blockCode = session?.promptBlock?.takeIf { !hasRequest }
     val canSend = session != null && session.promptBlock == null && !sending
-    // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
-    val hasActions = hasRequest || session != null
-    val footers = listOf(working, blockCode != null, outcome != null, hasActions).count { it }
+    val footers = listOf(working, blockCode != null, outcome != null).count { it }
     val lastIndex = 1 + listOf(showEarlier, showLoading, showFailed, showEmpty).count { it } + items.size + footers - 1
+    val screenHeight = LocalWindowInfo.current.containerSize.height
+    val endPadding = with(LocalDensity.current) { (screenHeight * END_PADDING_FRACTION).toDp() }
 
     // Follow new items only when the user was at the bottom. Read during composition on purpose:
     // it flips only at the end of the list, and when a new item arrives it still describes the
@@ -293,35 +310,31 @@ internal fun SessionDetailContent(
     var placed by remember { mutableStateOf(false) }
     LaunchedEffect(lastSeq, footers) {
         if (lastSeq == null || !atBottom) return@LaunchedEffect
+        // Scrolling to an item centers it, which leaves a tall last card short of the end; lifted
+        // a screen further it overshoots, and the list pins its end instead.
         if (placed) {
-            listState.animateScrollToItem(lastIndex)
+            listState.animateScrollToItem(lastIndex, screenHeight)
         } else {
             // First page: start at the bottom without animating.
-            listState.scrollToItem(lastIndex)
+            listState.scrollToItem(lastIndex, screenHeight)
             placed = true
         }
     }
 
-    // The title moves into the time text once the header, which shows it too, has scrolled up
-    // under it.
-    val headerShown by remember(listState) {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            val header = info.visibleItems.firstOrNull { it.key == "header" }
-            header != null && header.offset + header.transformedHeight > info.beforeContentPadding
-        }
-    }
-
-    // No EdgeButton: the actions are small and last in the list, so the transcript keeps the screen.
-    ScreenScaffold(
-        scrollState = listState,
-        timeText = { DetailTimeText(session?.takeUnless { headerShown }) },
-    ) { contentPadding ->
-        // The content is a Box: the gauges composed first are drawn beneath the list, so the cards
-        // cover them rather than the arcs cutting through the text.
-        if (session != null) EdgeGauges(session.context, limit)
+    // No EdgeButton: the actions are small and fixed in the screen's bottom chin, and the list's
+    // end padding keeps the newest card above them, near the middle.
+    ScreenScaffold(scrollState = listState, timeText = { DetailTopText(session) }) { contentPadding ->
+        val layoutDirection = LocalLayoutDirection.current
         // Default rotary behaviour (fling with haptics): long messages are read continuously, not item by item.
-        TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
+        TransformingLazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(
+                start = contentPadding.calculateStartPadding(layoutDirection),
+                top = contentPadding.calculateTopPadding(),
+                end = contentPadding.calculateEndPadding(layoutDirection),
+                bottom = endPadding,
+            ),
+        ) {
             item(key = "header") {
                 DetailHeader(
                     session = session,
@@ -386,40 +399,30 @@ internal fun SessionDetailContent(
                     )
                 }
             }
-            if (hasRequest) {
-                item(key = "respond") {
-                    CompactButton(
-                        onClick = onAction,
-                        modifier = Modifier
-                            .transformedHeight(this, spec)
-                            .animateItem()
-                            .minimumVerticalContentPadding(ButtonDefaults.minimumVerticalListContentPadding),
-                        transformation = SurfaceTransformation(spec),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
-                        label = { Text(stringResource(R.string.detail_respond)) },
-                    )
-                }
-            } else if (session != null) {
-                item(key = "actions") {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .edgeTransform(this, spec)
-                            .animateItem()
-                            .minimumVerticalContentPadding(IconButtonDefaults.minimumVerticalListContentPadding),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    ) {
-                        FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.size(ACTION_SIZE)) {
-                            if (sending) {
-                                SmallSpinner()
-                            } else {
-                                Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.detail_speak))
-                            }
-                        }
-                        FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.size(ACTION_SIZE)) {
-                            Icon(painterResource(R.drawable.ic_keyboard), stringResource(R.string.detail_type))
-                        }
+        }
+        // The content is a Box: what is composed after the list is drawn over it. The gauges always
+        // show; a card scrolling under them is covered there.
+        if (session != null) EdgeGauges(session.context, limit)
+        // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
+        val actions = Modifier.align(Alignment.BottomCenter).padding(bottom = ACTIONS_BOTTOM)
+        if (hasRequest) {
+            CompactButton(
+                onClick = onAction,
+                modifier = actions,
+                colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
+                label = { Text(stringResource(R.string.detail_respond)) },
+            )
+        } else if (session != null) {
+            Row(actions, horizontalArrangement = Arrangement.spacedBy(ACTION_GAP)) {
+                FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.size(ACTION_SIZE)) {
+                    if (sending) {
+                        SmallSpinner()
+                    } else {
+                        Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.detail_speak))
                     }
+                }
+                FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.size(ACTION_SIZE)) {
+                    Icon(painterResource(R.drawable.ic_keyboard), stringResource(R.string.detail_type))
                 }
             }
         }
@@ -503,19 +506,27 @@ private fun EdgeGauge(percent: Double, description: String, color: Color, right:
     )
 }
 
-/** The time with the session's title before it, cut short to fit; the plain time without a [session]. */
+/**
+ * The session's model and effort, `Fable 5.1 · high`, curved at the top in the time text's place
+ * (no clock); the model is cut short when they do not fit. Its provider without either, nothing
+ * without a [session].
+ */
 @Composable
-private fun DetailTimeText(session: Session?) {
-    if (session == null) {
-        TimeText()
-        return
-    }
-    val title = sessionTitle(session)
+private fun DetailTopText(session: Session?) {
+    if (session == null) return
+    val model = session.model
+    val effort = session.effort
+    val provider = providerLabel(session.provider)
     val style = TimeTextDefaults.timeTextStyle()
-    TimeText(maxSweepAngle = TIME_TEXT_SWEEP) { time ->
-        curvedText(title, maxSweepAngle = TITLE_SWEEP, overflow = TextOverflow.Ellipsis, style = style)
-        timeTextSeparator()
-        timeTextCurvedText(time)
+    TimeText(maxSweepAngle = TIME_TEXT_SWEEP) {
+        if (model == null && effort == null) {
+            curvedText(provider, overflow = TextOverflow.Ellipsis, style = style)
+            return@TimeText
+        }
+        // Weighted, the model takes what the effort and separator leave.
+        if (model != null) curvedText(model, CurvedModifier.weight(1f), overflow = TextOverflow.Ellipsis, style = style)
+        if (model != null && effort != null) timeTextSeparator()
+        if (effort != null) curvedText(effort, style = style)
     }
 }
 
@@ -593,6 +604,31 @@ private fun GaugeNumbers(context: ContextUsage?, limit: UsageWindow?) {
     )
 }
 
+/**
+ * An item's time in the locale's short form (`4:52 PM`, `오후 4:52`), after its `M/d` date when it
+ * is not from [today]; null when [iso] does not parse.
+ */
+internal fun itemTime(
+    iso: String,
+    locale: Locale,
+    zone: ZoneId = ZoneId.systemDefault(),
+    today: LocalDate = LocalDate.now(zone),
+): String? {
+    val millis = isoToMillis(iso) ?: return null
+    val time = Instant.ofEpochMilli(millis).atZone(zone)
+    val clock = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(time)
+    if (time.toLocalDate() == today) return clock
+    return DateTimeFormatter.ofPattern("M/d", locale).format(time) + " " + clock
+}
+
+/** An item's time as a small muted caption; formatted once per item, nothing when it does not parse. */
+@Composable
+private fun ItemTime(ts: String) {
+    val locale = LocalConfiguration.current.locales[0]
+    val time = remember(ts, locale) { itemTime(ts, locale) } ?: return
+    Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+}
+
 /** The start of a long message, enough to fill the collapsed lines and end in an ellipsis. */
 private fun collapsedText(text: String): String {
     if (text.length <= COLLAPSED_CHARS) return text
@@ -626,6 +662,7 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                     CardDefaults.cardColors()
                 },
             ) {
+                ItemTime(item.ts)
                 Text(
                     if (expanded) item.text else collapsedText(item.text),
                     modifier = Modifier.animateContentSize(),
@@ -666,6 +703,12 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                 }
             }
         }
-        else -> CaptionText(item.text, Modifier.edgeTransform(this, spec).then(appear))
+        else -> Column(
+            Modifier.fillMaxWidth().edgeTransform(this, spec).then(appear),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            ItemTime(item.ts)
+            CaptionText(item.text)
+        }
     }
 }
