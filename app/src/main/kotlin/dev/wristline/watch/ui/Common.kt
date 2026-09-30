@@ -142,25 +142,33 @@ fun providerLabel(provider: String): String = when (provider) {
 
 @Composable
 fun StatusDot(status: String, modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    val color = when (status) {
-        SessionStatus.NEEDS_INPUT -> colors.error
-        SessionStatus.RUNNING -> colors.primary
-        SessionStatus.IDLE -> colors.onSurfaceVariant
-        else -> colors.outline
-    }
-    val description = when (status) {
-        SessionStatus.NEEDS_INPUT -> stringResource(R.string.status_needs_input)
-        SessionStatus.RUNNING -> stringResource(R.string.status_running)
-        SessionStatus.IDLE -> stringResource(R.string.status_idle)
-        else -> stringResource(R.string.status_ended)
-    }
+    val color = statusColor(status)
+    val description = statusDescription(status)
     Box(
         modifier
             .size(8.dp)
             .background(color, CircleShape)
             .semantics { contentDescription = description },
     )
+}
+
+@Composable
+fun statusColor(status: String): Color {
+    val colors = MaterialTheme.colorScheme
+    return when (status) {
+        SessionStatus.NEEDS_INPUT -> colors.error
+        SessionStatus.RUNNING -> colors.primary
+        SessionStatus.IDLE -> colors.onSurfaceVariant
+        else -> colors.outline
+    }
+}
+
+@Composable
+fun statusDescription(status: String): String = when (status) {
+    SessionStatus.NEEDS_INPUT -> stringResource(R.string.status_needs_input)
+    SessionStatus.RUNNING -> stringResource(R.string.status_running)
+    SessionStatus.IDLE -> stringResource(R.string.status_idle)
+    else -> stringResource(R.string.status_ended)
 }
 
 /** Circular arc for a percentage; the indicator animates later changes itself. */

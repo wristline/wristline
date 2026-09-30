@@ -8,8 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -43,12 +43,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.wear.compose.foundation.AnchorType
-import androidx.wear.compose.foundation.CurvedDirection
+import androidx.wear.compose.foundation.CurvedAlignment
 import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.CurvedTextStyle
+import androidx.wear.compose.foundation.background
 import androidx.wear.compose.foundation.clearAndSetSemantics
+import androidx.wear.compose.foundation.curvedColumn
+import androidx.wear.compose.foundation.curvedRow
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.items
@@ -61,6 +63,7 @@ import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.CircularProgressIndicatorDefaults
 import androidx.wear.compose.material3.CompactButton
+import androidx.wear.compose.material3.CurvedTextDefaults
 import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.FilledTonalIconButton
@@ -72,7 +75,11 @@ import androidx.wear.compose.material3.ProgressIndicatorDefaults
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.TimeText
+import androidx.wear.compose.material3.TimeTextDefaults
 import androidx.wear.compose.material3.curvedText
+import androidx.wear.compose.material3.timeTextCurvedText
+import androidx.wear.compose.material3.timeTextSeparator
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
@@ -97,12 +104,21 @@ private const val COLLAPSED_LINES = 6
 private const val SENT_NOTICE_MS = 4_000L
 private val ACTION_SIZE = 44.dp
 
-// Left gauge, in degrees clockwise from 3 o'clock; the right gauge mirrors it.
-private const val GAUGE_START = 120f
-private const val GAUGE_SWEEP = 40f
-private val GAUGE_STROKE = 4.dp
+// The time text's content at its widest, centered on 12 o'clock (270 degrees clockwise from 3
+// o'clock); its background's round ends add about 5 degrees on each side, so with the title in it
+// the time text spans about 234 to 306 degrees. The title gets what the time and separator leave.
+private const val TIME_TEXT_SWEEP = 62f
+private const val TITLE_SWEEP = 34f
+private const val MODEL_SWEEP = 50f
+private val MODEL_SIZE = 12.sp
+// Left gauge on the upper flank, in degrees clockwise from 3 o'clock; the right gauge mirrors it
+// (312 to 340). Both stay about 6 degrees (10dp at the edge) clear of the widest time text, and the
+// right one clear of the scroll indicator at 3 o'clock.
+private const val GAUGE_START = 200f
+private const val GAUGE_SWEEP = 28f
+private val GAUGE_STROKE = 3.dp
 // Gauge labels are secondary: small, and in their arc's color but faded.
-private val GAUGE_LABEL_SIZE = 12.sp
+private val GAUGE_LABEL_SIZE = 11.sp
 private const val GAUGE_LABEL_ALPHA = 0.7f
 
 /** Holds the session open (its items) exactly as long as the screen is composed. */
@@ -278,17 +294,10 @@ internal fun SessionDetailContent(
     val atBottom = !listState.canScrollForward
     val lastSeq = items.lastOrNull()?.seq
     var placed by remember { mutableStateOf(false) }
-    // Set while following new items down, so the gauges stay through that scroll.
-    var following by remember { mutableStateOf(false) }
     LaunchedEffect(lastSeq, footers) {
         if (lastSeq == null || !atBottom) return@LaunchedEffect
         if (placed) {
-            following = true
-            try {
-                listState.animateScrollToItem(lastIndex)
-            } finally {
-                following = false
-            }
+            listState.animateScrollToItem(lastIndex)
         } else {
             // First page: start at the bottom without animating.
             listState.scrollToItem(lastIndex)
@@ -296,15 +305,21 @@ internal fun SessionDetailContent(
         }
     }
 
-    // No EdgeButton: the actions are small and last in the list, so the transcript keeps the screen.
-    ScreenScaffold(scrollState = listState) { contentPadding ->
-        // The content is a Box: the gauges composed first are drawn under the list. They show at the
-        // bottom, beside the actions; scrolled-up text would run over their labels.
-        if (session != null) {
-            AnimatedVisibility(visible = atBottom || following, enter = fadeIn(), exit = fadeOut()) {
-                EdgeGauges(session.context, limit)
-            }
+    // The title and model move into the time text once the header, which shows them too, has
+    // scrolled up under it.
+    val headerShown by remember(listState) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val header = info.visibleItems.firstOrNull { it.key == "header" }
+            header != null && header.offset + header.transformedHeight > info.beforeContentPadding
         }
+    }
+
+    // No EdgeButton: the actions are small and last in the list, so the transcript keeps the screen.
+    ScreenScaffold(
+        scrollState = listState,
+        timeText = { DetailTimeText(session?.takeUnless { headerShown }) },
+    ) { contentPadding ->
         // Default rotary behaviour (fling with haptics): long messages are read continuously, not item by item.
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item(key = "header") {
@@ -407,6 +422,8 @@ internal fun SessionDetailContent(
                 }
             }
         }
+        // The content is a Box: the gauges composed last are drawn over the list, so they always show.
+        if (session != null) EdgeGauges(session.context, limit)
     }
 }
 
@@ -437,9 +454,9 @@ private fun windowShort(window: UsageWindow): String {
 }
 
 /**
- * Context use (left) and the limit window (right) as thin arcs on the lower edge, each with a
+ * Context use (left) and the limit window (right) as thin arcs on the upper flanks, each with a
  * short curved label (`ctx 64%`, `5h 18%`; spelled out for screen readers) inside it. Clear of the
- * time text, the scroll indicator and the actions; both fill upwards.
+ * time text and the scroll indicator; both fill upwards, towards the time.
  */
 @Composable
 private fun EdgeGauges(context: ContextUsage?, limit: UsageWindow?) {
@@ -469,32 +486,74 @@ private fun EdgeGauge(percent: Double, label: String, description: String, color
     val edge = CircularProgressIndicatorDefaults.FullScreenPadding
     CircularProgressIndicator(
         progress = { progress },
-        // The right gauge is the left one mirrored, so it too fills from the bottom up.
+        // The right gauge is the left one mirrored, so it too fills upwards.
         modifier = Modifier.fillMaxSize().padding(edge).graphicsLayer { if (right) scaleX = -1f },
         startAngle = GAUGE_START,
         endAngle = GAUGE_START + GAUGE_SWEEP,
         colors = ProgressIndicatorDefaults.colors(indicatorColor = color),
         strokeWidth = GAUGE_STROKE,
     )
-    // The label hangs from the arc's upper end, away from the actions, and never runs past the arc.
-    // Read counterclockwise, it starts there on the left and ends there on the right.
-    val end = GAUGE_START + GAUGE_SWEEP
+    // The label is centered on its arc, just inside it, and never runs past the arc's ends. Its
+    // background keeps it legible over the list scrolling under it.
+    val middle = GAUGE_START + GAUGE_SWEEP / 2
     val style = CurvedTextStyle(MaterialTheme.typography.labelSmall)
+    val background = CurvedTextDefaults.backgroundColor()
     CurvedLayout(
         Modifier.fillMaxSize().padding(edge + GAUGE_STROKE + 2.dp),
-        anchor = if (right) 180f - end else end,
-        anchorType = if (right) AnchorType.End else AnchorType.Start,
-        angularDirection = CurvedDirection.Angular.CounterClockwise,
+        anchor = if (right) 180f - middle else middle,
     ) {
         curvedText(
             label,
-            modifier = CurvedModifier.clearAndSetSemantics { contentDescription = description },
+            modifier = CurvedModifier
+                .clearAndSetSemantics { contentDescription = description }
+                .background(background, StrokeCap.Round),
             maxSweepAngle = GAUGE_SWEEP,
             color = color.copy(alpha = GAUGE_LABEL_ALPHA),
             fontSize = GAUGE_LABEL_SIZE,
             style = style,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * The time with the session's title before it and its model on a second line under both; the plain
+ * time without a [session].
+ */
+@Composable
+private fun DetailTimeText(session: Session?) {
+    if (session == null) {
+        TimeText()
+        return
+    }
+    val title = sessionTitle(session)
+    // As in the header; a long one is cut short rather than widen the time text into the gauges.
+    val model = listOfNotNull(session.model, session.effort).joinToString(" · ").ifEmpty { providerLabel(session.provider) }
+    val dotColor = statusColor(session.status)
+    val status = statusDescription(session.status)
+    val titleStyle = TimeTextDefaults.timeTextStyle()
+    val modelStyle = CurvedTextStyle(
+        MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = MODEL_SIZE),
+    )
+    // Each line has its own background: the time text's would be one block around both.
+    val background = CurvedModifier.background(TimeTextDefaults.backgroundColor(), StrokeCap.Round)
+    TimeText(maxSweepAngle = TIME_TEXT_SWEEP, backgroundColor = Color.Transparent) { time ->
+        curvedColumn(angularAlignment = CurvedAlignment.Angular.Center) {
+            curvedRow(background) {
+                curvedText(title, maxSweepAngle = TITLE_SWEEP, overflow = TextOverflow.Ellipsis, style = titleStyle)
+                timeTextSeparator()
+                timeTextCurvedText(time)
+            }
+            curvedRow(background) {
+                curvedText(
+                    "\u2022 ",
+                    modifier = CurvedModifier.clearAndSetSemantics { contentDescription = status },
+                    color = dotColor,
+                    style = modelStyle,
+                )
+                curvedText(model, maxSweepAngle = MODEL_SWEEP, overflow = TextOverflow.Ellipsis, style = modelStyle)
+            }
+        }
     }
 }
 
