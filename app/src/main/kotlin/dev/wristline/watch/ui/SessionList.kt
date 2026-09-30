@@ -12,7 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -90,7 +93,7 @@ internal fun SessionListContent(
     val stale = conn is Conn.Offline || conn is Conn.Unreachable || conn is Conn.Unauthorized
     val oldestRequest = remember(requests) { requests.minByOrNull { it.createdAt } }
     val showAccounts = remember(sessions, usage) { showAccountLabels(sessions, usage) }
-    val lines = usageLines(usage, showAccounts)
+    val glance = remember(usage) { glanceUsage(usage) }
     ScreenScaffold(
         scrollState = listState,
         edgeButton = {
@@ -133,26 +136,13 @@ internal fun SessionListContent(
                     )
                 }
             }
-            if (lines.isNotEmpty()) {
+            if (glance.isNotEmpty()) {
                 item(key = "usage") {
                     FilledTonalButton(
                         onClick = onUsage,
                         modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
                         transformation = SurfaceTransformation(spec),
-                        label = {
-                            Column {
-                                lines.take(MAX_USAGE_LINES).forEach { (label, windows) ->
-                                    // The numbers always show whole; a long label gives way first.
-                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        if (label != null) {
-                                            Text(label, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        }
-                                        Text(windows, maxLines = 1)
-                                    }
-                                }
-                                if (lines.size > MAX_USAGE_LINES) Text("+${lines.size - MAX_USAGE_LINES}", maxLines = 1)
-                            }
-                        },
+                        label = { Column { glance.forEach { GlanceLine(it) } } },
                     )
                 }
             }
@@ -184,27 +174,50 @@ internal fun SessionListContent(
 internal fun sessionTitle(session: Session): String =
     session.title.ifBlank { basename(session.cwd) }.ifBlank { stringResource(R.string.session_untitled) }
 
-/** Usage entries shown on the list's usage card; the rest are counted as `+N`. */
-private const val MAX_USAGE_LINES = 3
+/** Percentages from here up are shown in the error color. */
+internal const val NEAR_LIMIT_PERCENT = 80
 
 /**
- * One (label, windows) line per usage entry, ordered by provider then account label. Claude Code
- * windows keep their short ids and have no label of their own: `5h 42% · 7d 12%`. Other providers'
- * ids are long (`primary`), so only their percentages follow the provider name: `Codex 30%·8%`.
- * With [showAccounts] the short account label joins the label: `~school`, `Codex school`.
+ * The usage card's entries: one per provider, in provider order. Of a provider's accounts only the
+ * one closest to a limit (highest used percentage in any window) is shown; the Usage screen has
+ * the rest. Entries without windows are skipped.
+ */
+internal fun glanceUsage(usage: List<Usage>): List<Usage> =
+    usage.filter { it.windows.isNotEmpty() }
+        .groupBy { it.provider }
+        .toSortedMap()
+        .values
+        .map { entries -> entries.maxBy { u -> u.windows.maxOf { it.usedPercent } } }
+
+/**
+ * `Claude     5h 14% · 7d 40%`, `Codex     12% · 40%`: Claude Code windows keep their short ids,
+ * other providers' ids are long (`primary`) so only the percentages show. The numbers are larger
+ * and tabular; one near its limit takes the error color.
  */
 @Composable
-private fun usageLines(usage: List<Usage>, showAccounts: Boolean): List<Pair<String?, String>> =
-    usage.sortedWith(compareBy({ it.provider }, { it.account?.label })).mapNotNull { u ->
-        if (u.windows.isEmpty()) return@mapNotNull null
-        val account = u.account?.takeIf { showAccounts }?.let(::accountShort)
-        if (u.provider == ProviderId.CLAUDE_CODE) {
-            account to u.windows.joinToString(" · ") { "${it.id} ${it.usedPercent.roundToInt()}%" }
-        } else {
-            listOfNotNull(providerLabel(u.provider), account).joinToString(" ") to
-                u.windows.joinToString("·") { "${it.usedPercent.roundToInt()}%" }
+private fun GlanceLine(u: Usage) {
+    val colors = MaterialTheme.colorScheme
+    val number = SpanStyle(fontSize = MaterialTheme.typography.titleLarge.fontSize, fontFeatureSettings = "tnum")
+    val muted = SpanStyle(color = colors.onSurfaceVariant)
+    val windows = buildAnnotatedString {
+        u.windows.forEachIndexed { i, w ->
+            if (i > 0) withStyle(muted) { append(" · ") }
+            if (u.provider == ProviderId.CLAUDE_CODE) withStyle(muted) { append(w.id + " ") }
+            val percent = w.usedPercent.roundToInt()
+            withStyle(if (percent >= NEAR_LIMIT_PERCENT) number.copy(color = colors.error) else number) { append("$percent%") }
         }
     }
+    // The numbers always show whole; a long provider name gives way first.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            providerLabel(u.provider),
+            Modifier.weight(1f).alignByBaseline(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(windows, Modifier.alignByBaseline(), maxLines = 1)
+    }
+}
 
 @Composable
 private fun SessionCard(

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,7 +30,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -37,6 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.wear.compose.foundation.CurvedDirection
+import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.items
@@ -46,33 +51,49 @@ import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.CircularProgressIndicatorDefaults
 import androidx.wear.compose.material3.CompactButton
-import androidx.wear.compose.material3.EdgeButton
-import androidx.wear.compose.material3.EdgeButtonSize
+import androidx.wear.compose.material3.FilledIconButton
 import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.FilledTonalIconButton
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ProgressIndicatorDefaults
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.curvedText
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
+import dev.wristline.watch.data.ContextUsage
 import dev.wristline.watch.data.Item
 import dev.wristline.watch.data.ItemKind
+import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionItems
 import dev.wristline.watch.data.SessionStatus
+import dev.wristline.watch.data.Usage
+import dev.wristline.watch.data.UsageWindow
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val COLLAPSED_LINES = 6
 private const val SENT_NOTICE_MS = 4_000L
+private val ACTION_SIZE = 44.dp
+
+// Left gauge, in degrees clockwise from 3 o'clock; the right gauge mirrors it.
+private const val GAUGE_START = 120f
+private const val GAUGE_SWEEP = 40f
+private val GAUGE_STROKE = 4.dp
 
 /** Holds the session open (its items) exactly as long as the screen is composed. */
 private class OpenedSession(val id: String) : RememberObserver {
@@ -98,7 +119,9 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
     val sessions by Bridge.sessions.collectAsStateWithLifecycle()
     val requests by Bridge.requests.collectAsStateWithLifecycle()
     val conn by Bridge.conn.collectAsStateWithLifecycle()
+    val usage by Bridge.usage.collectAsStateWithLifecycle()
     val session = remember(sessions, sessionId) { sessions.firstOrNull { it.id == sessionId } }
+    val limit = remember(session, usage) { session?.let { sessionLimit(it, usage) } }
     val request = remember(requests, sessionId) { requests.firstOrNull { it.sessionId == sessionId } }
 
     val scope = rememberCoroutineScope()
@@ -135,6 +158,7 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
     SessionDetailContent(
         session = session,
         gone = session == null && (conn is Conn.Online || conn is Conn.Demo),
+        limit = limit,
         state = items,
         hasRequest = request != null,
         sending = sending,
@@ -211,6 +235,7 @@ private fun rememberSpeechInput(prompt: String, onText: (String) -> Unit): () ->
 internal fun SessionDetailContent(
     session: Session?,
     gone: Boolean,
+    limit: UsageWindow?,
     state: SessionItems,
     hasRequest: Boolean,
     sending: Boolean,
@@ -231,9 +256,10 @@ internal fun SessionDetailContent(
     val showEmpty = items.isEmpty() && state.loaded && !state.loading && !state.failed
     val working = session?.status == SessionStatus.RUNNING
     val blockCode = session?.promptBlock?.takeIf { !hasRequest }
-    // Typing is the alternative to the [Speak] EdgeButton, offered whenever a prompt can be sent.
-    val canType = !hasRequest && session != null && session.promptBlock == null
-    val footers = listOf(working, blockCode != null, outcome != null, canType).count { it }
+    val canSend = session != null && session.promptBlock == null && !sending
+    // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
+    val hasActions = hasRequest || session != null
+    val footers = listOf(working, blockCode != null, outcome != null, hasActions).count { it }
     val lastIndex = 1 + listOf(showEarlier, showLoading, showFailed, showEmpty).count { it } + items.size + footers - 1
 
     // Follow new items only when the user was at the bottom. Read during composition on purpose:
@@ -253,27 +279,10 @@ internal fun SessionDetailContent(
         }
     }
 
-    ScreenScaffold(
-        scrollState = listState,
-        edgeButton = {
-            EdgeButton(
-                onClick = onAction,
-                buttonSize = EdgeButtonSize.Medium,
-                enabled = hasRequest || (session != null && session.promptBlock == null && !sending),
-                colors = if (hasRequest) {
-                    ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary)
-                } else {
-                    ButtonDefaults.buttonColors()
-                },
-            ) {
-                if (sending) {
-                    SmallSpinner()
-                } else {
-                    Text(stringResource(if (hasRequest) R.string.detail_respond else R.string.detail_speak))
-                }
-            }
-        },
-    ) { contentPadding ->
+    // No EdgeButton: the actions are small and last in the list, so the transcript keeps the screen.
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+        // The content is a Box: the gauges composed first are drawn under the list.
+        if (session != null) EdgeGauges(session.context, limit)
         // Default rotary behaviour (fling with haptics): long messages are read continuously, not item by item.
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item(key = "header") {
@@ -339,18 +348,113 @@ internal fun SessionDetailContent(
                     )
                 }
             }
-            if (canType) {
-                item(key = "type") {
+            if (hasRequest) {
+                item(key = "respond") {
                     CompactButton(
-                        onClick = onType,
-                        enabled = !sending,
-                        modifier = Modifier.transformedHeight(this, spec).animateItem(),
+                        onClick = onAction,
+                        modifier = Modifier
+                            .transformedHeight(this, spec)
+                            .animateItem()
+                            .minimumVerticalContentPadding(ButtonDefaults.minimumVerticalListContentPadding),
                         transformation = SurfaceTransformation(spec),
-                        label = { Text(stringResource(R.string.detail_type)) },
+                        colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
+                        label = { Text(stringResource(R.string.detail_respond)) },
                     )
+                }
+            } else if (session != null) {
+                item(key = "actions") {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .edgeTransform(this, spec)
+                            .animateItem()
+                            .minimumVerticalContentPadding(IconButtonDefaults.minimumVerticalListContentPadding),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    ) {
+                        FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.size(ACTION_SIZE)) {
+                            if (sending) {
+                                SmallSpinner()
+                            } else {
+                                Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.detail_speak))
+                            }
+                        }
+                        FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.size(ACTION_SIZE)) {
+                            Icon(painterResource(R.drawable.ic_keyboard), stringResource(R.string.detail_type))
+                        }
+                    }
                 }
             }
         }
+    }
+}
+
+/**
+ * The window a session's gauge shows: the 5-hour window (`5h`) of the usage entry under the
+ * session's account for Claude Code, the primary window for other providers. A session without a
+ * matching account entry falls back to its provider's only entry; null when there is none or the
+ * choice would be a guess.
+ */
+internal fun sessionLimit(session: Session, usage: List<Usage>): UsageWindow? {
+    val entries = usage.filter { it.provider == session.provider }
+    val entry = entries.firstOrNull { it.account?.id == session.account?.id } ?: entries.singleOrNull() ?: return null
+    return if (session.provider == ProviderId.CLAUDE_CODE) {
+        entry.windows.firstOrNull { it.id == "5h" }
+    } else {
+        entry.windows.firstOrNull { it.id == "primary" } ?: entry.windows.firstOrNull()
+    }
+}
+
+/** `5h`, `7d`: a window's length in its shortest form, or its id when the length is unknown. */
+private fun windowShort(window: UsageWindow): String {
+    val minutes = window.minutes?.takeIf { it > 0 } ?: return window.id
+    return when {
+        minutes % 1_440 == 0 -> "${minutes / 1_440}d"
+        minutes % 60 == 0 -> "${minutes / 60}h"
+        else -> "${minutes}m"
+    }
+}
+
+/**
+ * Context use (left) and the limit window (right) as thin arcs on the lower edge, each with a
+ * curved label inside it. Drawn under the list, clear of the time text, the scroll indicator and
+ * the actions; both fill upwards.
+ */
+@Composable
+private fun EdgeGauges(context: ContextUsage?, limit: UsageWindow?) {
+    val colors = MaterialTheme.colorScheme
+    if (context != null && context.window > 0) {
+        val percent = context.used * 100.0 / context.window
+        EdgeGauge(percent, stringResource(R.string.detail_context, percent.roundToInt()), colors.primary, right = false)
+    }
+    if (limit != null) {
+        val percent = limit.usedPercent.roundToInt()
+        val color = if (percent >= NEAR_LIMIT_PERCENT) colors.error else colors.tertiary
+        EdgeGauge(limit.usedPercent, "${windowShort(limit)} $percent%", color, right = true)
+    }
+}
+
+@Composable
+private fun EdgeGauge(percent: Double, label: String, color: Color, right: Boolean) {
+    // As in PercentRing: the indicator observes only the State its first progress lambda reads.
+    val progress by rememberUpdatedState((percent / 100).toFloat().coerceIn(0f, 1f))
+    val edge = CircularProgressIndicatorDefaults.FullScreenPadding
+    CircularProgressIndicator(
+        progress = { progress },
+        // The right gauge is the left one mirrored, so it too fills from the bottom up.
+        modifier = Modifier.fillMaxSize().padding(edge).graphicsLayer { if (right) scaleX = -1f },
+        startAngle = GAUGE_START,
+        endAngle = GAUGE_START + GAUGE_SWEEP,
+        colors = ProgressIndicatorDefaults.colors(indicatorColor = color),
+        strokeWidth = GAUGE_STROKE,
+    )
+    val middle = GAUGE_START + GAUGE_SWEEP / 2
+    val style = MaterialTheme.typography.arcSmall
+    CurvedLayout(
+        Modifier.fillMaxSize().padding(edge + GAUGE_STROKE + 2.dp),
+        anchor = if (right) 180f - middle else middle,
+        angularDirection = CurvedDirection.Angular.CounterClockwise,
+    ) {
+        curvedText(label, color = color, style = style)
     }
 }
 
@@ -367,19 +471,21 @@ private fun DetailHeader(session: Session?, gone: Boolean, modifier: Modifier) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            // `Fable 5.1 · xhigh` names the provider too; without either, the provider alone.
+            val model = listOfNotNull(session.model, session.effort).joinToString(" · ")
+            Row(
+                Modifier.padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 StatusDot(session.status)
-                Text(providerLabel(session.provider), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
-                val context = session.context
-                if (context != null && context.window > 0) {
-                    val percent = context.used * 100.0 / context.window
-                    PercentRing(percent, Modifier.size(14.dp), strokeWidth = 2.dp)
-                    Text(
-                        stringResource(R.string.detail_context, percent.roundToInt()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    model.ifEmpty { providerLabel(session.provider) },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         } else if (gone) {
             CaptionText(stringResource(R.string.detail_gone))

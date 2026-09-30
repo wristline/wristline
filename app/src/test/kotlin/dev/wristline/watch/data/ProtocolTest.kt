@@ -147,6 +147,26 @@ class ProtocolTest {
         assertEquals(Account("chatgpt-1", "school"), event.usage.account)
     }
 
+    // Hand-written until the bridge fixtures carry them: model and effort are optional.
+    @Test
+    fun sessionModelAndEffortDecodeWhenPresent() {
+        val list = decode<SessionList>(
+            WireJson.parseToJsonElement(
+                """{"sessions":[
+                   {"id":"claude-code:1","provider":"claude-code","status":"running","lastActivity":"2026-09-29T00:00:00Z",
+                    "model":"Fable 5.1","effort":"xhigh"},
+                   {"id":"codex:2","provider":"codex","status":"idle","lastActivity":"2026-09-29T00:00:00Z","model":"gpt-5.3-codex"},
+                   {"id":"codex:3","provider":"codex","status":"idle","lastActivity":"2026-09-29T00:00:00Z"}]}""",
+            ) as JsonObject,
+        ).sessions
+        assertEquals("Fable 5.1", list[0].model)
+        assertEquals("xhigh", list[0].effort)
+        assertEquals("gpt-5.3-codex", list[1].model)
+        assertNull(list[1].effort)
+        assertNull(list[2].model)
+        assertNull(list[2].effort)
+    }
+
     @Test
     fun usageKeyIsProviderAndAccountId() {
         val at = "2026-09-29T00:00:00Z"

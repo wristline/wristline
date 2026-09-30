@@ -103,6 +103,10 @@ data class Session(
     val promptBlock: String? = null,
     val context: ContextUsage? = null,
     val account: Account? = null,
+    /** Display name of the model, e.g. `Fable 5.1`; absent when unknown. */
+    val model: String? = null,
+    /** Reasoning effort, e.g. `xhigh`; absent when unknown or not applicable. */
+    val effort: String? = null,
 )
 
 @Immutable

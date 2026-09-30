@@ -130,6 +130,7 @@ private fun CodePreview() = Frame { CodeContent(busy = false, error = null, onSu
 @Composable
 private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "not_found", onSubmit = {}) }
 
+// Glance card: Codex's 93% takes the error color.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {
@@ -166,11 +167,33 @@ private fun SessionListAccountsKoPreview() = Frame {
     )
 }
 
+// Edge gauges: context 60% on the left, Codex's primary window at 93% (error) on the right.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionDetailPreview() = Frame {
     SessionDetailContent(
-        sessions[1], gone = false, state = items, hasRequest = false, sending = false, outcome = null,
+        sessions[1].copy(model = "gpt-5.3-codex", effort = "high"), gone = false, limit = usage[1].windows[0],
+        state = items, hasRequest = false, sending = false, outcome = null,
+        onEarlier = {}, onAction = {}, onType = {},
+    )
+}
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun SessionDetailKoPreview() = Frame {
+    SessionDetailContent(
+        sessions[0].copy(status = SessionStatus.RUNNING, promptBlock = null, model = "Fable 5.1", effort = "xhigh"),
+        gone = false, limit = usage[0].windows[0], state = items, hasRequest = false, sending = false, outcome = null,
+        onEarlier = {}, onAction = {}, onType = {},
+    )
+}
+
+// A waiting request: a compact [Respond] replaces the speak and type buttons.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun SessionDetailRespondPreview() = Frame {
+    SessionDetailContent(
+        sessions[0], gone = false, limit = usage[0].windows[0], state = items, hasRequest = true, sending = false, outcome = null,
         onEarlier = {}, onAction = {}, onType = {},
     )
 }
@@ -180,7 +203,7 @@ private fun SessionDetailPreview() = Frame {
 @Composable
 private fun SessionDetailFailedPreview() = Frame {
     SessionDetailContent(
-        sessions[1], gone = false, state = SessionItems(failed = true), hasRequest = false, sending = false, outcome = null,
+        sessions[1], gone = false, limit = null, state = SessionItems(failed = true), hasRequest = false, sending = false, outcome = null,
         onEarlier = {}, onAction = {}, onType = {},
     )
 }
