@@ -1,6 +1,7 @@
 package dev.wristline.watch.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,7 +29,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -45,12 +45,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -140,13 +138,16 @@ private val LIST_SIDE_TRIM = 2.dp
 private const val TIME_TEXT_SWEEP = 62f
 // Left gauge centered on 9 o'clock, in degrees clockwise from 3 o'clock; the right gauge mirrors it
 // (338 to 22, centered on 3 o'clock, where the scroll indicator is: it is hidden while the gauges
-// show). Past each upper end, GAUGE_LABEL_GAP on, its percentage: `100%` at 10sp takes about 13
-// degrees, so it ends near 218 (322 on the right), well short of the widest time text's letters,
-// which start at 239.
+// show). Past each upper end, GAUGE_LABEL_GAP on, its percentage, the only place it shows: `100%`
+// at GAUGE_LABEL_SIZE takes about 19 degrees, so it ends near 224 (316 on the right), short of the
+// widest time text's background, which starts at 234; at a 1.3 font scale, near 230.
 private const val GAUGE_START = 158f
 private const val GAUGE_SWEEP = 44f
 // Clears the arc's round end (half the stroke, under 2 degrees) with a little room to spare.
 private const val GAUGE_LABEL_GAP = 3f
+private val GAUGE_LABEL_SIZE = 12.sp
+// The right gauge starts filling in this long after the left.
+private const val GAUGE_STAGGER_MS = 120L
 // No thinner than the scroll indicator (5dp, 6dp on screens 225dp and wider).
 private val GAUGE_STROKE = 6.dp
 // How long the list stays still before the gauges show.
@@ -317,6 +318,9 @@ internal fun SessionDetailContent(
     // No EdgeButton: the actions are small and fixed in the screen's bottom chin, and the list's
     // end padding keeps the newest card above them.
     val gaugesShown by rememberGaugesShown(listState)
+    // The gauges fill in from zero the first time they show, once per visit: held here, as they
+    // leave composition whenever the list scrolls.
+    var gaugesFilled by remember { mutableStateOf(false) }
     ScreenScaffold(
         scrollState = listState,
         timeText = { DetailTopText(session) },
@@ -402,7 +406,9 @@ internal fun SessionDetailContent(
         }
         // The content is a Box: what is composed after the list is drawn over it. The arcs show
         // whenever the list is at rest, their labels only at the top, with the whole header.
-        if (session != null) EdgeGauges(gaugesShown, session.context, limit)
+        if (session != null) {
+            EdgeGauges(gaugesShown, session.context, limit, fillIn = !gaugesFilled, onFillStarted = { gaugesFilled = true })
+        }
         // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
         // it does not dim them; with no pointer input, touches on it reach the list.
         Box(
@@ -511,26 +517,57 @@ private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<G
 
 /**
  * Context use (left) and the limit window (right) as bare arcs centered on 9 and 3 o'clock, each
- * with its percentage just past its upper end; the header spells out the same numbers. Both fill
- * upwards, towards the time text.
+ * with its percentage just past its upper end; the header only reads the numbers out. Both fill
+ * upwards, towards the time text. With [fillIn] the arcs composed now fill in from zero, the right
+ * one a little after the left; [onFillStarted] follows the first.
  */
 @Composable
-private fun EdgeGauges(shown: GaugesShown, context: ContextUsage?, limit: UsageWindow?) {
+private fun EdgeGauges(
+    shown: GaugesShown,
+    context: ContextUsage?,
+    limit: UsageWindow?,
+    fillIn: Boolean,
+    onFillStarted: () -> Unit,
+) {
     AnimatedVisibility(shown.arcs, enter = fadeIn(), exit = fadeOut()) {
         contextPercent(context)?.let { percent ->
-            EdgeGauge(percent, MaterialTheme.colorScheme.primary, right = false, labelShown = shown.labels)
+            EdgeGauge(
+                percent,
+                MaterialTheme.colorScheme.primary,
+                right = false,
+                labelShown = shown.labels,
+                fillDelayMs = if (fillIn) 0L else null,
+                onFillStarted = onFillStarted,
+            )
         }
         if (limit != null) {
-            val percent = limit.usedPercent.roundToInt()
-            EdgeGauge(limit.usedPercent, limitColor(percent), right = true, labelShown = shown.labels)
+            val color by animateColorAsState(
+                limitColor(limit.usedPercent.roundToInt()),
+                MaterialTheme.motionScheme.defaultEffectsSpec(),
+            )
+            EdgeGauge(
+                limit.usedPercent,
+                color,
+                right = true,
+                labelShown = shown.labels,
+                fillDelayMs = if (fillIn) GAUGE_STAGGER_MS else null,
+                onFillStarted = onFillStarted,
+            )
         }
     }
 }
 
 @Composable
-private fun EdgeGauge(percent: Double, color: Color, right: Boolean, labelShown: Boolean) {
+private fun EdgeGauge(
+    percent: Double,
+    color: Color,
+    right: Boolean,
+    labelShown: Boolean,
+    fillDelayMs: Long?,
+    onFillStarted: () -> Unit,
+) {
     // As in PercentRing: the indicator observes only the State its first progress lambda reads.
-    val progress by rememberUpdatedState((percent / 100).toFloat().coerceIn(0f, 1f))
+    val progress by rememberFillIn((percent / 100).toFloat().coerceIn(0f, 1f), fillDelayMs, onFillStarted)
     val edge = CircularProgressIndicatorDefaults.FullScreenPadding
     CircularProgressIndicator(
         progress = { progress },
@@ -560,7 +597,7 @@ private fun EdgeGauge(percent: Double, color: Color, right: Boolean, labelShown:
             anchor = if (right) 540f - upperEnd - GAUGE_LABEL_GAP else upperEnd + GAUGE_LABEL_GAP,
             anchorType = if (right) AnchorType.End else AnchorType.Start,
         ) {
-            curvedText("${percent.roundToInt()}%", color = color.copy(alpha = 0.85f), fontSize = 10.sp)
+            curvedText("${percent.roundToInt()}%", color = color, fontSize = GAUGE_LABEL_SIZE, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -590,78 +627,53 @@ private fun DetailTopText(session: Session?) {
     }
 }
 
-@Composable
-private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, modifier: Modifier) {
-    val colors = MaterialTheme.colorScheme
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (session != null) {
-            Text(
-                sessionTitle(session),
-                modifier = Modifier.padding(horizontal = 16.dp),
-                style = MaterialTheme.typography.titleSmall,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // `Fable 5.1 · xhigh` names the provider too; without either, the provider alone.
-            val model = listOfNotNull(session.model, session.effort).joinToString(" · ")
-            Row(
-                Modifier.padding(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ProviderBadge(session.provider)
-                StatusDot(session.status)
-                Text(
-                    model.ifEmpty { providerLabel(session.provider) },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            GaugeNumbers(session.context, limit)
-        } else if (gone) {
-            CaptionText(stringResource(R.string.detail_gone))
-        }
-    }
-}
-
 /**
- * The edge gauges' numbers, `ctx 46% · 5h 6%`: muted labels, each number in its arc's color.
- * Nothing when neither is known.
+ * The session's title over its provider badge, status dot and status in a word: the model and the
+ * gauges' numbers show once, at the top and at the arcs' ends. Read out as one, the numbers too.
  */
 @Composable
-private fun GaugeNumbers(context: ContextUsage?, limit: UsageWindow?) {
-    val contextShown = contextPercent(context)?.roundToInt()
-    val limitShown = limit?.usedPercent?.roundToInt()
-    if (contextShown == null && limitShown == null) return
-    val contextLabel = stringResource(R.string.detail_context)
-    val contextTint = MaterialTheme.colorScheme.primary
-    val limitTint = limitShown?.let { limitColor(it) } ?: Color.Unspecified
+private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, modifier: Modifier) {
+    if (session == null) {
+        Box(modifier.fillMaxWidth()) { if (gone) CaptionText(stringResource(R.string.detail_gone)) }
+        return
+    }
+    val title = sessionTitle(session)
+    val status = statusDescription(session.status)
     val spoken = listOfNotNull(
-        contextShown?.let { stringResource(R.string.detail_context_description, it) },
-        limit?.let { "${windowLabel(it)} $limitShown%" },
+        title,
+        providerLabel(session.provider),
+        status,
+        contextPercent(session.context)?.let { stringResource(R.string.detail_context_description, it.roundToInt()) },
+        limit?.let { "${windowLabel(it)} ${it.usedPercent.roundToInt()}%" },
     ).joinToString(", ")
-    val text = buildAnnotatedString {
-        if (contextShown != null) {
-            append("$contextLabel ")
-            withStyle(SpanStyle(color = contextTint)) { append("$contextShown%") }
-        }
-        if (limit != null) {
-            if (contextShown != null) append(" · ")
-            append("${windowShort(limit)} ")
-            withStyle(SpanStyle(color = limitTint)) { append("$limitShown%") }
+    Column(
+        modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = spoken },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            title,
+            modifier = Modifier.padding(horizontal = 16.dp),
+            style = MaterialTheme.typography.titleSmall,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(
+            Modifier.padding(horizontal = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ProviderBadge(session.provider)
+            StatusDot(session.status)
+            Text(
+                status,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
-    Text(
-        text,
-        modifier = Modifier.padding(horizontal = 24.dp).clearAndSetSemantics { contentDescription = spoken },
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
 }
 
 /**

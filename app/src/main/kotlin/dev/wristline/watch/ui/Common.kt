@@ -10,6 +10,7 @@ import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -25,8 +26,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -34,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -45,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.wear.compose.foundation.LocalReduceMotion
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
@@ -221,17 +227,50 @@ fun statusDescription(status: String): String = when (status) {
 }
 
 /**
- * Circular arc for a limit window's percentage, in [limitColor] of the number shown; the indicator
- * animates later changes itself.
+ * Circular arc for a limit window's percentage, in [limitColor] of the number shown, fading into a
+ * new one; the indicator animates later changes itself. With [fillDelayMs] it first fills in from
+ * zero (see [rememberFillIn]).
  */
 @Composable
-fun PercentRing(percent: Double, modifier: Modifier = Modifier, strokeWidth: Dp = 4.dp) {
+fun PercentRing(
+    percent: Double,
+    modifier: Modifier = Modifier,
+    strokeWidth: Dp = 4.dp,
+    fillDelayMs: Long? = null,
+    onFillStarted: () -> Unit = {},
+) {
     val fraction = (percent / 100).toFloat().coerceIn(0f, 1f)
     // The indicator keeps the first progress lambda and observes only the State it reads: a lambda
     // over a plain Float would never report a later percent.
-    val progress by rememberUpdatedState(fraction)
-    val colors = ProgressIndicatorDefaults.colors(indicatorColor = limitColor(percent.roundToInt()))
+    val progress by rememberFillIn(fraction, fillDelayMs, onFillStarted)
+    val color by animateColorAsState(limitColor(percent.roundToInt()), MaterialTheme.motionScheme.defaultEffectsSpec())
+    val colors = ProgressIndicatorDefaults.colors(indicatorColor = color)
     CircularProgressIndicator(progress = { progress }, modifier = modifier, colors = colors, strokeWidth = strokeWidth)
+}
+
+/**
+ * An indicator's progress: [fraction], or, when [delayMs] is not null as it is first composed, zero
+ * until [delayMs] after its first frame. The indicator animates that change like any other, so it
+ * fills in from zero, once: a later [delayMs] is ignored. [onStarted] follows the change. Never with
+ * reduced motion, nor in a preview, which draws a single frame.
+ */
+@Composable
+fun rememberFillIn(fraction: Float, delayMs: Long?, onStarted: () -> Unit = {}): State<Float> {
+    val allowed = !LocalReduceMotion.current && !LocalInspectionMode.current
+    val fillDelay = remember { delayMs?.takeIf { allowed } }
+    var started by remember { mutableStateOf(fillDelay == null) }
+    val latestOnStarted by rememberUpdatedState(onStarted)
+    if (fillDelay != null) {
+        LaunchedEffect(Unit) {
+            // A frame first: the indicator animates only changes after the first value it collects,
+            // which it does once composed.
+            withFrameNanos {}
+            delay(fillDelay)
+            started = true
+            latestOnStarted()
+        }
+    }
+    return rememberUpdatedState(if (started) fraction else 0f)
 }
 
 /** Small indeterminate spinner: used only for pending tool calls and connecting/sending states. */

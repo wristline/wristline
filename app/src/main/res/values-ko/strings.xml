@@ -87,7 +87,6 @@
     <string name="detail_empty">아직 메시지가 없습니다.</string>
     <string name="detail_load_failed">메시지를 불러오지 못했습니다.</string>
     <string name="detail_gone">브릿지에 더 이상 없는 세션입니다.</string>
-    <string name="detail_context">ctx</string>
     <string name="detail_context_description">컨텍스트 %1$d%%</string>
 
     <!-- Request -->
