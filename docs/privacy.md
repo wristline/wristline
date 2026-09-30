@@ -159,11 +159,9 @@ the wristline repository.
 
 ## Contact
 
-This policy is provided by **[FILL IN: developer name exactly as shown in Play Console]** for the
-Wristline app.
+This policy is provided by Jiwoong Park for the Wristline app.
 
-Email: **[FILL IN: contact email registered in Play Console]** (for anything you would rather
-not post publicly)
+Email: pjbear1215@gmail.com (for anything you would rather not post publicly)
 
 Questions and requests: https://github.com/wristline/wristline/issues (public)
 
@@ -310,10 +308,9 @@ Wristline은 개발자용 도구이며 만 14세 미만(대한민국) 또는 거
 
 ## 문의
 
-이 방침은 Wristline 앱에 대해 **[기입 필요: Play Console에 표시되는 개발자 이름]**이(가) 제공합니다.
+이 개인정보처리방침은 박지웅이 Wristline 앱을 위해 제공합니다.
 
-개인정보 문의처(이메일): **[기입 필요: Play Console에 등록한 문의 이메일]** (공개하고 싶지 않은
-내용은 이메일로)
+개인정보 문의처(이메일): pjbear1215@gmail.com (공개하고 싶지 않은 내용은 이메일로)
 
 문의와 요청: https://github.com/wristline/wristline/issues (공개)
 
