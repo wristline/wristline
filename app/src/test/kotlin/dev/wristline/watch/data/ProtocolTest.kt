@@ -147,6 +147,14 @@ class ProtocolTest {
         assertEquals(Account("chatgpt-1", "school"), event.usage.account)
     }
 
+    @Test
+    fun usageWindowLabelIsOptional() {
+        val usage = decode<UsageList>(WireJson.parseToJsonElement(File(dir, "usage.json").readText()) as JsonObject).usage
+        val windows = usage.flatMap { it.windows }
+        assertEquals("7d Fable", windows.first { it.id == "7d_fable" }.label)
+        assertNull(windows.first { it.id == "primary" }.label)
+    }
+
     // The fixtures carry model and effort together; one without the other, or neither, is covered here.
     @Test
     fun sessionModelAndEffortDecodeWhenPresent() {

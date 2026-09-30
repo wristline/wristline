@@ -450,9 +450,8 @@ object Bridge {
             }
             is ServerEvent.SessionChanged -> {
                 _sessions.value = sortSessions(_sessions.value.filterNot { it.id == event.session.id } + event.session)
-                // Working again or over: its needs-input or done alert is stale.
-                val status = event.session.status
-                if (status == SessionStatus.RUNNING || status == SessionStatus.ENDED) Notifier.cancelSession(appContext, event.session.id)
+                // Working again: its needs-input or done alert is stale. (An ended one is removed.)
+                if (event.session.status == SessionStatus.RUNNING) Notifier.cancelSession(appContext, event.session.id)
             }
             is ServerEvent.SessionRemoved -> {
                 _sessions.value = _sessions.value.filterNot { it.id == event.sessionId }

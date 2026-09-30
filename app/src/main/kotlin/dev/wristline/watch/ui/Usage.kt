@@ -129,7 +129,7 @@ private fun WindowRow(window: UsageWindow, locale: Locale, modifier: Modifier) {
             Text("${window.usedPercent.roundToInt()}%", style = MaterialTheme.typography.labelSmall)
         }
         Column(Modifier.weight(1f)) {
-            Text(windowLabel(window), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(window.label ?: windowLabel(window), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             clockTime(window.resetsAt, locale)?.let {
                 Text(
                     stringResource(R.string.usage_resets, it),

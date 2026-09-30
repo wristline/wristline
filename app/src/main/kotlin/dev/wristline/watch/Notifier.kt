@@ -116,8 +116,8 @@ object Notifier {
     /**
      * Whether the notification [tag]/[id] posted on [channel] still applies: a request in
      * [requests]; a needs-input alert (requests channel) of a session in [sessions] that is still
-     * waiting; a done alert of one that is neither running nor ended. Untagged ones (monitoring)
-     * always do.
+     * waiting; a done alert of one that is not running (an ended one is no longer listed). Untagged
+     * ones (monitoring) always do.
      */
     internal fun notificationApplies(tag: String?, channel: String?, id: Int, requests: List<PendingRequest>, sessions: List<Session>): Boolean =
         when (tag) {
@@ -125,7 +125,7 @@ object Notifier {
             TAG_SESSION -> sessions.any { session ->
                 notificationId(session.id) == id && when (channel) {
                     CHANNEL_REQUESTS -> session.status == SessionStatus.NEEDS_INPUT
-                    else -> session.status != SessionStatus.RUNNING && session.status != SessionStatus.ENDED
+                    else -> session.status != SessionStatus.RUNNING
                 }
             }
             else -> true

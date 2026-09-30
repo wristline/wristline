@@ -52,9 +52,8 @@ class NotifierTest {
     fun doneAlertAppliesUntilTheSessionWorksAgain() {
         assertTrue(applies("session", Notifier.CHANNEL_UPDATES, listOf(session(SessionStatus.IDLE))))
         assertTrue(applies("session", Notifier.CHANNEL_UPDATES, listOf(session(SessionStatus.NEEDS_INPUT))))
-        for (status in listOf(SessionStatus.RUNNING, SessionStatus.ENDED)) {
-            assertFalse(status, applies("session", Notifier.CHANNEL_UPDATES, listOf(session(status))))
-        }
+        assertFalse(applies("session", Notifier.CHANNEL_UPDATES, listOf(session(SessionStatus.RUNNING))))
+        // Ended: the session has left the list.
         assertFalse(applies("session", Notifier.CHANNEL_UPDATES, emptyList()))
     }
 

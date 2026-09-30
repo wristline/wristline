@@ -160,6 +160,8 @@ data class UsageWindow(
     val usedPercent: Double,
     val resetsAt: String? = null,
     val minutes: Int? = null,
+    /** Name for people (`5h`, `7d Opus`); absent for Codex and older bridges. */
+    val label: String? = null,
 )
 
 @Immutable

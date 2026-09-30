@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -135,7 +136,12 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
     val requests by Bridge.requests.collectAsStateWithLifecycle()
     val conn by Bridge.conn.collectAsStateWithLifecycle()
     val usage by Bridge.usage.collectAsStateWithLifecycle()
-    val session = remember(sessions, sessionId) { sessions.firstOrNull { it.id == sessionId } }
+    val live = remember(sessions, sessionId) { sessions.firstOrNull { it.id == sessionId } }
+    // A session that ends leaves the list, but the bridge still serves its transcript: it stays
+    // readable as last listed, ended, and blocked as the bridge would block a prompt to it.
+    var lastLive by remember(sessionId) { mutableStateOf<Session?>(null) }
+    SideEffect { if (live != null) lastLive = live }
+    val session = live ?: lastLive?.copy(status = SessionStatus.ENDED, promptBlock = "not_live")
     val limit = remember(session, usage) { session?.let { sessionLimit(it, usage) } }
     val request = remember(requests, sessionId) { requests.firstOrNull { it.sessionId == sessionId } }
 
