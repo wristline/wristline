@@ -9,12 +9,15 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -27,9 +30,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -49,12 +55,9 @@ import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.input.RemoteInputIntentHelper
 import dev.wristline.watch.R
-import dev.wristline.watch.data.Account
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.ProviderId
-import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
-import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.isoToMillis
 import java.time.Instant
 import java.time.LocalDate
@@ -122,26 +125,52 @@ fun clockTime(iso: String?, locale: Locale): String? {
 
 fun basename(path: String): String = path.trimEnd('/').substringAfterLast('/')
 
-/**
- * Card and usage-line form of an account: `~` when estimated, then the label up to its `@`, at most
- * 8 chars, without a separator left dangling by the cut (`sisolab.sswu` -> `sisolab`).
- */
-fun accountShort(a: Account): String =
-    (if (a.estimated) "~" else "") + a.label.substringBefore('@').take(8).trimEnd('.', '_', '-')
-
-/** Account labels are shown only when some provider has sessions or usage under two or more accounts. */
-fun showAccountLabels(sessions: List<Session>, usage: List<Usage>): Boolean {
-    val ids = HashMap<String, MutableSet<String>>()
-    sessions.forEach { s -> s.account?.let { ids.getOrPut(s.provider) { HashSet() } += it.id } }
-    usage.forEach { u -> u.account?.let { ids.getOrPut(u.provider) { HashSet() } += it.id } }
-    return ids.values.any { it.size >= 2 }
-}
-
 @Composable
 fun providerLabel(provider: String): String = when (provider) {
     ProviderId.CLAUDE_CODE -> stringResource(R.string.provider_claude_code)
     ProviderId.CODEX -> stringResource(R.string.provider_codex)
     else -> provider
+}
+
+/** Claude's warm orange, darkened from #D97757 to 3.9:1 on the badge's white. */
+private val ClaudeOrange = Color(0xFFC96442)
+
+/** Codex blue: white on it is 4.1:1, and it is 3.2:1 on the cards' dark surface. */
+private val CodexBlue = Color(0xFF2A7FD4)
+
+/**
+ * A provider's 16dp monogram: an orange C on white for Claude Code, a white C on blue for Codex,
+ * otherwise the id's first letter in an outlined circle. Read out as the provider's name.
+ */
+@Composable
+fun ProviderBadge(provider: String, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    val label = providerLabel(provider)
+    val (fill, letterColor) = when (provider) {
+        ProviderId.CLAUDE_CODE -> Modifier.background(Color.White, CircleShape) to ClaudeOrange
+        ProviderId.CODEX -> Modifier.background(CodexBlue, RoundedCornerShape(4.dp)) to Color.White
+        else -> Modifier.border(1.dp, colors.outline, CircleShape) to colors.onSurfaceVariant
+    }
+    // A fixed-size mark, so the letter is sized in dp: in sp a large font scale would overflow it.
+    val letterStyle = with(LocalDensity.current) {
+        MaterialTheme.typography.labelSmall.copy(fontSize = 12.dp.toSp(), lineHeight = 16.dp.toSp())
+    }
+    Box(
+        modifier.size(16.dp).then(fill).clearAndSetSemantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        val letter = provider.take(1).uppercase()
+        Text(
+            letter,
+            // Centered by its advance a C sits 0.7dp right, its left side bearing being the wider;
+            // pulled back by half a dp its open side no longer looks lopsided.
+            modifier = if (letter == "C") Modifier.offset(x = (-0.5).dp) else Modifier,
+            color = letterColor,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            style = letterStyle,
+        )
+    }
 }
 
 @Composable

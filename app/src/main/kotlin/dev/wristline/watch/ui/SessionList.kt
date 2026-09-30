@@ -97,7 +97,6 @@ internal fun SessionListContent(
     // Stale data stays readable but visibly out of date.
     val stale = conn is Conn.Offline || conn is Conn.Unreachable || conn is Conn.Unauthorized
     val oldestRequest = remember(requests) { requests.minByOrNull { it.createdAt } }
-    val showAccounts = remember(sessions, usage) { showAccountLabels(sessions, usage) }
     val glance = remember(usage) { glanceUsage(usage) }
     ScreenScaffold(
         scrollState = listState,
@@ -160,7 +159,6 @@ internal fun SessionListContent(
             items(sessions, key = { it.id }, contentType = { "session" }) { session ->
                 SessionCard(
                     session = session,
-                    showAccount = showAccounts,
                     stale = stale,
                     now = now,
                     spec = spec,
@@ -191,9 +189,10 @@ internal fun glanceUsage(usage: List<Usage>): List<Usage> =
         .map { entries -> entries.maxBy { u -> u.windows.maxOf { it.usedPercent } } }
 
 /**
- * `Claude     5h 14% · 7d 40%`, `Codex     12% · 40%`: Claude Code windows keep their short ids,
- * other providers' ids are long (`primary`) so only the percentages show. The numbers are larger
- * and tabular, the ids smaller and muted; a number near its limit takes the error color.
+ * `[C]     5h 14% · 7d 40%`, `[C]     12% · 40%`, each after its provider's badge: Claude Code
+ * windows keep their short ids, other providers' ids are long (`primary`) so only the percentages
+ * show. The numbers are larger and tabular, the ids smaller and muted; a number near its limit
+ * takes the error color.
  */
 @Composable
 private fun GlanceLine(u: Usage) {
@@ -208,11 +207,11 @@ private fun GlanceLine(u: Usage) {
             withStyle(if (percent >= NEAR_LIMIT_PERCENT) number.copy(color = colors.error) else number) { append("$percent%") }
         }
     }
-    // The provider name is measured first and always shows whole; the numbers take the rest.
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(providerLabel(u.provider), Modifier.alignByBaseline(), maxLines = 1)
+    // The badge is measured first and always shows whole; the numbers take the rest.
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        ProviderBadge(u.provider)
         // End-aligned: a button centers its label text.
-        Text(windows, Modifier.weight(1f).alignByBaseline(), textAlign = TextAlign.End, maxLines = 1)
+        Text(windows, Modifier.weight(1f), textAlign = TextAlign.End, maxLines = 1)
     }
 }
 
@@ -221,7 +220,6 @@ private fun GlanceLine(u: Usage) {
 @Composable
 private fun TransformingLazyColumnItemScope.SessionCard(
     session: Session,
-    showAccount: Boolean,
     stale: Boolean,
     now: () -> Long,
     spec: TransformationSpec,
@@ -235,7 +233,10 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             .animateItem()
             .then(if (stale) Modifier.alpha(0.6f) else Modifier),
         transformation = SurfaceTransformation(spec),
-        title = { Text(sessionTitle(session), maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        // The session's name is what tells cards apart: the largest text, up to two lines.
+        title = {
+            Text(sessionTitle(session), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        },
         // The dot sits on the card's top row: near the screen's bottom edge the list morphs the
         // card's lower corners, which hid a dot at the start of the subtitle.
         time = {
@@ -253,14 +254,11 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             }
         },
         subtitle = {
-            // `Claude · school · repo`; the account and place parts are dropped when absent.
-            val account = session.account?.takeIf { showAccount }?.let(::accountShort)
-            val place = basename(session.cwd).ifEmpty { null }
-            Text(
-                listOfNotNull(providerLabel(session.provider), account, place).joinToString(" · "),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // `[C] repo`: the provider's badge, then the folder; accounts are on the Usage screen.
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                ProviderBadge(session.provider)
+                Text(basename(session.cwd), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         },
     )
 }

@@ -37,6 +37,8 @@ private val sessions = listOf(
         SessionStatus.RUNNING, "2026-09-29T12:57:00Z", context = ContextUsage(156_000, 258_400),
     ),
     Session("claude-code:3", ProviderId.CLAUDE_CODE, "", "/home/dev/web", SessionStatus.IDLE, "2026-09-29T11:20:00Z", "no_tmux"),
+    // A provider without its own badge: the outlined first letter.
+    Session("gemini:4", "gemini", "Summarize the release notes", "/home/dev/docs", SessionStatus.IDLE, "2026-09-29T10:05:00Z"),
 )
 
 private val permission = PendingRequest(
@@ -73,16 +75,10 @@ private val usage = listOf(
     Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 93.0, "2026-09-29T16:12:00Z", 300))),
 )
 
-// Two Claude accounts (one only estimated) and one Codex account: labels appear on cards and chips.
+// Two Claude accounts (one only estimated) and one Codex account: labels appear on the Usage screen.
 private val me = Account("acc-me", "me@gmail.com")
 private val school = Account("acc-school", "school", estimated = true)
 private val codexSchool = Account("chatgpt-school", "school.account@university.ac.kr")
-
-private val accountSessions = listOf(
-    sessions[0].copy(account = me),
-    sessions[1].copy(account = codexSchool),
-    sessions[2].copy(account = school),
-)
 
 private val accountUsage = listOf(
     usage[0].copy(account = me),
@@ -145,24 +141,6 @@ private fun SessionListPreview() = Frame {
 private fun SessionListUnreachablePreview() = Frame {
     SessionListContent(
         Conn.Unreachable(System.currentTimeMillis() + 12_000), sessions, emptyList(), usage, { now },
-        onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
-    )
-}
-
-@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
-@Composable
-private fun SessionListAccountsPreview() = Frame {
-    SessionListContent(
-        Conn.Online, accountSessions, emptyList(), accountUsage, { now },
-        onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
-    )
-}
-
-@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
-@Composable
-private fun SessionListAccountsKoPreview() = Frame {
-    SessionListContent(
-        Conn.Online, accountSessions, emptyList(), accountUsage, { now },
         onSession = {}, onRequest = {}, onUsage = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }

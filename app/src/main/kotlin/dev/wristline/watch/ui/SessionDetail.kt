@@ -537,6 +537,7 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ProviderBadge(session.provider)
                 StatusDot(session.status)
                 Text(
                     model.ifEmpty { providerLabel(session.provider) },
