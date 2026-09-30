@@ -3,6 +3,7 @@ package dev.wristline.watch.data
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
+import android.os.PowerManager
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import dev.wristline.watch.Notifier
@@ -146,6 +147,17 @@ internal fun reconnectDelayMs(attempt: Int, jitter: Double, maxMs: Long = MAX_BA
     val base = min(maxMs, MIN_BACKOFF_MS shl attempt.coerceIn(0, 7))
     return (base * (1 + JITTER * jitter.coerceIn(-1.0, 1.0))).roundToLong()
 }
+
+/** How a request or alert gets the user's attention. */
+internal enum class Attention { TICK, POST }
+
+/**
+ * While the user is [looking] at the app a tick is enough: the screens show the request or the
+ * waiting session. A [done] alert is posted anyway unless its [sessionId] is the one open in the
+ * session screen ([openSession]), so a finished task elsewhere is not lost.
+ */
+internal fun attentionFor(looking: Boolean, done: Boolean, sessionId: String, openSession: String?): Attention =
+    if (looking && (!done || sessionId == openSession)) Attention.TICK else Attention.POST
 
 /**
  * Who holds the connection. With an activity the bridge is told `foreground` and pushes
@@ -316,14 +328,18 @@ object Bridge {
     private val latestJobs = HashMap<String, Job>()
     private val seenAlertIds = ArrayDeque<String>()
 
-    /**
-     * MainActivity is resumed, i.e. the user is looking at the app. Requests then only tick the
-     * vibrator (the screens show them); otherwise they become notifications.
-     */
+    /** MainActivity is resumed and the screen is on; see [looking]. */
     @Volatile
     var foreground = false
 
-    /** MainActivity is paused: the requests its screens were showing become notifications. */
+    /**
+     * The user is looking at the app: requests then only tick the vibrator (the screens show them);
+     * otherwise they become notifications. Some watches keep the activity resumed with the screen
+     * off or dozing, so [foreground] alone is not enough.
+     */
+    private fun looking(): Boolean = foreground && appContext.getSystemService(PowerManager::class.java).isInteractive
+
+    /** MainActivity is paused, or the screen went off: the requests its screens were showing become notifications. */
     fun toBackground() {
         foreground = false
         scope.launch {
@@ -609,8 +625,9 @@ object Bridge {
                 _conn.value = Conn.Online
                 // Requests that arrived or ended while the socket was down.
                 Notifier.reconcile(appContext, event.requests, event.sessions)
-                if (!foreground) {
-                    event.requests.filter { it.id !in known }.forEach { Notifier.request(appContext, it, session(it.sessionId)) }
+                val looking = looking()
+                event.requests.filter { it.id !in known }.forEach {
+                    logReceived("request", it.id, looking, posted = !looking && Notifier.request(appContext, it, session(it.sessionId)))
                 }
                 // Alerts the closed socket missed, oldest first; the ones already handled are skipped.
                 replayableAlerts(event.alerts, event.sessions, System.currentTimeMillis()).forEach(::onAlert)
@@ -634,7 +651,13 @@ object Bridge {
             is ServerEvent.RequestAdded -> {
                 val isNew = _requests.value.none { it.id == event.request.id }
                 _requests.value = _requests.value.filterNot { it.id == event.request.id } + event.request
-                if (isNew) attention { Notifier.request(appContext, event.request, session(event.request.sessionId)) }
+                if (isNew) {
+                    val looking = looking()
+                    val posted = attention(looking, event.request.sessionId) {
+                        Notifier.request(appContext, event.request, session(event.request.sessionId))
+                    }
+                    logReceived("request", event.request.id, looking, posted)
+                }
             }
             is ServerEvent.Resolved -> removeRequest(event.requestId)
             is ServerEvent.UsageChanged -> {
@@ -655,17 +678,31 @@ object Bridge {
             seenAlertIds.addLast(id)
             if (seenAlertIds.size > ALERT_IDS_KEPT) seenAlertIds.removeFirst()
         }
-        when (event.alert) {
-            AlertKind.NEEDS_INPUT -> if (_requests.value.none { it.sessionId == event.sessionId }) {
-                attention { Notifier.needsInput(appContext, event.sessionId, event.text, session(event.sessionId)) }
+        val looking = looking()
+        val posted = when (event.alert) {
+            AlertKind.NEEDS_INPUT -> _requests.value.none { it.sessionId == event.sessionId } &&
+                attention(looking, event.sessionId) { Notifier.needsInput(appContext, event.sessionId, event.text, session(event.sessionId)) }
+            AlertKind.DONE -> attention(looking, event.sessionId, done = true) {
+                Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId))
             }
-            AlertKind.DONE -> if (!foreground) Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId))
+            else -> return
         }
+        logReceived("alert ${event.alert}", id, looking, posted)
     }
 
-    /** In the foreground a single vibration tick; otherwise [post] a notification. */
-    private inline fun attention(post: () -> Unit) {
-        if (foreground) Notifier.tick(appContext) else post()
+    /** A vibration tick or [post] a notification, as [attentionFor] decides; true when posted. */
+    private inline fun attention(looking: Boolean, sessionId: String, done: Boolean = false, post: () -> Boolean): Boolean =
+        when (attentionFor(looking, done, sessionId, subscribed)) {
+            Attention.TICK -> {
+                Notifier.tick(appContext, light = done)
+                false
+            }
+            Attention.POST -> post()
+        }
+
+    /** Payload-free: never a title or text. */
+    private fun logReceived(what: String, id: String?, looking: Boolean, posted: Boolean) {
+        Log.i(TAG, "$what recv id=$id looking=$looking posted=$posted")
     }
 
     private fun session(id: String): Session? = _sessions.value.firstOrNull { it.id == id }

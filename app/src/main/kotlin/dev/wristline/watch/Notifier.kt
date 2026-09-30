@@ -23,19 +23,24 @@ import dev.wristline.watch.ui.basename
 internal fun notificationId(key: String): Int = key.hashCode()
 
 /**
- * Notifications for requests and alerts, and the haptic tick used instead while the app is in
- * front. Request notifications are tagged [TAG_REQUEST] and keyed by request id; alert
+ * Notifications for requests and alerts, and the haptic tick used instead while the user looks at
+ * the app. Request notifications are tagged [TAG_REQUEST] and keyed by request id; alert
  * notifications are tagged [TAG_SESSION] and keyed by session id, so a newer alert for a session
  * replaces the older one. The tags keep both apart from the monitoring notification (no tag).
  */
 object Notifier {
     const val CHANNEL_REQUESTS = "requests"
-    const val CHANNEL_UPDATES = "updates"
+    /** A new id: an existing channel's importance and vibration cannot be changed by the app. */
+    const val CHANNEL_UPDATES = "updates_v2"
     const val CHANNEL_MONITOR = "monitor"
+
+    /** The silent channel done alerts used before [CHANNEL_UPDATES]. */
+    private const val OLD_CHANNEL_UPDATES = "updates"
 
     private const val TAG_REQUEST = "request"
     private const val TAG_SESSION = "session"
     private val VIBRATION = longArrayOf(0, 250, 150, 250)
+    private val SHORT_VIBRATION = longArrayOf(0, 200)
 
     /** Idempotent; also refreshes the channel names after a language change. */
     fun createChannels(context: Context) {
@@ -51,29 +56,33 @@ object Notifier {
             CHANNEL_UPDATES,
             context.getString(R.string.channel_updates),
             NotificationManager.IMPORTANCE_DEFAULT,
-        )
+        ).apply {
+            enableVibration(true)
+            vibrationPattern = SHORT_VIBRATION
+        }
         // The foreground-service notification: silent, and hideable without muting the other two.
         val monitor = NotificationChannel(
             CHANNEL_MONITOR,
             context.getString(R.string.channel_monitor),
             NotificationManager.IMPORTANCE_LOW,
         ).apply { setShowBadge(false) }
-        context.getSystemService(NotificationManager::class.java)
-            .createNotificationChannels(listOf(requests, updates, monitor))
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.deleteNotificationChannel(OLD_CHANNEL_UPDATES)
+        manager.createNotificationChannels(listOf(requests, updates, monitor))
     }
 
     fun enabled(context: Context): Boolean = NotificationManagerCompat.from(context).areNotificationsEnabled()
 
-    fun request(context: Context, request: PendingRequest, session: Session?) {
+    /** True when posted (false without the notification permission); likewise below. */
+    fun request(context: Context, request: PendingRequest, session: Session?): Boolean =
         post(
             context, TAG_REQUEST, request.id, CHANNEL_REQUESTS, MainActivity.EXTRA_REQUEST_ID,
             title = request.title.ifBlank { context.getString(R.string.status_needs_input) },
             text = sessionTitle(context, session),
         )
-    }
 
     /** The agent waits for input that is not a PendingRequest (e.g. a dialog only the terminal shows). */
-    fun needsInput(context: Context, sessionId: String, text: String?, session: Session?) {
+    fun needsInput(context: Context, sessionId: String, text: String?, session: Session?): Boolean =
         post(
             context, TAG_SESSION, sessionId, CHANNEL_REQUESTS, MainActivity.EXTRA_SESSION_ID,
             title = sessionTitle(context, session),
@@ -81,16 +90,17 @@ object Notifier {
             // Replacing an earlier alert of the session (e.g. its "Finished") must vibrate again.
             alertOnce = false,
         )
-    }
 
     /** [title] is the alert's own title, when the bridge sends one; otherwise the session title. */
-    fun done(context: Context, sessionId: String, title: String?, text: String?, session: Session?) {
+    fun done(context: Context, sessionId: String, title: String?, text: String?, session: Session?): Boolean =
         post(
             context, TAG_SESSION, sessionId, CHANNEL_UPDATES, MainActivity.EXTRA_SESSION_ID,
             title = title?.takeIf { it.isNotBlank() } ?: sessionTitle(context, session),
             text = text ?: context.getString(R.string.notify_done),
+            // Each done alert is new (replays are deduplicated by id). A background client is not told
+            // that the session ran again, so the previous one may still be shown: vibrate anyway.
+            alertOnce = false,
         )
-    }
 
     fun cancelRequest(context: Context, requestId: String) {
         NotificationManagerCompat.from(context).cancel(TAG_REQUEST, notificationId(requestId))
@@ -132,10 +142,14 @@ object Notifier {
             else -> true
         }
 
-    /** One short click so the user notices a request while looking at the app. */
-    fun tick(context: Context) {
+    /**
+     * One short click so the user notices a request while looking at the app; [light] (a done alert
+     * of the open session) a lighter one.
+     */
+    fun tick(context: Context, light: Boolean = false) {
+        val effect = if (light) VibrationEffect.EFFECT_TICK else VibrationEffect.EFFECT_HEAVY_CLICK
         context.getSystemService(VibratorManager::class.java).defaultVibrator
-            .vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK))
+            .vibrate(VibrationEffect.createPredefined(effect))
     }
 
     private fun post(
@@ -147,8 +161,8 @@ object Notifier {
         title: String,
         text: String,
         alertOnce: Boolean = true,
-    ) {
-        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+    ): Boolean {
+        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         val id = notificationId(key)
         val open = MainActivity.openIntent(context).putExtra(extra, key)
         val notification = NotificationCompat.Builder(context, channel)
@@ -165,6 +179,7 @@ object Notifier {
             .setOnlyAlertOnce(alertOnce)
             .build()
         NotificationManagerCompat.from(context).notify(tag, id, notification)
+        return true
     }
 
     /** Same fallbacks as the screens' session title. */

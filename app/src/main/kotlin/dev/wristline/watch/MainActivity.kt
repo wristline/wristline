@@ -1,7 +1,9 @@
 package dev.wristline.watch
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -9,6 +11,8 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.wristline.watch.data.AddressResult
 import dev.wristline.watch.data.Bridge
@@ -21,9 +25,28 @@ class MainActivity : ComponentActivity() {
     /** Screen to open once, from a notification tap. */
     private var openRoute by mutableStateOf<String?>(null)
 
+    /**
+     * Some watches keep the activity resumed while the screen is off or dozing: turning off counts
+     * as leaving, turning on (while still resumed) as coming back.
+     */
+    private val screen = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.action) {
+                Intent.ACTION_SCREEN_OFF -> Bridge.toBackground()
+                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT ->
+                    if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) Bridge.foreground = true
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Bridge.init(this)
+        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF).apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        ContextCompat.registerReceiver(this, screen, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         if (savedInstanceState == null) handleIntent(intent)
         setContent { App(openRoute = openRoute, onOpened = { openRoute = null }) }
     }
@@ -53,6 +76,11 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         Bridge.release(Holder.ACTIVITY)
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver(screen)
+        super.onDestroy()
     }
 
     private fun handleIntent(intent: Intent) {
