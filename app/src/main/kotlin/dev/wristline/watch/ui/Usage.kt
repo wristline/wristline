@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -119,8 +120,9 @@ internal fun UsageContent(usage: List<Usage>, now: Long) {
 @Composable
 private fun WindowRow(window: UsageWindow, locale: Locale, modifier: Modifier) {
     Row(
-        // 16dp keeps the start-aligned ring clear of the round edge in the lower half of the screen.
-        modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        // Centered as a group under the centered headings; 16dp keeps a wide row's ring clear of the
+        // round edge in the lower half of the screen.
+        modifier.fillMaxWidth().padding(horizontal = 16.dp).wrapContentWidth(Alignment.CenterHorizontally),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -128,7 +130,7 @@ private fun WindowRow(window: UsageWindow, locale: Locale, modifier: Modifier) {
             PercentRing(window.usedPercent, Modifier.fillMaxSize())
             Text("${window.usedPercent.roundToInt()}%", style = MaterialTheme.typography.labelSmall)
         }
-        Column(Modifier.weight(1f)) {
+        Column {
             Text(window.label ?: windowLabel(window), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             clockTime(window.resetsAt, locale)?.let {
                 Text(

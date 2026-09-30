@@ -317,6 +317,9 @@ internal fun SessionDetailContent(
         scrollState = listState,
         timeText = { DetailTimeText(session?.takeUnless { headerShown }) },
     ) { contentPadding ->
+        // The content is a Box: the gauges composed first are drawn beneath the list, so the cards
+        // cover them rather than the arcs cutting through the text.
+        if (session != null) EdgeGauges(session.context, limit)
         // Default rotary behaviour (fling with haptics): long messages are read continuously, not item by item.
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
             item(key = "header") {
@@ -420,8 +423,6 @@ internal fun SessionDetailContent(
                 }
             }
         }
-        // The content is a Box: the gauges composed last are drawn over the list, so they always show.
-        if (session != null) EdgeGauges(session.context, limit)
     }
 }
 
@@ -442,7 +443,7 @@ internal fun sessionLimit(session: Session, usage: List<Usage>): UsageWindow? {
 }
 
 /** `5h`, `7d`: a window's length in its shortest form, or its id when the length is unknown. */
-private fun windowShort(window: UsageWindow): String {
+internal fun windowShort(window: UsageWindow): String {
     val minutes = window.minutes?.takeIf { it > 0 } ?: return window.id
     return when {
         minutes % 1_440 == 0 -> "${minutes / 1_440}d"
@@ -496,7 +497,8 @@ private fun EdgeGauge(percent: Double, description: String, color: Color, right:
             .clearAndSetSemantics { contentDescription = description },
         startAngle = GAUGE_START,
         endAngle = GAUGE_START + GAUGE_SWEEP,
-        colors = ProgressIndicatorDefaults.colors(indicatorColor = color),
+        // A track a step lighter than the cards, so it shows on the black around them.
+        colors = ProgressIndicatorDefaults.colors(indicatorColor = color, trackColor = MaterialTheme.colorScheme.surfaceContainerHigh),
         strokeWidth = GAUGE_STROKE,
     )
 }

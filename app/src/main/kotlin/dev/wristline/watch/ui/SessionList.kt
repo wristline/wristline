@@ -2,7 +2,9 @@ package dev.wristline.watch.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -10,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
@@ -27,6 +30,7 @@ import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
 import androidx.wear.compose.material3.FilledTonalButton
@@ -146,6 +150,13 @@ internal fun SessionListContent(
                         onClick = onUsage,
                         modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
                         transformation = SurfaceTransformation(spec),
+                        // The cards' start padding, so the badges line up with the session cards' below.
+                        contentPadding = PaddingValues(
+                            start = CardDefaults.ContentPadding.calculateStartPadding(LocalLayoutDirection.current),
+                            top = ButtonDefaults.ButtonVerticalPadding,
+                            end = ButtonDefaults.ButtonHorizontalPadding,
+                            bottom = ButtonDefaults.ButtonVerticalPadding,
+                        ),
                         label = { Column { glance.forEach { GlanceLine(it) } } },
                     )
                 }
@@ -191,8 +202,8 @@ internal fun glanceUsage(usage: List<Usage>): List<Usage> =
 /**
  * `[C]     5h 14% · 7d 40%`, `[C]     12% · 40%`, each after its provider's badge: Claude Code
  * windows keep their short ids, other providers' ids are long (`primary`) so only the percentages
- * show. The numbers are larger and tabular, the ids smaller and muted; a number near its limit
- * takes the error color.
+ * show, except for a lone window, named by its label or length (`[C]     7d 2%`). The numbers are
+ * larger and tabular, the names smaller and muted; a number near its limit takes the error color.
  */
 @Composable
 private fun GlanceLine(u: Usage) {
@@ -202,7 +213,12 @@ private fun GlanceLine(u: Usage) {
     val windows = buildAnnotatedString {
         u.windows.forEachIndexed { i, w ->
             if (i > 0) withStyle(muted) { append(" · ") }
-            if (u.provider == ProviderId.CLAUDE_CODE) withStyle(muted) { append(w.id + " ") }
+            val name = when {
+                u.provider == ProviderId.CLAUDE_CODE -> w.id
+                u.windows.size == 1 -> w.label ?: windowShort(w)
+                else -> null
+            }
+            if (name != null) withStyle(muted) { append("$name ") }
             val percent = w.usedPercent.roundToInt()
             withStyle(if (percent >= NEAR_LIMIT_PERCENT) number.copy(color = colors.error) else number) { append("$percent%") }
         }
@@ -233,6 +249,8 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             .animateItem()
             .then(if (stale) Modifier.alpha(0.6f) else Modifier),
         transformation = SurfaceTransformation(spec),
+        // The folder is secondary to the title: muted, not the accent.
+        colors = CardDefaults.cardColors(subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant),
         // The session's name is what tells cards apart: the largest text, up to two lines.
         title = {
             Text(sessionTitle(session), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
