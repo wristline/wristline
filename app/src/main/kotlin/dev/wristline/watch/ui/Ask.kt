@@ -109,17 +109,20 @@ internal fun rememberQuickAsk(
     var draft by remember { mutableStateOf("") }
     var typed by remember { mutableStateOf(false) }
     var confirming by remember { mutableStateOf(false) }
-    var provider by remember(threadProvider) { mutableStateOf(threadProvider ?: prefs.askProvider) }
+    var provider by remember { mutableStateOf(threadProvider ?: prefs.askProvider) }
     var error by remember { mutableStateOf<String?>(null) }
     val label = stringResource(R.string.ask_prompt_label)
+    // A switch in a dialog that was dismissed is not kept: each dialog opens on the thread's provider, or the default.
     val tryType = rememberTextInputLauncher(label) {
         draft = it
         typed = true
+        provider = threadProvider ?: prefs.askProvider
         confirming = true
     }
     val trySpeak = rememberSpeechInput(label) {
         draft = it
         typed = false
+        provider = threadProvider ?: prefs.askProvider
         confirming = true
     }
     val type = remember(tryType, trySpeak) { { if (!tryType() && !trySpeak()) inputUnavailable(context) } }
@@ -245,6 +248,7 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
         val current = newest
         if (current != null && !sending) {
             sending = true
+            reader.stop()
             scope.launch {
                 // One running ask per device: the bridge would answer 409 while this one runs.
                 if (current.status == AskStatus.RUNNING) Bridge.cancelAsk(current.id).join()
@@ -261,7 +265,11 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
     // A follow-up joins this thread; one sent to the other provider starts a thread, shown instead.
     val threadId = thread?.firstOrNull()?.thread
     val followUp = rememberQuickAsk(
-        onStarted = { id -> if (Bridge.asks.value.firstOrNull { it.id == id }?.thread != threadId) onReplaced(id) },
+        onStarted = { id ->
+            // The action row (with the stop button) goes away while the answer is awaited.
+            reader.stop()
+            if (Bridge.asks.value.firstOrNull { it.id == id }?.thread != threadId) onReplaced(id)
+        },
         threadId = threadId,
         threadProvider = newest?.provider,
     )

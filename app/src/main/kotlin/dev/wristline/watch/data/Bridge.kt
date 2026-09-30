@@ -301,6 +301,9 @@ object Bridge {
     /** The open socket was made with [quietClient]. */
     private var quietSocket = false
     private var quietJob: Job? = null
+
+    /** The socket is being replaced by a quiet one on purpose: its close is not a failure. */
+    private var swapping = false
     private var refreshJob: Job? = null
     private var lingerJob: Job? = null
     private var connectionJob: Job? = null
@@ -375,8 +378,11 @@ object Bridge {
         scope.launch {
             users = (users - 1).coerceAtLeast(0)
             if (holder == Holder.ACTIVITY) activityUsers = (activityUsers - 1).coerceAtLeast(0)
-            applyMode()
-            if (users > 0) return@launch
+            // With nothing left holding it the socket is closed by the linger, not swapped for a quiet one.
+            if (users > 0) {
+                applyMode()
+                return@launch
+            }
             lingerJob = scope.launch {
                 delay(LINGER_MS)
                 unregisterNetworkCallback()
@@ -401,22 +407,31 @@ object Bridge {
         quietJob?.cancel()
         quietJob = null
         if (quiet) {
-            if (socket != null && !quietSocket) {
-                quietJob = scope.launch {
-                    delay(LINGER_MS)
-                    if (background && !quietSocket) socket?.cancel()
-                }
-            }
+            if (socket != null) scheduleQuietSwap()
         } else {
             refresh()
         }
     }
 
+    /** After the pause, replaces a foreground socket that is still the open one with a quiet one. */
+    private fun scheduleQuietSwap() {
+        if (quietSocket) return
+        quietJob?.cancel()
+        quietJob = scope.launch {
+            delay(LINGER_MS)
+            if (!background || quietSocket) return@launch
+            socket?.let {
+                swapping = true
+                it.cancel()
+            }
+        }
+    }
+
     /**
-     * Fetches the session and usage lists over REST. A background client is not sent their
-     * changes, so a screen that opens reads the current state itself; a snapshot does the same
-     * after a reconnect. One fetch at a time; nothing while the socket is down (the snapshot
-     * will tell) or in the demo.
+     * Fetches the session, usage and ask lists over REST. A background client is not sent their
+     * changes (nor an ask's answer), so coming to the foreground reads the current state; a
+     * snapshot does the same after a reconnect. One fetch at a time; nothing while the socket is
+     * down (the snapshot will tell) or in the demo.
      */
     fun refresh() {
         scope.launch {
@@ -424,6 +439,7 @@ object Bridge {
             refreshJob = scope.launch {
                 get(SessionList.serializer(), "sessions")?.let { _sessions.value = sortSessions(it.sessions) }
                 get(UsageList.serializer(), "usage")?.let { _usage.value = it.usage }
+                loadAsks()
             }
         }
     }
@@ -452,6 +468,7 @@ object Bridge {
         connectionJob = null
         quietJob?.cancel()
         quietJob = null
+        swapping = false
         socket = null
     }
 
@@ -505,6 +522,11 @@ object Bridge {
                 End.INCOMPATIBLE -> return
                 End.CLOSED -> Unit
             }
+            if (swapping) {
+                // The quiet socket replaces the foreground one at once, without a Connecting blip.
+                swapping = false
+                continue
+            }
             if (!networkUp) continue
             val cap = if (background) BACKGROUND_MAX_BACKOFF_MS else MAX_BACKOFF_MS
             val wait = reconnectDelayMs(attempt++, Random.nextDouble(-1.0, 1.0), cap)
@@ -534,6 +556,8 @@ object Bridge {
                         subscribed?.let { webSocket.send(subscribeMessage(it, itemKinds())) }
                         // The bridge starts every socket in the foreground mode.
                         webSocket.send(modeMessage(background))
+                        // Gone to the background while this foreground socket was still connecting.
+                        if (background) scheduleQuietSwap()
                     }
                 }
 
@@ -595,7 +619,7 @@ object Bridge {
                 subscribed?.let { loadLatest(it) }
                 // Asks are not in the snapshot; an answer that arrived while the socket was down is
                 // fetched, unless nothing is shown (the service alone never polls).
-                if (!background) loadAsks()
+                if (!background) scope.launch { loadAsks() }
             }
             is ServerEvent.SessionChanged -> {
                 _sessions.value = sortSessions(_sessions.value.filterNot { it.id == event.session.id } + event.session)
@@ -896,22 +920,23 @@ object Bridge {
      * `DELETE /api/asks/thread/:threadId`: the bridge forgets the thread's asks and the CLI's
      * session; the watch drops them once it has, or when they were already gone.
      */
-    fun deleteThread(threadId: String) {
-        scope.launch {
-            if (demo == null) {
-                val result = send(authed(apiUrl(prefs.baseUrl, "asks", "thread", threadId)).delete().build()) ?: return@launch
-                if (result.code == 401) unauthorized()
-                if (result.code != 200 && result.code != 204 && result.code != 404) return@launch
+    suspend fun deleteThread(threadId: String): Sent = withContext(dispatcher + NonCancellable) {
+        if (demo == null) {
+            val result = send(authed(apiUrl(prefs.baseUrl, "asks", "thread", threadId)).delete().build())
+                ?: return@withContext Sent.Unreachable
+            if (result.code == 401) {
+                unauthorized()
+                return@withContext Sent.Refused("unauthorized")
             }
-            _asks.update { list -> list.filterNot { it.thread == threadId } }
+            if (result.code != 200 && result.code != 204 && result.code != 404) return@withContext Sent.Refused(errorCode(result))
         }
+        _asks.update { list -> list.filterNot { it.thread == threadId } }
+        Sent.Ok
     }
 
-    private fun loadAsks() {
-        scope.launch {
-            val list = get(AskList.serializer(), "asks") ?: return@launch
-            _asks.value = list.asks.take(ASK_KEEP)
-        }
+    private suspend fun loadAsks() {
+        val list = get(AskList.serializer(), "asks") ?: return
+        _asks.value = list.asks.take(ASK_KEEP)
     }
 
     /** Unregisters this watch on the bridge when reachable, then forgets the pairing either way. */

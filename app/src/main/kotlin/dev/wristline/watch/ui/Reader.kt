@@ -51,6 +51,7 @@ internal class Reader(private val context: Context) {
         }
         if (!ready) {
             pending = text
+            speaking = true
             return
         }
         start(engine, text)
@@ -108,7 +109,7 @@ internal class Reader(private val context: Context) {
         val language = engine.setLanguage(locale)
         if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
             speaking = false
-            Toast.makeText(context, context.getString(R.string.tts_no_language, locale.getDisplayLanguage(locale)), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.tts_no_language, locale.getDisplayLanguage()), Toast.LENGTH_SHORT).show()
             return
         }
         val spoken = text.take(TextToSpeech.getMaxSpeechInputLength())

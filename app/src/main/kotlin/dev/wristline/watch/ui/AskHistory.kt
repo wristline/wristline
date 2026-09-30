@@ -1,15 +1,19 @@
 package dev.wristline.watch.ui
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -39,8 +43,10 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Ask
 import dev.wristline.watch.data.AskStatus
 import dev.wristline.watch.data.Bridge
+import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.thread
+import kotlinx.coroutines.launch
 
 /** One conversation on the history screen: its first question, its newest ask and how many it holds. */
 internal class AskThread(val id: String, val first: Ask, val newest: Ask, val count: Int)
@@ -62,7 +68,31 @@ internal fun askThreads(asks: List<Ask>): List<AskThread> =
 internal fun AskHistoryScreen(onAsk: (String) -> Unit) {
     val asks by Bridge.asks.collectAsStateWithLifecycle()
     val now = rememberNowState()
-    AskHistoryContent(asks, now = { now.value }, onAsk = onAsk, onDelete = Bridge::deleteThread)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var error by remember { mutableStateOf<String?>(null) }
+    val code = error
+    if (code != null) {
+        val message = if (code == "unreachable") stringResource(R.string.error_unreachable) else errorMessage(code)
+        LaunchedEffect(code) {
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            error = null
+        }
+    }
+    AskHistoryContent(
+        asks,
+        now = { now.value },
+        onAsk = onAsk,
+        onDelete = { threadId ->
+            scope.launch {
+                when (val sent = Bridge.deleteThread(threadId)) {
+                    Sent.Ok -> Unit
+                    is Sent.Refused -> error = sent.code
+                    Sent.Unreachable -> error = "unreachable"
+                }
+            }
+        },
+    )
 }
 
 /**
