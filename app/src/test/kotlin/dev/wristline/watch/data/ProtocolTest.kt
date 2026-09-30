@@ -216,6 +216,27 @@ class ProtocolTest {
         assertEquals("OK", list[1].answer)
     }
 
+    // Hand-written on purpose: `threadId` on asks and in the ask body is newer than the fixtures.
+    @Test
+    fun askThreadIdIsOptionalAndSent() {
+        val list = decode<AskList>(
+            WireJson.parseToJsonElement(
+                """{"asks":[
+                   {"id":"ask-2","provider":"codex","question":"more?","status":"running","createdAt":"2026-09-29T00:01:00Z","threadId":"ask-1"},
+                   {"id":"ask-1","provider":"codex","question":"what?","status":"done","answer":"this","createdAt":"2026-09-29T00:00:00Z"}]}""",
+            ) as JsonObject,
+        ).asks
+        assertEquals("ask-1", list[0].threadId)
+        assertEquals("ask-1", list[0].thread)
+        assertEquals("", list[1].threadId)
+        assertEquals("ask-1", list[1].thread)
+        assertEquals(
+            """{"provider":"codex","text":"more?","threadId":"ask-1"}""",
+            WireJson.encodeToString(AskBody.serializer(), AskBody("codex", "more?", threadId = "ask-1")),
+        )
+        assertEquals("""{"provider":"codex","text":"what?"}""", WireJson.encodeToString(AskBody.serializer(), AskBody("codex", "what?")))
+    }
+
     @Test
     fun usageWindowLabelIsOptional() {
         val usage = decode<UsageList>(WireJson.parseToJsonElement(File(dir, "usage.json").readText()) as JsonObject).usage

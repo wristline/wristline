@@ -851,19 +851,23 @@ object Bridge {
     // ---- Quick Ask ----
 
     /**
-     * Sends one question to the PC's CLI. Finishes even when the confirm dialog's screen closes,
-     * like prompt(). On 202 the ask is listed as running at once; the `ask` events move it on.
+     * Sends one question to the PC's CLI, continuing [threadId]'s conversation or starting a new
+     * thread. Finishes even when the confirm dialog's screen closes, like prompt(). On 202 the ask
+     * is listed as running at once; the `ask` events move it on.
      */
-    suspend fun ask(provider: String, text: String): AskSent = withContext(dispatcher + NonCancellable) {
-        if (demo != null) return@withContext AskSent.Started(demoAsk(provider, text))
-        val body = WireJson.encodeToString(AskBody.serializer(), AskBody(provider, text))
+    suspend fun ask(provider: String, text: String, threadId: String? = null): AskSent = withContext(dispatcher + NonCancellable) {
+        if (demo != null) return@withContext AskSent.Started(demoAsk(provider, text, threadId))
+        val body = WireJson.encodeToString(AskBody.serializer(), AskBody(provider, text, threadId = threadId))
         val result = send(authed(apiUrl(prefs.baseUrl, "ask")).post(body.toRequestBody(jsonType)).build())
             ?: return@withContext AskSent.Unreachable
         when (result.code) {
             202 -> {
                 val accepted = decodeOrNull(AskAccepted.serializer(), result.body)
                     ?: return@withContext AskSent.Refused("bad_response")
-                val ask = Ask(accepted.askId, provider, text, AskStatus.RUNNING, createdAt = Instant.now().toString())
+                val ask = Ask(
+                    accepted.askId, provider, text, AskStatus.RUNNING,
+                    createdAt = Instant.now().toString(), threadId = threadId ?: accepted.askId,
+                )
                 _asks.update { it.withAsk(ask) }
                 AskSent.Started(ask.id)
             }
@@ -887,6 +891,21 @@ object Bridge {
             }
             send(authed(apiUrl(prefs.baseUrl, "asks", id)).delete().build())
         }
+
+    /**
+     * `DELETE /api/asks/thread/:threadId`: the bridge forgets the thread's asks and the CLI's
+     * session; the watch drops them once it has, or when they were already gone.
+     */
+    fun deleteThread(threadId: String) {
+        scope.launch {
+            if (demo == null) {
+                val result = send(authed(apiUrl(prefs.baseUrl, "asks", "thread", threadId)).delete().build()) ?: return@launch
+                if (result.code == 401) unauthorized()
+                if (result.code != 200 && result.code != 204 && result.code != 404) return@launch
+            }
+            _asks.update { list -> list.filterNot { it.thread == threadId } }
+        }
+    }
 
     private fun loadAsks() {
         scope.launch {
@@ -951,9 +970,11 @@ object Bridge {
     }
 
     /** A canned answer after a short "thinking" pause; the answer follows the app language. */
-    private fun demoAsk(provider: String, text: String): String {
+    private fun demoAsk(provider: String, text: String, threadId: String?): String {
         val id = "ask-demo-" + System.currentTimeMillis()
-        _asks.update { it.withAsk(Ask(id, provider, text, AskStatus.RUNNING, createdAt = Instant.now().toString())) }
+        _asks.update {
+            it.withAsk(Ask(id, provider, text, AskStatus.RUNNING, createdAt = Instant.now().toString(), threadId = threadId ?: id))
+        }
         scope.launch {
             delay(DEMO_ASK_MS)
             _asks.update { list ->

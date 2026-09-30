@@ -199,7 +199,12 @@ data class Ask(
     /** When failed: `timeout` | `cancelled` | `exit_<code>` | `bad_output` | a short CLI message. */
     val error: String? = null,
     val createdAt: String,
+    /** The conversation this ask continues; a new thread's id is its first ask's id. Empty from an older bridge. */
+    val threadId: String = "",
 )
+
+/** The thread an ask belongs to: [Ask.threadId], or its own id when the bridge did not say. */
+val Ask.thread: String get() = threadId.ifEmpty { id }
 
 // REST bodies.
 
@@ -241,8 +246,9 @@ data class AnswerBody(val answers: Answers)
 @Serializable
 data class UsageList(val usage: List<Usage>)
 
+/** [threadId] continues that thread's conversation; absent, the ask starts a new one. */
 @Serializable
-data class AskBody(val provider: String, val text: String, val model: String? = null)
+data class AskBody(val provider: String, val text: String, val model: String? = null, val threadId: String? = null)
 
 @Serializable
 data class AskAccepted(val askId: String)

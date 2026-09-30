@@ -131,6 +131,17 @@
     <string name="ask_history_empty">No questions yet.</string>
     <string name="ask_status_running">Thinking…</string>
     <string name="ask_status_error">Failed</string>
+    <string name="ask_read_aloud">Read aloud</string>
+    <string name="ask_stop_reading">Stop reading</string>
+    <string name="ask_follow_up">Follow-up question</string>
+    <plurals name="ask_thread_count">
+        <item quantity="one">%d question</item>
+        <item quantity="other">%d questions</item>
+    </plurals>
+    <string name="ask_thread_delete">Delete this conversation?</string>
+    <string name="ask_thread_delete_label">Delete conversation</string>
+    <string name="tts_unavailable">Read-aloud isn\'t available on this watch.</string>
+    <string name="tts_no_language">No %1$s voice is installed.</string>
     <string name="error_ask_unavailable">That CLI isn\'t installed on the PC.</string>
     <string name="error_timeout">No answer within 90 seconds.</string>
     <string name="error_cancelled">Cancelled.</string>

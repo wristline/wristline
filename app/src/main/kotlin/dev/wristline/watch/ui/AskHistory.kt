@@ -5,9 +5,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -17,7 +21,10 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
+import androidx.wear.compose.material3.AlertDialog
+import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
@@ -32,20 +39,44 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Ask
 import dev.wristline.watch.data.AskStatus
 import dev.wristline.watch.data.Bridge
+import dev.wristline.watch.data.isoToMillis
+import dev.wristline.watch.data.thread
+
+/** One conversation on the history screen: its first question, its newest ask and how many it holds. */
+internal class AskThread(val id: String, val first: Ask, val newest: Ask, val count: Int)
+
+/**
+ * The conversations in [asks] (newest first), each newest activity first. Among equal times the
+ * later-listed ask is the older one.
+ */
+internal fun askThreads(asks: List<Ask>): List<AskThread> =
+    asks.asReversed()
+        .groupBy { it.thread }
+        .map { (id, group) ->
+            val ordered = group.sortedBy { isoToMillis(it.createdAt) ?: 0L }
+            AskThread(id, ordered.first(), ordered.last(), group.size)
+        }
+        .sortedByDescending { isoToMillis(it.newest.createdAt) ?: 0L }
 
 @Composable
 internal fun AskHistoryScreen(onAsk: (String) -> Unit) {
     val asks by Bridge.asks.collectAsStateWithLifecycle()
     val now = rememberNowState()
-    AskHistoryContent(asks, now = { now.value }, onAsk = onAsk)
+    AskHistoryContent(asks, now = { now.value }, onAsk = onAsk, onDelete = Bridge::deleteThread)
 }
 
-/** This device's recent questions, newest first: the question, the provider and the answer's first line. */
+/**
+ * This device's recent conversations, newest first: the first question, the provider and how many
+ * questions, or a lone question's answer. A tap opens the conversation; a long press offers to
+ * delete it, on the bridge too.
+ */
 @Composable
-internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String) -> Unit) {
+internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String) -> Unit, onDelete: (String) -> Unit) {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
     val bottom = TextDefaults.minimumBottomListContentPadding
+    val threads = remember(asks) { askThreads(asks) }
+    var deleting by remember { mutableStateOf<String?>(null) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(
             state = listState,
@@ -62,7 +93,7 @@ internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String)
                     transformation = SurfaceTransformation(spec),
                 ) { Text(stringResource(R.string.ask_history_title)) }
             }
-            if (asks.isEmpty()) {
+            if (threads.isEmpty()) {
                 item(key = "empty") {
                     BodyText(
                         stringResource(R.string.ask_history_empty),
@@ -70,15 +101,17 @@ internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String)
                     )
                 }
             }
-            items(asks, key = { it.id }) { ask ->
+            items(threads, key = { it.id }) { thread ->
                 TitleCard(
-                    onClick = { onAsk(ask.id) },
+                    onClick = { onAsk(thread.newest.id) },
+                    onLongClick = { deleting = thread.id },
+                    onLongClickLabel = stringResource(R.string.ask_thread_delete_label),
                     modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItem(),
                     transformation = SurfaceTransformation(spec),
                     colors = CardDefaults.cardColors(subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant),
                     title = {
                         Text(
-                            ask.question.ifBlank { "…" },
+                            thread.first.question.ifBlank { "…" },
                             style = MaterialTheme.typography.titleMedium,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -86,21 +119,40 @@ internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String)
                     },
                     time = {
                         val at = now()
-                        val ago = remember(ask.createdAt, at) {
-                            if (isJustNow(ask.createdAt, at)) null else relativeTime(ask.createdAt, at)
+                        val ago = remember(thread.newest.createdAt, at) {
+                            if (isJustNow(thread.newest.createdAt, at)) null else relativeTime(thread.newest.createdAt, at)
                         }
                         Text(ago ?: stringResource(R.string.time_just_now), maxLines = 1)
                     },
                     subtitle = {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            ProviderBadge(ask.provider)
-                            Text(askSummary(ask), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            ProviderBadge(thread.first.provider)
+                            val summary = if (thread.count > 1) {
+                                pluralStringResource(R.plurals.ask_thread_count, thread.count, thread.count)
+                            } else {
+                                askSummary(thread.newest)
+                            }
+                            Text(summary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     },
                 )
             }
         }
     }
+    AlertDialog(
+        visible = deleting != null,
+        onDismissRequest = { deleting = null },
+        icon = { Icon(painterResource(R.drawable.ic_delete), null) },
+        title = { Text(stringResource(R.string.ask_thread_delete)) },
+        confirmButton = {
+            AlertDialogDefaults.ConfirmButton(
+                onClick = {
+                    deleting?.let(onDelete)
+                    deleting = null
+                },
+            )
+        },
+    )
 }
 
 /** The answer's first line, or the status while running or failed. */

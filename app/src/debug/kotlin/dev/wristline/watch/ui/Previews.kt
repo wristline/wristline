@@ -117,6 +117,19 @@ private val asks = listOf(
     Ask("ask-3", ProviderId.CODEX, "Explain a semaphore", AskStatus.ERROR, durationMs = 90_000, error = "timeout", createdAt = "2026-09-29T12:40:00Z"),
 )
 
+// A short answer, so the icon row under it is on screen.
+private val shortAsk = asks[0].copy(answer = "A lock: one thread holds it at a time; the rest wait.")
+
+// A conversation: the first ask's id names the thread, the follow-up continues it.
+private val thread = listOf(
+    shortAsk.copy(threadId = "ask-1"),
+    Ask(
+        "ask-4", ProviderId.CLAUDE_CODE, "And a semaphore?", AskStatus.DONE,
+        answer = "A counter: it lets up to N holders in at once.",
+        model = "Haiku 4.5", durationMs = 2_100, createdAt = "2026-09-29T12:59:50Z", threadId = "ask-1",
+    ),
+)
+
 @Composable
 private fun Frame(content: @Composable () -> Unit) {
     MaterialTheme { AppScaffold { content() } }
@@ -171,25 +184,47 @@ private fun SessionListUnreachablePreview() = Frame {
     )
 }
 
-@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
-private fun AskRunningPreview() = Frame { AskContent(asks[1], sending = false, onCancel = {}, onAgain = {}, onOther = {}) }
+private fun AskFrame(thread: List<Ask>?, speaking: Boolean = false) = Frame {
+    AskContent(thread, sending = false, speaking = speaking, onCancel = {}, onAgain = {}, onOther = {}, onSpeak = {}, onFollowUp = {})
+}
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
-private fun AskDonePreview() = Frame { AskContent(asks[0], sending = false, onCancel = {}, onAgain = {}, onOther = {}) }
+private fun AskRunningPreview() = AskFrame(listOf(asks[1]))
+
+// The answer, then the icon row: ask again, ask Codex, read aloud, follow-up.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun AskDonePreview() = AskFrame(listOf(asks[0]))
+
+// Reading aloud: the speaker is a stop square.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun AskSpeakingPreview() = AskFrame(listOf(shortAsk), speaking = true)
+
+// Two questions in one thread, the newest at the bottom.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun AskThreadPreview() = AskFrame(thread)
+
+// A follow-up still running: its spinner and Cancel sit under its question, no icon row yet.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun AskThreadRunningKoPreview() = AskFrame(listOf(thread[0], asks[1].copy(provider = ProviderId.CLAUDE_CODE, threadId = "ask-1")))
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
 @Composable
-private fun AskErrorKoPreview() = Frame { AskContent(asks[2], sending = false, onCancel = {}, onAgain = {}, onOther = {}) }
+private fun AskErrorKoPreview() = AskFrame(listOf(asks[2]))
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
 @Composable
-private fun AskGoneKoPreview() = Frame { AskContent(null, sending = false, onCancel = {}, onAgain = {}, onOther = {}) }
+private fun AskGoneKoPreview() = AskFrame(null)
 
+// One card per conversation: the two-question thread shows its count, the others their answer or status.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
-private fun AskHistoryPreview() = Frame { AskHistoryContent(asks, { now }, onAsk = {}) }
+private fun AskHistoryPreview() = Frame { AskHistoryContent(thread.asReversed() + asks.drop(1), { now }, onAsk = {}, onDelete = {}) }
 
 // Edge gauges: context 60% on the left, Codex's primary window at 93% (error) on the right. The
 // top text is the model and effort; the newest card rests near the middle, above the actions.

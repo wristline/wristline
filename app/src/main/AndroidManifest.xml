@@ -12,6 +12,13 @@
     <!-- One haptic tick when a request arrives while the app is open; notifications vibrate through their channel. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Read-aloud binds the system text-to-speech engine, which package visibility hides otherwise. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
