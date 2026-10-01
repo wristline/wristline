@@ -121,6 +121,11 @@
     <string name="decision_always">Always allow</string>
     <string name="decision_deny">Deny</string>
     <string name="decision_defer">Answer on PC</string>
+    <!-- A plan approval (ExitPlanMode): Claude Code's own terminal words, English in every locale. -->
+    <string name="decision_plan_auto_accept" translatable="false">Yes, auto-accept edits</string>
+    <string name="decision_plan_approve" translatable="false">Yes, manually approve edits</string>
+    <string name="decision_plan_change" translatable="false">Tell Claude what to change</string>
+    <string name="request_plan_title" translatable="false">Plan</string>
     <string name="request_progress">%1$d of %2$d</string>
     <string name="request_waiting">Waiting for the bridge…</string>
     <string name="request_allowed">Allowed</string>

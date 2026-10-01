@@ -94,6 +94,15 @@ class ProtocolTest {
     private inline fun <reified T> decode(obj: JsonObject): T = WireJson.decodeFromJsonElement(obj)
 
     @Test
+    fun planItemDecodesItsMarkAndOtherItemsDefaultToNone() {
+        val plan = parseServerEvent(File(dir, "event-item-plan.json").readText()) as ServerEvent.ItemChanged
+        assertEquals(ItemKind.ASSISTANT, plan.item.kind)
+        assertTrue(plan.item.plan)
+        val other = parseServerEvent(File(dir, "event-item.json").readText()) as ServerEvent.ItemChanged
+        assertFalse(other.item.plan)
+    }
+
+    @Test
     fun unknownEventTypeIsIgnored() {
         assertNull(parseServerEvent("""{"type":"future_event","payload":{"x":[1,2]}}"""))
         assertNull(parseServerEvent("""{"type":7}"""))

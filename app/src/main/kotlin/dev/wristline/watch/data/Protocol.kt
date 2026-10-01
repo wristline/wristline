@@ -128,6 +128,8 @@ data class Item(
     val detail: String? = null,
     val pending: Boolean = false,
     val error: Boolean = false,
+    /** On an `assistant` item: a plan the agent proposed in plan mode. */
+    val plan: Boolean = false,
 )
 
 @Immutable

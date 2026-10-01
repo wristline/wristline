@@ -137,6 +137,8 @@ private const val END_PADDING_FRACTION = 0.3f
 private val SCRIM_HEIGHT = 72.dp
 // The working indicator under the newest item: smaller than the usual spinner, low-key.
 private val WORKING_SPINNER = 12.dp
+// The page glyph beside a plan's time, the time's height.
+private val PLAN_GLYPH = 12.dp
 // The list's top padding: the header starts a little below the round screen's top.
 private val LIST_TOP = 20.dp
 // The list's side padding comes this much inside the default. No more: the round edge clips
@@ -778,7 +780,20 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                     CardDefaults.cardColors(contentColor = colors.onSurface)
                 },
             ) {
-                ItemTime(item.ts)
+                if (item.plan) {
+                    // A plan the agent proposed: the page glyph before its time; TalkBack reads "Plan".
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painterResource(R.drawable.ic_context),
+                            stringResource(R.string.request_plan_title),
+                            Modifier.size(PLAN_GLYPH),
+                            tint = colors.primary,
+                        )
+                        ItemTime(item.ts)
+                    }
+                } else {
+                    ItemTime(item.ts)
+                }
                 Text(
                     if (expanded) item.text else collapsedText(item.text),
                     modifier = Modifier.animateContentSize(CalmMotion.defaultSpatialSpec()),

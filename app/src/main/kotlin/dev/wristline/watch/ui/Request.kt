@@ -1,5 +1,6 @@
 package dev.wristline.watch.ui
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -83,12 +84,39 @@ private const val HANDLED_MS = 1_500L
  */
 private const val CONFIRMATION_MS = 2_000L
 
+/** The tool of a Claude Code plan approval: a permission titled so, whose text is the plan. */
+private const val PLAN_TOOL = "ExitPlanMode"
+
+/** A plan approval's options in the terminal's order; any other option goes last. */
+private val PLAN_ORDER = listOf(Decision.ALWAYS, Decision.ALLOW, Decision.DENY, Decision.DEFER)
+
 /** What an accepted answer did: allowed or denied a permission, or anything else. */
 internal enum class Answered { ALLOWED, DENIED, OTHER }
 
 /** The question a permission request asks: the decision, or its only question. */
 internal fun PendingRequest.permissionQuestion(): Question? =
     questions.firstOrNull { it.id == PERMISSION_QUESTION } ?: questions.firstOrNull()
+
+internal fun PendingRequest.isPlanApproval(): Boolean = kind == RequestKind.PERMISSION && title == PLAN_TOOL
+
+/** The options as shown: a plan approval's in the terminal's order (auto-accept first), others as sent. */
+internal fun shownOptions(request: PendingRequest, question: Question): List<Option> {
+    if (!request.isPlanApproval()) return question.options
+    return question.options.sortedBy { option -> PLAN_ORDER.indexOf(option.id).let { if (it < 0) PLAN_ORDER.size else it } }
+}
+
+/**
+ * The label of a permission option, null for the bridge's own: a plan approval's in Claude Code's
+ * own English words in every locale, except "Answer on PC".
+ */
+@StringRes
+internal fun decisionLabelRes(plan: Boolean, optionId: String): Int? = when (optionId) {
+    Decision.ALLOW -> if (plan) R.string.decision_plan_approve else R.string.decision_allow
+    Decision.ALWAYS -> if (plan) R.string.decision_plan_auto_accept else R.string.decision_always
+    Decision.DENY -> if (plan) R.string.decision_plan_change else R.string.decision_deny
+    Decision.DEFER -> R.string.decision_defer
+    else -> null
+}
 
 /** What [answers] to [request] did, once the bridge accepted them. */
 internal fun answeredAs(request: PendingRequest, answers: Answers): Answered {
@@ -238,7 +266,10 @@ internal fun RequestContent(
     }
 }
 
-/** Tool name, the command or plan it wants to run, then Allow / Always / Deny / On PC. */
+/**
+ * Tool name, the command it wants to run, then Allow / Always / Deny / On PC; a plan approval is
+ * titled Plan and answered in the terminal's words.
+ */
 @Composable
 private fun PermissionContent(
     request: PendingRequest,
@@ -251,10 +282,12 @@ private fun PermissionContent(
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
     val colors = MaterialTheme.colorScheme
+    val plan = request.isPlanApproval()
+    val title = if (plan) stringResource(R.string.request_plan_title) else request.title
     ScreenScaffold(scrollState = listState) { contentPadding ->
         // Default rotary (fling with haptics): the body can be long and is read continuously.
         TransformingLazyColumn(state = listState, contentPadding = contentPadding) {
-            requestHeader(request.title, sessionTitle, spec)
+            requestHeader(title, sessionTitle, spec)
             if (question != null && question.text.isNotEmpty()) {
                 item(key = "body") {
                     // Not edge-transformed: a long body would be drawn through a full-size offscreen layer.
@@ -268,15 +301,18 @@ private fun PermissionContent(
             }
             errorItem(error, spec)
             if (question != null) {
-                items(question.options, key = { it.id }) { option ->
+                items(shownOptions(request, question), key = { it.id }) { option ->
                     val answer = { onAnswer(mapOf(question.id to listOf(option.id))) }
                     val modifier = Modifier
                         .fillMaxWidth()
                         .transformedHeight(this, spec)
                         .minimumVerticalContentPadding(top = 0.dp, bottom = ButtonDefaults.minimumVerticalListContentPadding)
-                    val label: @Composable RowScope.() -> Unit = { Text(decisionLabel(option), maxLines = 1) }
+                    // A plan's labels are longer; its "mode: acceptEdits" only repeats auto-accept.
+                    val label: @Composable RowScope.() -> Unit = {
+                        Text(decisionLabel(plan, option), maxLines = if (plan) 2 else 1, overflow = TextOverflow.Ellipsis)
+                    }
                     val secondary: (@Composable RowScope.() -> Unit)? =
-                        option.description?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
+                        option.description?.takeUnless { plan }?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
                     val transformation = SurfaceTransformation(spec)
                     // Allow is green with black text, Deny red text on the dark tonal button.
                     when (option.id) {
@@ -429,10 +465,5 @@ private fun TransformingLazyColumnScope.errorItem(error: String?, spec: Transfor
 }
 
 @Composable
-private fun decisionLabel(option: Option): String = when (option.id) {
-    Decision.ALLOW -> stringResource(R.string.decision_allow)
-    Decision.ALWAYS -> stringResource(R.string.decision_always)
-    Decision.DENY -> stringResource(R.string.decision_deny)
-    Decision.DEFER -> stringResource(R.string.decision_defer)
-    else -> option.label
-}
+private fun decisionLabel(plan: Boolean, option: Option): String =
+    decisionLabelRes(plan, option.id)?.let { stringResource(it) } ?: option.label
