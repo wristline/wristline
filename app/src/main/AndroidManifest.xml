@@ -43,6 +43,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Opens MainActivity from the monitoring Ongoing Activity; not always-on, so the watch
+             face still comes back after the screen goes off. Theme.NoDisplay: it finishes in onCreate. -->
+        <activity
+            android:name=".OpenActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay" />
+
         <!-- Background monitoring, started only while the user has it on in Settings. -->
         <service
             android:name=".MonitorService"

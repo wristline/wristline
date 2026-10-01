@@ -95,7 +95,8 @@ class MonitorService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        val open = PendingIntent.getActivity(this, 0, MainActivity.openIntent(this), PendingIntent.FLAG_IMMUTABLE)
+        // Through OpenActivity, not MainActivity: see there why the touch target must not be always-on.
+        val open = PendingIntent.getActivity(this, 0, Intent(this, OpenActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         var shown = statusText(Bridge.conn.value, Bridge.sessions.value, Bridge.requests.value)
         val builder = NotificationCompat.Builder(this, Notifier.CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_notification)
