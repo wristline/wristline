@@ -88,6 +88,7 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
+import androidx.wear.compose.material3.touchTargetAwareSize
 import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
@@ -123,9 +124,10 @@ private const val COLLAPSED_CHARS = 1_000
 private const val SENT_NOTICE_MS = 4_000L
 // How long the speak button shows a check after a prompt went out.
 private const val SENT_CHECK_MS = 1_200L
-private val ACTION_SIZE = 44.dp
-private val ACTION_GAP = 10.dp
-// Low in the round screen's bottom chin, the two buttons still inside the circle.
+// The library's small size, the minimum touch target.
+private val ACTION_SIZE = IconButtonDefaults.SmallButtonSize
+private val ACTION_GAP = 8.dp
+// Low in the round screen's bottom chin, the two buttons still inside the circle (192dp screens too).
 private val ACTIONS_BOTTOM = 6.dp
 // The list's end padding as a share of the screen height: at rest the newest short card ends about
 // 70% down the screen, a little above the actions.
@@ -461,7 +463,7 @@ internal fun SessionDetailContent(
                 // Round, squarer while pressed, but only so far: square corners this low would reach
                 // past the round screen's edge. The same size, so the pair never shifts.
                 val shapes = IconButtonDefaults.animatedShapes(pressedShape = MaterialTheme.shapes.medium)
-                FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
+                FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                     SpeakIcon(
                         when {
                             sending -> SpeakState.SENDING
@@ -470,7 +472,7 @@ internal fun SessionDetailContent(
                         },
                     )
                 }
-                FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
+                FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                     Icon(painterResource(R.drawable.ic_keyboard), stringResource(R.string.detail_type))
                 }
             }

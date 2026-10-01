@@ -63,6 +63,7 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
+import androidx.wear.compose.material3.touchTargetAwareSize
 import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
@@ -77,8 +78,8 @@ import java.text.Normalizer
 import java.time.ZoneId
 import kotlin.math.roundToInt
 
-/** The icon buttons at the top of the list. */
-private val ACTION_SIZE = 40.dp
+/** The icon buttons at the top of the list: the library's small size, the minimum touch target. */
+private val ACTION_SIZE = IconButtonDefaults.SmallButtonSize
 private val ACTION_GAP = 8.dp
 
 /** The provider badge beside labelSmall text (the limit card, a session card's second line). */
@@ -178,13 +179,13 @@ internal fun SessionListContent(
                     val iconSize = IconButtonDefaults.iconSizeFor(ACTION_SIZE)
                     // Round, squarer while pressed.
                     val shapes = IconButtonDefaults.animatedShapes()
-                    FilledTonalIconButton(onClick = onSettings, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
+                    FilledTonalIconButton(onClick = onSettings, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                         Icon(painterResource(R.drawable.ic_settings), stringResource(R.string.settings_title), Modifier.size(iconSize))
                     }
-                    FilledIconButton(onClick = onAsk, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
+                    FilledIconButton(onClick = onAsk, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                         Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.ask_button), Modifier.size(iconSize))
                     }
-                    FilledTonalIconButton(onClick = onAskHistory, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
+                    FilledTonalIconButton(onClick = onAskHistory, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                         Icon(painterResource(R.drawable.ic_history), stringResource(R.string.ask_history_title), Modifier.size(iconSize))
                     }
                 }

@@ -59,6 +59,7 @@ import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
+import androidx.wear.compose.material3.touchTargetAwareSize
 import dev.wristline.watch.R
 import dev.wristline.watch.data.Ask
 import dev.wristline.watch.data.AskSent
@@ -91,9 +92,12 @@ internal fun askThread(asks: List<Ask>, askId: String): List<Ask>? {
     return asks.asReversed().filter { it.thread == thread }.sortedBy { isoToMillis(it.createdAt) ?: 0L }.ifEmpty { null }
 }
 
-/** The icon buttons under the newest answer. */
+/**
+ * The icon buttons under the newest answer: four at the small size (48dp) do not fit the round
+ * screen, so 40dp, which the accessibility guide allows on small screens, each in a 48dp touch
+ * target ([touchTargetAwareSize]). The targets' margins are the 8dp between the buttons.
+ */
 private val ACTION_SIZE = 40.dp
-private val ACTION_GAP = 8.dp
 
 /**
  * The Ask button: speech (or typing) in, a confirm dialog with the provider badge to toggle
@@ -367,13 +371,13 @@ internal fun AskContent(
                             .fillMaxWidth()
                             .edgeTransform(this, spec)
                             .minimumVerticalContentPadding(top = 0.dp, bottom = ButtonDefaults.minimumVerticalListContentPadding),
-                        horizontalArrangement = Arrangement.spacedBy(ACTION_GAP, Alignment.CenterHorizontally),
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val iconSize = IconButtonDefaults.iconSizeFor(ACTION_SIZE)
                         // Round, squarer while pressed.
                         val shapes = IconButtonDefaults.animatedShapes()
-                        FilledTonalIconButton(onClick = onAgain, enabled = !sending, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
+                        FilledTonalIconButton(onClick = onAgain, enabled = !sending, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                             if (sending) SmallSpinner() else Icon(painterResource(R.drawable.ic_replay), stringResource(R.string.ask_again), Modifier.size(iconSize))
                         }
                         val other = otherProvider(newest.provider)
@@ -381,7 +385,7 @@ internal fun AskContent(
                         FilledTonalIconButton(
                             onClick = onOther,
                             enabled = !sending,
-                            modifier = Modifier.size(ACTION_SIZE).clearAndSetSemantics {
+                            modifier = Modifier.touchTargetAwareSize(ACTION_SIZE).clearAndSetSemantics {
                                 contentDescription = askOther
                                 role = Role.Button
                             },
@@ -389,14 +393,14 @@ internal fun AskContent(
                         ) {
                             ProviderBadge(other, size = 20.dp)
                         }
-                        FilledTonalIconButton(onClick = onSpeak, enabled = newest.answer != null, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
+                        FilledTonalIconButton(onClick = onSpeak, enabled = newest.answer != null, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                             if (speaking) {
                                 Icon(painterResource(R.drawable.ic_stop), stringResource(R.string.ask_stop_reading), Modifier.size(iconSize))
                             } else {
                                 Icon(painterResource(R.drawable.ic_speaker), stringResource(R.string.ask_read_aloud), Modifier.size(iconSize))
                             }
                         }
-                        FilledTonalIconButton(onClick = onFollowUp, enabled = !sending, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
+                        FilledTonalIconButton(onClick = onFollowUp, enabled = !sending, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                             Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.ask_follow_up), Modifier.size(iconSize))
                         }
                     }
