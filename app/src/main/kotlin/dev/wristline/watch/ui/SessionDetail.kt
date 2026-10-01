@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
@@ -55,12 +54,10 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.LocalReduceMotion
@@ -112,9 +109,10 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlin.math.sqrt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -142,21 +140,15 @@ private val LIST_TOP = 20.dp
 // wider cards.
 private val LIST_SIDE_TRIM = 2.dp
 
-// Left gauge centered on 9 o'clock, in degrees clockwise from 3 o'clock; the right gauge mirrors it
-// (338 to 22, centered on 3 o'clock, where the scroll indicator is: it is hidden while the gauges
-// show). Below each lower end, GAUGE_LABEL_GAP on, the glyph saying what it measures and its
-// percentage, upright, the pair's outer bottom corner GAUGE_LABEL_INSET inside the round edge.
-private const val GAUGE_START = 158f
-private const val GAUGE_SWEEP = 44f
-// Clears the arc's round end with a little room to spare.
-private val GAUGE_LABEL_GAP = 3.dp
-private val GAUGE_LABEL_INSET = 2.dp
-private val GAUGE_LABEL_SIZE = 12.sp
-// How much of the transcript under a label its pill hides.
-private const val GAUGE_LABEL_BACKDROP = 0.8f
-// The glyph before a gauge's percentage, and the gap between them.
+// Left gauge from GAUGE_START to GAUGE_START + GAUGE_SWEEP, in degrees clockwise from 3 o'clock:
+// 170 to 202, above 9 o'clock but for its lower end; the right gauge mirrors it (338 to 10, at 3
+// o'clock, where the scroll indicator is: it is hidden while the gauges show). Below each lower
+// end, centered GAUGE_GLYPH_ANGLE on the same ring, the glyph saying what it measures, upright.
+private const val GAUGE_START = 170f
+private const val GAUGE_SWEEP = 32f
+// Clears the arc's round end by a few dp.
+private const val GAUGE_GLYPH_ANGLE = 163f
 private val GAUGE_GLYPH = 14.dp
-private val GAUGE_GLYPH_GAP = 3.dp
 // The right gauge starts filling in this long after the left.
 private const val GAUGE_STAGGER_MS = 120L
 // No thinner than the scroll indicator (5dp, 6dp on screens 225dp and wider).
@@ -451,7 +443,7 @@ internal fun SessionDetailContent(
                 .background(Brush.verticalGradient(listOf(Color.Transparent, colors.background))),
         )
         // The content is a Box: what is composed after the list is drawn over it. The arcs and
-        // their labels show whenever the list is at rest.
+        // their glyphs show whenever the list is at rest.
         if (session != null) {
             EdgeGauges(gaugesShown, session.context, limit, fillIn = !gaugesFilled, onFillStarted = { gaugesFilled = true })
         }
@@ -561,10 +553,10 @@ private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<B
 }
 
 /**
- * Context use (left) and the limit window (right) as bare arcs centered on 9 and 3 o'clock, each
- * with a glyph (a page, a meter) and its percentage just below its lower end; the header only reads
- * the numbers out. Both fill upwards. With [fillIn] the arcs composed now
- * fill in from zero, the right one a little after the left; [onFillStarted] follows the first.
+ * Context use (left) and the limit window (right) as bare arcs beside 9 and 3 o'clock, each with a
+ * glyph (a page, a meter) on its ring just below its lower end; no numbers: the header reads them
+ * out. Both fill upwards. With [fillIn] the arcs composed now fill in from zero, the right one a
+ * little after the left; [onFillStarted] follows the first.
  */
 @Composable
 private fun EdgeGauges(
@@ -630,46 +622,29 @@ private fun EdgeGauge(
         colors = ProgressIndicatorDefaults.colors(indicatorColor = color, trackColor = GaugeTrack),
         strokeWidth = GAUGE_STROKE,
     )
-    // Upright, glyph then number on both sides, just below the arc's lower end, where it fills from:
-    // on the left from the round edge in, on the right up to it. Above the upper end the cards'
-    // first lines would run under it; down here the scrim fades them and, at rest at the bottom,
-    // the newest card ends above it; on a pill of the screen's background, so text scrolled under it
-    // does not show through. The glyph in the text's white, the number in the arc's color.
-    val backdrop = MaterialTheme.colorScheme.background.copy(alpha = GAUGE_LABEL_BACKDROP)
+    // Upright, on the arc's ring past its lower end, where it fills from: on the round edge, never
+    // over the cards. Pulled in from the ring's middle only as far as keeps the glyph's square
+    // inside the round screen.
     Layout(
-        content = {
-            Row(
-                Modifier.background(backdrop, CircleShape).padding(horizontal = 4.dp, vertical = 1.dp),
-                horizontalArrangement = Arrangement.spacedBy(GAUGE_GLYPH_GAP),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(painterResource(glyph), null, Modifier.size(GAUGE_GLYPH), tint = MaterialTheme.colorScheme.onSurface)
-                Text("${percent.roundToInt()}%", color = color, fontSize = GAUGE_LABEL_SIZE, fontWeight = FontWeight.Medium, maxLines = 1)
-            }
-        },
+        content = { Icon(painterResource(glyph), null, Modifier.size(GAUGE_GLYPH), tint = MaterialTheme.colorScheme.onSurface) },
         modifier = Modifier.fillMaxSize().padding(edge).clearAndSetSemantics {},
     ) { measurables, constraints ->
-        val label = measurables.single().measure(Constraints())
+        val icon = measurables.single().measure(Constraints())
         layout(constraints.maxWidth, constraints.maxHeight) {
-            // From the center, y down: the arc's lower end with its round cap, then the label below it.
             val radius = constraints.maxWidth / 2f
-            val stroke = GAUGE_STROKE.toPx()
-            val endBottom = (radius - stroke / 2) * sin(Math.toRadians(GAUGE_START.toDouble())).toFloat() + stroke / 2
-            val top = endBottom + GAUGE_LABEL_GAP.toPx()
-            val bottom = top + label.height
-            // The label's bottom outer corner, the one nearest the round edge, sets how far out it goes.
-            val inner = radius - GAUGE_LABEL_INSET.toPx()
-            val half = sqrt(inner * inner - bottom * bottom)
-            val x = if (right) radius + half - label.width else radius - half
-            label.place(x.roundToInt(), (radius + top).roundToInt())
+            val angle = Math.toRadians((if (right) 180f - GAUGE_GLYPH_ANGLE else GAUGE_GLYPH_ANGLE).toDouble())
+            val cos = cos(angle).toFloat()
+            val sin = sin(angle).toFloat()
+            val half = icon.width / 2f
+            val ring = minOf(radius - GAUGE_STROKE.toPx() / 2, radius + edge.toPx() - half * (abs(cos) + abs(sin)))
+            icon.place((radius + ring * cos - half).roundToInt(), (radius + ring * sin - icon.height / 2f).roundToInt())
         }
     }
 }
 
 /**
  * The session's title over its provider badge and status dot, the list's colors, no words: the
- * gauges' numbers show once, at the arcs' ends. Read out as one, the status
- * in words and the numbers too.
+ * gauges show the numbers as arcs. Read out as one, the status in words and the numbers too.
  */
 @Composable
 private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, modifier: Modifier) {

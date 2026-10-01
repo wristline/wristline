@@ -93,7 +93,7 @@ private val codexPro = Account("chatgpt-pro", "Pro")
 private val listSessions = listOf(
     sessions[0].copy(model = "Fable 5.1", effort = "medium"),
     sessions[1].copy(account = codexPro, lastActivity = "2026-09-29T12:59:40Z"),
-    sessions[2],
+    sessions[2].copy(model = "Fable 5.1", effort = "xhigh"),
     Session("codex:5", ProviderId.CODEX, "Fix the flaky checkout test", "/home/dev/shop", SessionStatus.IDLE, "2026-09-27T09:00:00Z"),
 )
 private val listUsage = listOf(
@@ -210,7 +210,8 @@ private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "no
 
 // The icon row (Settings, Ask, recent questions) heads the list; the request banner sits right
 // under it, then the limit card, a line per account (Codex's two marked 기 and P) with the clock
-// time of each reset, and the session cards, the first with a third line for its model and effort.
+// time of each reset, and the session cards, two lines each: after the long first title only the
+// model fits, after the short third one the model and effort.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {
@@ -323,7 +324,7 @@ private fun AskGoneKoPreview() = AskFrame(null)
 private fun AskHistoryPreview() = Frame { AskHistoryContent(thread.asReversed() + asks.drop(1), { now }, onAsk = {}, onDelete = {}) }
 
 // Edge gauges: context 60% on the left (a page glyph), Codex's primary window at 93% (yellow, a
-// meter glyph) on the right, each glyph and number upright below the arc's lower end. Nothing at
+// meter glyph) on the right, each glyph upright on its ring below the arc's lower end, no numbers. Nothing at
 // the top; the header shows the running dot alone, and the small gray spinner under the newest card
 // says it is working, above the actions.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
@@ -356,8 +357,8 @@ private fun SessionDetailRespondPreview() = Frame {
     )
 }
 
-// The widest gauge labels, `100%` on both sides at a 1.3 font scale: still inside the round edge,
-// clear of the speak and type buttons.
+// Full gauges at a 1.3 font scale: the arcs and glyphs stay on the round edge, clear of the speak
+// and type buttons.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, fontScale = 1.3f)
 @Composable
 private fun SessionDetailFullGaugesPreview() = Frame {

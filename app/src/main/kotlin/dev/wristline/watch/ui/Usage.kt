@@ -1,6 +1,7 @@
 package dev.wristline.watch.ui
 
 import android.text.format.DateFormat
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,17 +29,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.itemsIndexed
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
+import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ListHeaderDefaults
+import androidx.wear.compose.material3.ListSubHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.TextDefaults
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import dev.wristline.watch.R
@@ -61,12 +64,8 @@ import kotlin.math.roundToInt
 // Between one ring's start filling in and the next's.
 private const val RING_STAGGER_MS = 60L
 
-// The grid every provider's block is laid out on: the headers and the rings start USAGE_INSET from
-// the left and each row's texts USAGE_RING_GAP past its ring, whatever the texts say. At 226dp the
-// widest row (`◷ Wed 12:59 PM`) ends near 175dp, and a ring this far in clears the round edge to
-// 60dp above or below the middle: the rows sit between the list's top and bottom paddings.
-private val USAGE_INSET = 28.dp
-private val USAGE_RING = 48.dp
+// A window card's ring, and the gap between it and the texts.
+private val USAGE_RING = 44.dp
 private val USAGE_RING_GAP = 10.dp
 
 @Composable
@@ -88,15 +87,19 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
     val sorted = remember(usage) { usageOrder(usage) }
-    // Only the last item's bottom value takes effect; it keeps the final row off the round edge.
-    val bottom = TextDefaults.minimumBottomListContentPadding
+    // Only the last item's bottom value takes effect; it keeps the final card off the round edge.
+    val bottom = CardDefaults.minimumVerticalListContentPadding
     // The rings on screen fill in from zero one after another, once per visit: rings the list
     // composes later, as it scrolls, show their values straight away.
     var ringsFilled by remember { mutableStateOf(false) }
+    // The scaffold's content padding is the responsive one (a share of the screen), so the list's
+    // items, as on the other screens, need no insets of their own to clear the round edge; near
+    // the top and bottom edges they shrink and fade as they scroll ([rememberTransformationSpec]).
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(
             state = listState,
             contentPadding = contentPadding,
+            flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState),
             rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
         ) {
             item(key = "title") {
@@ -121,20 +124,24 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
             // [Usage.key], and a repeated key would crash the list.
             sorted.forEachIndexed { index, provider ->
                 item(key = "provider/$index/${provider.key}") {
-                    // On the rings' left edge; 16dp on the right: a long account label ends in an ellipsis,
-                    // not under the round edge.
-                    Column(Modifier.fillMaxWidth().edgeTransform(this, spec).padding(start = USAGE_INSET, top = 6.dp, end = 16.dp)) {
-                        Text(providerLabel(provider.provider), style = MaterialTheme.typography.titleSmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            provider.account?.let { AccountText(it, Modifier.weight(1f, fill = false)) }
-                            UpdatedText(provider.updatedAt, now)
+                    ListSubHeader(
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                        transformation = SurfaceTransformation(spec),
+                    ) {
+                        Column {
+                            Text(providerLabel(provider.provider), style = MaterialTheme.typography.titleSmall)
+                            // A long account label ends in an ellipsis, the updated time after it.
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                provider.account?.let { AccountText(it, Modifier.weight(1f, fill = false)) }
+                                UpdatedText(provider.updatedAt, now)
+                            }
                         }
                     }
                 }
                 val firstRing = rings
                 rings += provider.windows.size
                 itemsIndexed(provider.windows, key = { _, window -> "window/$index/${window.id}" }) { i, window ->
-                    WindowRow(
+                    WindowCard(
                         window,
                         now,
                         Modifier.edgeTransform(this, spec).minimumVerticalContentPadding(top = 0.dp, bottom = bottom),
@@ -182,13 +189,13 @@ private fun UpdatedText(updatedAt: String, now: () -> Long) {
 }
 
 /**
- * A window: its ring and percentage, its name ([windowAbbrev]) and, when it has a reset time, the
- * clock time and the time left ([ResetTimes]). From its reset time on the window is over (as on the
- * limit card, see [currentLine]): an empty ring, a dash and `Reset`, until the bridge reports the
- * next one. Read out as one sentence.
+ * A window as a card, not clickable: its ring and percentage, then its name ([windowAbbrev]) and,
+ * when it has a reset time, the clock time and the time left ([ResetTimes]), left-aligned. From its
+ * reset time on the window is over (as on the limit card, see [currentLine]): an empty ring, a dash
+ * and `Reset`, until the bridge reports the next one. Read out as one sentence.
  */
 @Composable
-private fun WindowRow(
+private fun WindowCard(
     window: UsageWindow,
     now: () -> Long,
     modifier: Modifier,
@@ -196,17 +203,19 @@ private fun WindowRow(
     onFillStarted: () -> Unit,
 ) {
     val resetsAt = remember(window.resetsAt) { isoToMillis(window.resetsAt) }
-    // Changes once, at the reset: the tick recomposes the row then only.
+    // Changes once, at the reset: the tick recomposes the card then only.
     val passed by remember(resetsAt, now) { derivedStateOf { resetPassed(resetsAt, now()) } }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val name = windowWords(window)
     val percent = window.usedPercent.roundToInt()
     val spoken = if (passed) name + ", " + stringResource(R.string.usage_reset_passed) else stringResource(R.string.limit_used, name, percent)
+    // A card's look without its click (a Card is always clickable): its color, shape and padding,
+    // shrinking and fading with the list as a whole (see [edgeTransform]).
     Row(
-        // On the grid ([USAGE_INSET]): every row's ring and texts start where the others' do.
         modifier
             .fillMaxWidth()
-            .padding(start = USAGE_INSET, end = 16.dp)
+            .background(CardDefaults.cardColors().containerColor, CardDefaults.shape)
+            .padding(CardDefaults.ContentPadding)
             .semantics(mergeDescendants = true) {},
         horizontalArrangement = Arrangement.spacedBy(USAGE_RING_GAP),
         verticalAlignment = Alignment.CenterVertically,

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -537,12 +539,13 @@ private fun TransformingLazyColumnItemScope.SessionCard(
         colors = CardDefaults.cardColors(contentColor = MaterialTheme.colorScheme.onSurface),
         interactionSource = interaction,
     ) {
-        // Line 1: the status dot and the session's name, which tells cards apart: the largest text.
-        // The dot sits on the top line: near the screen's bottom edge the list morphs the card's
-        // lower corners, which would hide it at the start of the second line.
+        // Line 1: the status dot, the session's name, which tells cards apart (the largest text),
+        // and after it, small and muted, the model and effort when known (`Fable 5.1 · medium`,
+        // here only, not over the transcript). The dot sits on the top line: near the screen's
+        // bottom edge the list morphs the card's lower corners, which would hide it lower down.
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             StatusDot(session.status)
-            Text(sessionTitle(session), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            TitleWithSetup(sessionTitle(session), session.model, session.effort)
         }
         // Line 2, muted: `12m · [C] repo`; accounts are on the Usage screen.
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -556,19 +559,81 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             ProviderBadge(session.provider, size = SMALL_BADGE)
             Text(basename(session.cwd), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        // Line 3, muted, when known: `Fable 5.1 · medium`, here only (not over the transcript). Its
-        // own line: after the folder on line 2 it would leave the folder a few letters at 226dp.
-        val setup = listOfNotNull(session.model, session.effort)
-        if (setup.isNotEmpty()) {
-            val spoken = setup.joinToString(", ")
-            Text(
-                setup.joinToString(" · "),
-                Modifier.semantics { contentDescription = spoken },
-                color = muted,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+    }
+}
+
+/** A session card's title space never shrinks below this for the model and effort after it. */
+private val TITLE_MIN = 80.dp
+
+/** The model and effort after a title never shrink below this (or their own width, if less). */
+private val SETUP_MIN = 70.dp
+private val SETUP_GAP = 6.dp
+
+/**
+ * What a card shows of a session's [model] and [effort] after its title, the fullest first:
+ * `Fable 5.1 · medium`, `Fable 5.1`, then the model's first word (`Fable`); the effort alone
+ * without a model. Empty when neither is known.
+ */
+internal fun setupVariants(model: String?, effort: String?): List<String> {
+    val name = model?.trim()?.takeIf { it.isNotEmpty() }
+    val level = effort?.trim()?.takeIf { it.isNotEmpty() }
+    if (name == null) return listOfNotNull(level)
+    return listOfNotNull(level?.let { "$name · $it" }, name, name.substringBefore(' ')).distinct()
+}
+
+/**
+ * Which of the [setup] variants ([setupVariants], their widths) goes after a title [title] wide on a
+ * line [available] wide, [gap] between them, and how wide it is: the fullest that leaves the title
+ * all its width or at least [titleMin], else the last, at least [setupMin] (or its own width, if
+ * less). Null without variants.
+ */
+internal fun setupChoice(title: Int, setup: List<Int>, available: Int, gap: Int, titleMin: Int, setupMin: Int): Pair<Int, Int>? {
+    if (setup.isEmpty()) return null
+    // What the setup may take and still leave the title its share.
+    val room = available - gap - minOf(title, titleMin)
+    val index = setup.indices.firstOrNull { setup[it] <= room } ?: setup.lastIndex
+    val width = setup[index]
+    return index to minOf(width, maxOf(room, minOf(width, setupMin)))
+}
+
+/**
+ * A card's title, ellipsized, then the model and effort small and muted on its baseline, as much
+ * of them as [setupChoice] leaves room for. Read out as the title, then `Fable 5.1, medium`.
+ */
+@Composable
+private fun RowScope.TitleWithSetup(title: String, model: String?, effort: String?) {
+    val variants = remember(model, effort) { setupVariants(model, effort) }
+    val spoken = listOfNotNull(title, listOfNotNull(model, effort).joinToString(", ").takeIf { it.isNotEmpty() }).joinToString(", ")
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Layout(
+        content = {
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            variants.forEach { Text(it, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        },
+        modifier = Modifier.weight(1f).clearAndSetSemantics { contentDescription = spoken },
+    ) { measurables, constraints ->
+        val titleMeasurable = measurables.first()
+        val setup = measurables.drop(1)
+        val gap = SETUP_GAP.roundToPx()
+        val choice = setupChoice(
+            titleMeasurable.maxIntrinsicWidth(constraints.maxHeight),
+            setup.map { it.maxIntrinsicWidth(constraints.maxHeight) },
+            constraints.maxWidth,
+            gap,
+            TITLE_MIN.roundToPx(),
+            SETUP_MIN.roundToPx(),
+        )
+        val setupPlaceable = choice?.let { (index, width) -> setup[index].measure(Constraints(maxWidth = width)) }
+        val titleMax = if (setupPlaceable == null) constraints.maxWidth else (constraints.maxWidth - gap - setupPlaceable.width).coerceAtLeast(0)
+        val titlePlaceable = titleMeasurable.measure(Constraints(maxWidth = titleMax))
+        // The setup sits on the title's baseline.
+        val titleBaseline = titlePlaceable[FirstBaseline]
+        val setupTop = setupPlaceable?.let { titleBaseline - it[FirstBaseline] } ?: 0
+        val top = minOf(0, setupTop)
+        val height = maxOf(titlePlaceable.height, (setupPlaceable?.height ?: 0) + setupTop) - top
+        layout(constraints.maxWidth, constraints.constrainHeight(height)) {
+            titlePlaceable.placeRelative(0, -top)
+            setupPlaceable?.placeRelative(titlePlaceable.width + gap, setupTop - top)
         }
     }
 }
