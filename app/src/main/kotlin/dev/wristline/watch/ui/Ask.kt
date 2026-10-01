@@ -180,7 +180,7 @@ internal fun rememberQuickAsk(
                         if (threadId == null) prefs.askProvider = provider
                     },
                 )
-                Text(draft, textAlign = TextAlign.Center)
+                DialogMessage(draft)
                 CaptionText(stringResource(R.string.ask_uses_plan))
             }
         },

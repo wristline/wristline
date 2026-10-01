@@ -553,6 +553,23 @@ fun TransformingLazyColumnItemScope.ConnBanner(
     }
 }
 
+/**
+ * A dialog's message: centered up to [DIALOG_CENTERED_LINES] lines, start-aligned when longer, which
+ * reads better (dialogs guide). The line count does not depend on the alignment, so it settles at once.
+ */
+@Composable
+fun DialogMessage(text: String) {
+    var long by remember(text) { mutableStateOf(false) }
+    Text(
+        text,
+        modifier = Modifier.fillMaxWidth(),
+        textAlign = if (long) TextAlign.Start else TextAlign.Center,
+        onTextLayout = { long = it.lineCount > DIALOG_CENTERED_LINES },
+    )
+}
+
+private const val DIALOG_CENTERED_LINES = 3
+
 @Composable
 fun CaptionText(text: String, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Text(

@@ -260,7 +260,7 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
         },
         title = { Text(stringResource(R.string.detail_confirm_title)) },
         // Not clipped: a long message scrolls with the dialog.
-        text = { Text(draft) },
+        text = { DialogMessage(draft) },
     ) {
         item {
             FilledTonalButton(
