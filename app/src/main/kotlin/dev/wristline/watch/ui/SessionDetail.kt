@@ -12,6 +12,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -302,27 +303,21 @@ internal fun SessionDetailContent(
     val blockCode = session?.promptBlock?.takeIf { !hasRequest }
     val canSend = session != null && session.promptBlock == null && !sending
     val footers = listOf(working, blockCode != null, outcome != null).count { it }
-    val lastIndex = 1 + listOf(showEarlier, showLoading, showFailed, showEmpty).count { it } + items.size + footers - 1
     val screenHeight = LocalWindowInfo.current.containerSize.height
     val endPadding = with(LocalDensity.current) { (screenHeight * END_PADDING_FRACTION).toDp() }
 
-    // Follow new items only when the user was at the bottom. Read during composition on purpose:
-    // it flips only at the end of the list, and when a new item arrives it still describes the
-    // layout from before that item, which is exactly "was the user at the bottom".
-    val atBottom = !listState.canScrollForward
+    // Reverse layout (the chat and log pattern): index 0, the newest, is at the bottom, where the
+    // list starts; the earlier loader and the header are at its far end. Follow new items only when
+    // the user was at the bottom. Read during composition on purpose: it flips only at the end of
+    // the list, and when a new item arrives it still describes the layout from before that item,
+    // which is exactly "was the user at the bottom".
+    val atBottom = !listState.canScrollBackward
     val lastSeq = items.lastOrNull()?.seq
-    var placed by remember { mutableStateOf(false) }
     LaunchedEffect(lastSeq, footers) {
         if (lastSeq == null || !atBottom) return@LaunchedEffect
-        // Scrolling to an item centers it, which leaves a tall last card short of the end; lifted
-        // a screen further it overshoots, and the list pins its end instead.
-        if (placed) {
-            listState.animateScrollToItem(lastIndex, screenHeight)
-        } else {
-            // First page: start at the bottom without animating.
-            listState.scrollToItem(lastIndex, screenHeight)
-            placed = true
-        }
+        // The list may hold the card the user saw in place, leaving the new one under the chin; a
+        // screen toward the bottom stops at the end.
+        listState.animateScrollBy(-screenHeight.toFloat())
     }
 
     // Once a prompt went out, a check in the spinner's place for a moment.
@@ -354,6 +349,10 @@ internal fun SessionDetailContent(
         // Default rotary behaviour (fling with haptics): long messages are read continuously, not item by item.
         TransformingLazyColumn(
             state = listState,
+            reverseLayout = true,
+            // A short transcript stays at the top under its header, as it would unreversed (the
+            // reversed default is the bottom); 4dp as the default.
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.Top),
             contentPadding = PaddingValues(
                 start = contentPadding.calculateStartPadding(layoutDirection) - LIST_SIDE_TRIM,
                 top = LIST_TOP,
@@ -361,47 +360,22 @@ internal fun SessionDetailContent(
                 bottom = endPadding,
             ),
         ) {
-            item(key = HEADER_KEY) {
-                DetailHeader(
-                    session = session,
-                    limit = limit,
-                    gone = gone,
-                    modifier = Modifier.edgeTransform(this, spec),
-                )
-            }
-            if (showEarlier) {
-                item(key = "earlier") {
-                    CompactButton(
-                        onClick = onEarlier,
-                        enabled = !state.loading,
-                        modifier = Modifier.transformedHeight(this, spec).animateItemCalmly(this),
-                        // Secondary, so gray: the blue fill is the mic's.
-                        colors = ButtonDefaults.filledTonalButtonColors(),
-                        transformation = SurfaceTransformation(spec),
-                        label = { if (state.loading) SmallSpinner() else Text(stringResource(R.string.detail_earlier)) },
+            if (outcome != null) {
+                item(key = "outcome") {
+                    val text = when (outcome) {
+                        Sent.Ok -> stringResource(R.string.detail_sent)
+                        Sent.Unreachable -> stringResource(R.string.error_unreachable)
+                        is Sent.Refused -> errorMessage(outcome.code)
+                    }
+                    CaptionText(
+                        text,
+                        Modifier.edgeTransform(this, spec).animateItemCalmly(this).minListItemHeight().announced(),
+                        color = if (outcome == Sent.Ok) colors.primary else colors.error,
                     )
                 }
             }
-            if (showLoading) {
-                item(key = "loading") {
-                    Box(Modifier.fillMaxWidth().edgeTransform(this, spec), contentAlignment = Alignment.Center) { SmallSpinner() }
-                }
-            }
-            if (showFailed) {
-                item(key = "failed") {
-                    CaptionText(stringResource(R.string.detail_load_failed), Modifier.edgeTransform(this, spec).minListItemHeight(), color = colors.error)
-                }
-            }
-            if (showEmpty) {
-                item(key = "empty") { CaptionText(stringResource(R.string.detail_empty), Modifier.edgeTransform(this, spec).minListItemHeight()) }
-            }
-            items(items, key = { it.seq }, contentType = { it.kind }) { item ->
-                ItemRow(
-                    item = item,
-                    expanded = expanded[item.seq] == true,
-                    onToggle = { expanded[item.seq] = expanded[item.seq] != true },
-                    spec = spec,
-                )
+            if (blockCode != null) {
+                item(key = "block") { CaptionText(errorMessage(blockCode), Modifier.edgeTransform(this, spec).minListItemHeight()) }
             }
             if (working) {
                 item(key = "working") {
@@ -418,22 +392,47 @@ internal fun SessionDetailContent(
                     ) { SmallSpinner(Modifier.size(WORKING_SPINNER), color = colors.onSurfaceVariant) }
                 }
             }
-            if (blockCode != null) {
-                item(key = "block") { CaptionText(errorMessage(blockCode), Modifier.edgeTransform(this, spec).minListItemHeight()) }
+            items(items.asReversed(), key = { it.seq }, contentType = { it.kind }) { item ->
+                ItemRow(
+                    item = item,
+                    expanded = expanded[item.seq] == true,
+                    onToggle = { expanded[item.seq] = expanded[item.seq] != true },
+                    spec = spec,
+                )
             }
-            if (outcome != null) {
-                item(key = "outcome") {
-                    val text = when (outcome) {
-                        Sent.Ok -> stringResource(R.string.detail_sent)
-                        Sent.Unreachable -> stringResource(R.string.error_unreachable)
-                        is Sent.Refused -> errorMessage(outcome.code)
-                    }
-                    CaptionText(
-                        text,
-                        Modifier.edgeTransform(this, spec).animateItemCalmly(this).minListItemHeight().announced(),
-                        color = if (outcome == Sent.Ok) colors.primary else colors.error,
+            if (showEmpty) {
+                item(key = "empty") { CaptionText(stringResource(R.string.detail_empty), Modifier.edgeTransform(this, spec).minListItemHeight()) }
+            }
+            if (showFailed) {
+                item(key = "failed") {
+                    CaptionText(stringResource(R.string.detail_load_failed), Modifier.edgeTransform(this, spec).minListItemHeight(), color = colors.error)
+                }
+            }
+            if (showLoading) {
+                item(key = "loading") {
+                    Box(Modifier.fillMaxWidth().edgeTransform(this, spec), contentAlignment = Alignment.Center) { SmallSpinner() }
+                }
+            }
+            if (showEarlier) {
+                item(key = "earlier") {
+                    CompactButton(
+                        onClick = onEarlier,
+                        enabled = !state.loading,
+                        modifier = Modifier.transformedHeight(this, spec).animateItemCalmly(this),
+                        // Secondary, so gray: the blue fill is the mic's.
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        transformation = SurfaceTransformation(spec),
+                        label = { if (state.loading) SmallSpinner() else Text(stringResource(R.string.detail_earlier)) },
                     )
                 }
+            }
+            item(key = HEADER_KEY) {
+                DetailHeader(
+                    session = session,
+                    limit = limit,
+                    gone = gone,
+                    modifier = Modifier.edgeTransform(this, spec),
+                )
             }
         }
         // The screen's background at the very bottom, clear at its top. Drawn before the gauges and
