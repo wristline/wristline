@@ -808,7 +808,8 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                     Text(
                         detail,
                         modifier = Modifier.padding(top = 4.dp),
-                        style = MaterialTheme.typography.bodyExtraSmall,
+                        // Opened to be read: 12sp, the minimum for text that matters (WO-V14).
+                        style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                         color = if (item.error) colors.error else colors.onSurfaceVariant,
                     )
