@@ -161,7 +161,8 @@ internal fun SessionListContent(
     // Stale data stays readable but visibly out of date.
     val stale = conn is Conn.Offline || conn is Conn.Unreachable || conn is Conn.Unauthorized
     val oldestRequest = remember(requests) { requests.minByOrNull { it.createdAt } }
-    val limits = remember(usage, sessions) { limitLines(usage, sessions) }
+    val marked = remember(usage, sessions) { markedProviders(usage, sessions) }
+    val limits = remember(usage, sessions, marked) { limitLines(usage, sessions, marked) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(
             state = listState,
@@ -243,6 +244,7 @@ internal fun SessionListContent(
             items(sessions, key = { it.id }, contentType = { "session" }) { session ->
                 SessionCard(
                     session = session,
+                    account = session.account?.label?.takeIf { session.provider in marked },
                     stale = stale,
                     now = now,
                     spec = spec,
@@ -272,7 +274,7 @@ internal data class LimitLine(
     val resetsAt: Long?,
     /** Its sessions in the list, which has live ones only. */
     val sessions: Int,
-    /** The account's label when its provider has more than one line (see [accountMark]); else null. */
+    /** The account's label when its provider is one of [markedProviders] (see [accountMark]); else null. */
     val account: String? = null,
 )
 
@@ -281,9 +283,13 @@ internal data class LimitLine(
  * now only), in [usageOrder], and one for a provider with sessions but no usage. A line's numbers
  * are its entry's [shortWindow]; without one it reads as without usage. It counts the provider's
  * sessions of its account; the first line of a provider also counts those without an account or of
- * an account without a line. When a provider has more than one line, each names its account.
+ * an account without a line. A line of a provider in [marked] names its account.
  */
-internal fun limitLines(usage: List<Usage>, sessions: List<Session>): List<LimitLine> {
+internal fun limitLines(
+    usage: List<Usage>,
+    sessions: List<Session>,
+    marked: Set<String> = markedProviders(usage, sessions),
+): List<LimitLine> {
     val entries = usageOrder(usage.filter { it.windows.isNotEmpty() }).groupBy { it.provider }
     val live = sessions.groupBy { it.provider }
     return (entries.keys + live.keys).sorted().flatMap { provider ->
@@ -294,10 +300,21 @@ internal fun limitLines(usage: List<Usage>, sessions: List<Session>): List<Limit
         }.eachCount()
         accounts.mapIndexed { i, entry ->
             val window = shortWindow(entry)
-            val account = entry.account?.label?.takeIf { accounts.size > 1 }
+            val account = entry.account?.label?.takeIf { provider in marked }
             LimitLine(provider, window?.usedPercent?.roundToInt(), isoToMillis(window?.resetsAt), counts[i] ?: 0, account)
         }
     }
+}
+
+/**
+ * The providers whose limit lines and session cards mark their account (see [accountMark]): those
+ * with more than one account among the [usage] entries with windows (the limit card's lines; one
+ * without an account counts as one) and the [sessions] with an account.
+ */
+internal fun markedProviders(usage: List<Usage>, sessions: List<Session>): Set<String> {
+    val lines = usage.filter { it.windows.isNotEmpty() }.map { it.provider to it.account?.id }
+    val accounts = sessions.mapNotNull { session -> session.account?.let { session.provider to it.id } }
+    return (lines + accounts).distinct().groupingBy { it.first }.eachCount().filterValues { it > 1 }.keys
 }
 
 /**
@@ -438,7 +455,7 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BadgeWithMark(line.provider, line.account?.let(::accountMark))
+        BadgeWithMark(line.provider, line.account)
         val percent = line.percent
         if (percent != null) {
             Text("$percent%", color = limitColor(percent), style = style, maxLines = 1)
@@ -461,15 +478,17 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
 }
 
 /**
- * A [SMALL_BADGE] provider badge with [mark] (see [accountMark]), if any, on its bottom-right
- * corner: black on a white disc, set off from the badge by a ring in the card's color. The mark
- * hangs a little past the badge without taking room.
+ * A [SMALL_BADGE] provider badge with the mark of [account] (see [accountMark]), if any, on its
+ * bottom-right corner: black on a white disc, set off from the badge by a ring in the card's color.
+ * The mark hangs a little past the badge without taking room. Read out as `Codex Work`.
  */
 @Composable
-private fun BadgeWithMark(provider: String, mark: String?) {
-    Box {
+private fun BadgeWithMark(provider: String, account: String?) {
+    val description = account?.let { providerLabel(provider) + " " + it }
+    Box(if (description != null) Modifier.clearAndSetSemantics { contentDescription = description } else Modifier) {
         ProviderBadge(provider, size = SMALL_BADGE)
-        if (mark != null) {
+        if (account != null) {
+            val mark = accountMark(account)
             // Sized in dp, as the badge's letter: in sp a large font scale would overflow the disc.
             val letterStyle = with(LocalDensity.current) {
                 MaterialTheme.typography.labelSmall.copy(fontSize = MARK_LETTER.toSp(), lineHeight = MARK.toSp(), fontWeight = FontWeight.Bold)
@@ -529,6 +548,8 @@ internal fun durationWords(minutes: Long): String {
 @Composable
 private fun TransformingLazyColumnItemScope.SessionCard(
     session: Session,
+    /** The label of its account when its provider is one of [markedProviders]; else null. */
+    account: String?,
     stale: Boolean,
     now: () -> Long,
     spec: TransformationSpec,
@@ -557,7 +578,7 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             StatusDot(session.status)
             TitleWithSetup(sessionTitle(session), session.model, session.effort)
         }
-        // Line 2, muted: `12m · [C] repo`; accounts are on the Usage screen.
+        // Line 2, muted: `12m · [C] repo`, the badge marked with the account as on the limit card.
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
         Row(
             Modifier.padding(top = 2.dp),
@@ -566,7 +587,7 @@ private fun TransformingLazyColumnItemScope.SessionCard(
         ) {
             AgoText(session.lastActivity, now, color = muted, style = MaterialTheme.typography.labelSmall)
             Text("·", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-            ProviderBadge(session.provider, size = SMALL_BADGE)
+            BadgeWithMark(session.provider, account)
             Text(basename(session.cwd), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

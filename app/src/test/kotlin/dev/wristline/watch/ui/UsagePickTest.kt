@@ -87,6 +87,27 @@ class UsagePickTest {
     }
 
     @Test
+    fun markedProvidersHaveMoreThanOneAccountAmongSessionsAndUsage() {
+        // Sessions only: two accounts of Codex; Claude's one account and its session without one, none.
+        val live = listOf(session(ProviderId.CODEX, 1, pro), session(ProviderId.CODEX, 2, basic), session(ProviderId.CODEX, 3, pro))
+        assertEquals(setOf(ProviderId.CODEX), markedProviders(emptyList(), live + session(ProviderId.CLAUDE_CODE, 4, me) + session(ProviderId.CLAUDE_CODE, 5, null)))
+        // Usage only: two lines, as the limit card's rule was; an entry without an account is a line too.
+        assertEquals(setOf(ProviderId.CODEX), markedProviders(listOf(codex(pro, 3.0), codex(basic, 11.0), claude(me, 42.0, 10.0)), emptyList()))
+        assertEquals(setOf(ProviderId.CODEX), markedProviders(listOf(codex(null, 3.0), codex(pro, 11.0)), emptyList()))
+        // Mixed: one account with usage, another with a session; the session card and the line are marked.
+        val mixedUsage = listOf(codex(basic, 11.0))
+        val mixedSessions = listOf(session(ProviderId.CODEX, 1, pro))
+        assertEquals(setOf(ProviderId.CODEX), markedProviders(mixedUsage, mixedSessions))
+        assertEquals(listOf("기본"), limitLines(mixedUsage, mixedSessions).map { it.account })
+        // A single account, in usage and sessions alike; sessions without one don't add any; an entry
+        // without windows is no line.
+        val single = listOf(session(ProviderId.CODEX, 1, pro), session(ProviderId.CODEX, 2, null))
+        assertEquals(emptySet<String>(), markedProviders(listOf(codex(pro, 3.0)), single))
+        assertEquals(emptySet<String>(), markedProviders(listOf(Usage(ProviderId.CODEX, at, emptyList(), basic)), single))
+        assertEquals(emptySet<String>(), markedProviders(emptyList(), emptyList()))
+    }
+
+    @Test
     fun accountMarkIsTheFirstCharacterAsAPersonSeesIt() {
         // A decomposed (NFD) label, as pasted from macOS: the syllable, not its first jamo.
         val nfd = Normalizer.normalize("기본", Normalizer.Form.NFD)

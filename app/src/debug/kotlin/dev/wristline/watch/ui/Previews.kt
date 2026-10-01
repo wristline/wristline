@@ -89,12 +89,12 @@ private val codexPro = Account("chatgpt-pro", "Pro")
 // The list's limit card, a line per account: Claude's 5-hour window resets today at 16:40; Codex
 // Work's primary (weekly) on Monday at 9:00; Codex Pro's 5-hour window today at 15:10 (its weekly
 // one in 6 days). The bridge sent Pro first; Work still leads. Sessions: two Claude, one Codex of
-// Pro and one Codex without an account (counted on Work's line); their times now, 2m, 1h, 2d.
+// Pro and one of Work, their badges marked P and W; their times now, 2m, 1h, 2d.
 private val listSessions = listOf(
     sessions[0].copy(model = "Fable 5.1", effort = "medium"),
     sessions[1].copy(account = codexPro, lastActivity = "2026-09-29T12:59:40Z"),
     sessions[2].copy(model = "Fable 5.1", effort = "xhigh"),
-    Session("codex:5", ProviderId.CODEX, "Fix the flaky checkout test", "/home/dev/shop", SessionStatus.IDLE, "2026-09-27T09:00:00Z"),
+    Session("codex:5", ProviderId.CODEX, "Fix the flaky checkout test", "/home/dev/shop", SessionStatus.IDLE, "2026-09-27T09:00:00Z", account = codexBasic),
 )
 private val listUsage = listOf(
     Usage(
@@ -209,9 +209,9 @@ private fun CodePreview() = Frame { CodeContent(busy = false, error = null, onSu
 private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "not_found", onSubmit = {}) }
 
 // The icon row (Settings, Ask, recent questions) heads the list; the request banner sits right
-// under it, then the limit card, a line per account (Codex's two marked 기 and P) with the clock
+// under it, then the limit card, a line per account (Codex's two marked W and P) with the clock
 // time of each reset, and the session cards, two lines each: after the long first title only the
-// model fits, after the short third one the model and effort.
+// model fits, after the short third one the model and effort; the Codex cards' badges marked too.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {
