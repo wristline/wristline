@@ -76,6 +76,24 @@ private val usage = listOf(
     Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 93.0, "2026-09-29T16:12:00Z", 300))),
 )
 
+// The list's limit card: two Claude sessions and one Codex session; Claude's 5-hour window resets
+// in 2:13, Codex's primary (here weekly) in 3 days.
+private val listSessions = sessions.take(3)
+private val listUsage = listOf(
+    usage[0].copy(windows = listOf(UsageWindow("5h", 42.0, "2026-09-29T15:13:00Z", 300), usage[0].windows[1])),
+    Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 93.0, "2026-10-02T16:12:00Z", 10_080))),
+)
+
+// The widest lines: 100% on both, 23:59 and 30 days to the resets, 12 sessions each.
+private val fullSessions = List(24) { i ->
+    val provider = if (i < 12) ProviderId.CLAUDE_CODE else ProviderId.CODEX
+    Session("$provider:full$i", provider, "Session ${i + 1}", "/home/dev/repo$i", SessionStatus.IDLE, "2026-09-29T12:00:00Z")
+}
+private val fullUsage = listOf(
+    Usage(ProviderId.CLAUDE_CODE, "2026-09-29T12:56:00Z", listOf(UsageWindow("5h", 100.0, "2026-09-30T12:59:30Z", 300))),
+    Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 100.0, "2026-10-29T14:00:00Z", 43_200))),
+)
+
 // Two Claude accounts (one only estimated) and one Codex account: labels appear on the Usage screen.
 private val me = Account("acc-me", "me@gmail.com")
 private val school = Account("acc-school", "school", estimated = true)
@@ -153,13 +171,13 @@ private fun CodePreview() = Frame { CodeContent(busy = false, error = null, onSu
 private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "not_found", onSubmit = {}) }
 
 // The icon row (Settings, Ask, recent questions) heads the list; the request banner sits right
-// under it, then the one-line limit card, where Codex's 93% is yellow (near its limit), and the
-// two-line session cards.
+// under it, then the limit card, a line per provider where Codex's 93% is yellow (near its
+// limit), and the two-line session cards.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {
     SessionListContent(
-        Conn.Online, sessions, listOf(permission, question), usage, { now },
+        Conn.Online, listSessions, listOf(permission, question), listUsage, { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -169,7 +187,37 @@ private fun SessionListPreview() = Frame {
 @Composable
 private fun SessionListKoPreview() = Frame {
     SessionListContent(
-        Conn.Online, sessions, emptyList(), usage, { now },
+        Conn.Online, listSessions, emptyList(), listUsage, { now },
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+// The widest limit lines still fit on one line each, in red.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun SessionListLimitsFullPreview() = Frame {
+    SessionListContent(
+        Conn.Online, fullSessions, emptyList(), fullUsage, { now },
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun SessionListLimitsFullKoPreview() = Frame {
+    SessionListContent(
+        Conn.Online, fullSessions, emptyList(), fullUsage, { now },
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+// Sessions but no usage yet: a dash for each percentage, no countdowns; the provider without its
+// own badge gets a line too.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun SessionListNoUsagePreview() = Frame {
+    SessionListContent(
+        Conn.Online, sessions, emptyList(), emptyList(), { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }

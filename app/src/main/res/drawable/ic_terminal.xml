@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Live sessions: a terminal window with a prompt (drawn for 12dp: 2.5 strokes, tinted by the icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M5,3.5h14a3,3 0,0 1,3 3v11a3,3 0,0 1,-3 3H5a3,3 0,0 1,-3 -3v-11a3,3 0,0 1,3 -3z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFFFF" />
+    <path
+        android:pathData="M6.5,9l3,3l-3,3M12.5,15.5h5"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

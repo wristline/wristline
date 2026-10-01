@@ -2,10 +2,10 @@ package dev.wristline.watch.ui
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
@@ -14,13 +14,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -48,9 +51,10 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.PendingRequest
-import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.Usage
+import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.isoToMillis
 import kotlin.math.roundToInt
 
 /** The icon buttons at the top of the list. */
@@ -59,6 +63,17 @@ private val ACTION_GAP = 8.dp
 
 /** The provider badge beside labelSmall text (the limit card, a session card's second line). */
 private val SMALL_BADGE = 14.dp
+
+/** The limit card's glyphs (reset, sessions), the gap after one, and the gaps between groups and lines. */
+private val LIMIT_GLYPH = 12.dp
+private val LIMIT_GLYPH_GAP = 3.dp
+private val LIMIT_GROUP_GAP = 8.dp
+private val LIMIT_LINE_GAP = 2.dp
+
+/** A limit line's groups: the badge and percentage, the reset countdown, the session count. */
+private const val LIMIT_CELLS = 3
+
+private const val MINUTES_PER_DAY = 1_440
 
 @Composable
 internal fun SessionListScreen(
@@ -115,7 +130,7 @@ internal fun SessionListContent(
     // Stale data stays readable but visibly out of date.
     val stale = conn is Conn.Offline || conn is Conn.Unreachable || conn is Conn.Unauthorized
     val oldestRequest = remember(requests) { requests.minByOrNull { it.createdAt } }
-    val glance = remember(usage) { glanceUsage(usage) }
+    val limits = remember(usage, sessions) { limitLines(usage, sessions) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(
             state = listState,
@@ -165,26 +180,25 @@ internal fun SessionListContent(
             if (conn.hasBanner()) {
                 item(key = "conn", contentType = "conn") { ConnBanner(conn, spec, onRetry, onRepair) }
             }
-            if (glance.isNotEmpty()) {
+            if (limits.isNotEmpty()) {
                 item(key = "usage") {
                     val interaction = remember { MutableInteractionSource() }
                     val depth = rememberPressDepth(interaction)
                     Card(
                         onClick = onUsage,
-                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this).pressScale(depth),
+                        // The card's own minimum height (64dp) applies only where none is set:
+                        // with this one the card is as tall as its lines.
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, spec)
+                            .animateItemCalmly(this)
+                            .pressScale(depth)
+                            .heightIn(min = 1.dp),
                         transformation = SurfaceTransformation(spec),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
                         interactionSource = interaction,
                     ) {
-                        // One line for both providers; the second wraps under the first only when
-                        // they do not fit side by side.
-                        FlowRow(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                            verticalArrangement = Arrangement.spacedBy(2.dp),
-                        ) {
-                            glance.forEach { GlanceEntry(it) }
-                        }
+                        LimitTable(limits, now, Modifier.align(Alignment.CenterHorizontally))
                     }
                 }
             }
@@ -217,44 +231,141 @@ internal const val NEAR_LIMIT_PERCENT = 80
 /** A limit window's percentage from here up is shown in red (see [limitColor]). */
 internal const val AT_LIMIT_PERCENT = 95
 
-/**
- * The usage card's entries: one per provider, in provider order. Of a provider's accounts only the
- * one closest to a limit (highest used percentage in any window) is shown; the Usage screen has
- * the rest. Entries without windows are skipped.
- */
-internal fun glanceUsage(usage: List<Usage>): List<Usage> =
-    usage.filter { it.windows.isNotEmpty() }
-        .groupBy { it.provider }
-        .toSortedMap()
-        .values
-        .map { entries -> entries.maxBy { u -> u.windows.maxOf { it.usedPercent } } }
+/** A provider's line on the limit card (see [limitLines]). */
+internal data class LimitLine(
+    val provider: String,
+    /** The used percentage of its [shortWindow], rounded; null without usage. */
+    val percent: Int?,
+    /** When that window resets, in epoch milliseconds; null when unknown. */
+    val resetsAt: Long?,
+    /** The provider's sessions in the list, which has live ones only. */
+    val sessions: Int,
+)
 
 /**
- * `[C] 5h 14% · 7d 40%`, `[C] 12% · 40%`: a provider's badge and its windows. Claude Code windows
- * keep their short ids, other providers' ids are long (`primary`) so only the percentages show,
- * except for a lone window, named by its label or length (`[C] 7d 2%`). The names are muted; the
- * numbers take [limitColor].
+ * The limit card's lines: one per provider with usage or sessions, in provider order. Of a
+ * provider's accounts the one closest to its short window's limit gives the numbers (the Usage
+ * screen has the rest); the session count is the provider's total. Entries without windows count
+ * as no usage.
+ */
+internal fun limitLines(usage: List<Usage>, sessions: List<Session>): List<LimitLine> {
+    val windows = usage
+        .mapNotNull { u -> shortWindow(u)?.let { u.provider to it } }
+        .groupBy({ it.first }, { it.second })
+        .mapValues { (_, windows) -> windows.maxBy { it.usedPercent } }
+    val counts = sessions.groupingBy { it.provider }.eachCount()
+    return (windows.keys + counts.keys).sorted().map { provider ->
+        val window = windows[provider]
+        LimitLine(provider, window?.usedPercent?.roundToInt(), isoToMillis(window?.resetsAt), counts[provider] ?: 0)
+    }
+}
+
+/**
+ * The window a limit line shows: the shortest (Claude Code's 5-hour window, Codex's primary, which
+ * may be weekly). A window of unknown length counts as the longest; of equals the first wins.
+ */
+internal fun shortWindow(usage: Usage): UsageWindow? =
+    usage.windows.minByOrNull { windowMinutes(it)?.takeIf { minutes -> minutes > 0 } ?: Int.MAX_VALUE }
+
+/** Whole minutes from [now] until [resetsAt]; 0 once it has passed. */
+internal fun minutesLeft(resetsAt: Long, now: Long): Long = ((resetsAt - now) / 60_000).coerceAtLeast(0)
+
+/**
+ * The countdown to a reset in digits, the same in every language: `2:13` under a day, else whole
+ * days in [dayPattern] (`%1$dd`, `%1$d일`).
+ */
+internal fun remainingText(minutes: Long, dayPattern: String): String =
+    if (minutes >= MINUTES_PER_DAY) {
+        dayPattern.format(minutes / MINUTES_PER_DAY)
+    } else {
+        "${minutes / 60}:${(minutes % 60).toString().padStart(2, '0')}"
+    }
+
+/**
+ * The limit card's [lines] as a table: each group starts at the same place on every line, the
+ * widest of a column setting its width; a column no line uses (no reset times) takes no room.
  */
 @Composable
-private fun GlanceEntry(u: Usage) {
-    val colors = MaterialTheme.colorScheme
-    val muted = SpanStyle(color = colors.onSurfaceVariant)
-    val windows = buildAnnotatedString {
-        u.windows.forEachIndexed { i, w ->
-            if (i > 0) withStyle(muted) { append(" · ") }
-            val name = when {
-                u.provider == ProviderId.CLAUDE_CODE -> w.id
-                u.windows.size == 1 -> w.label ?: windowShort(w)
-                else -> null
+private fun LimitTable(lines: List<LimitLine>, now: () -> Long, modifier: Modifier = Modifier) {
+    Layout(content = { lines.forEach { LimitCells(it, now) } }, modifier = modifier) { measurables, constraints ->
+        val rows = measurables.map { it.measure(Constraints()) }.chunked(LIMIT_CELLS)
+        val groupGap = LIMIT_GROUP_GAP.roundToPx()
+        val lineGap = LIMIT_LINE_GAP.roundToPx()
+        val widths = List(LIMIT_CELLS) { column -> rows.maxOf { it[column].width } }
+        val starts = widths.runningFold(0) { x, width -> if (width > 0) x + width + groupGap else x }
+        val heights = rows.map { row -> row.maxOf { it.height } }
+        val width = widths.indices.maxOf { starts[it] + widths[it] }
+        val height = heights.sum() + lineGap * (rows.size - 1)
+        layout(constraints.constrainWidth(width), constraints.constrainHeight(height)) {
+            var y = 0
+            rows.forEachIndexed { i, row ->
+                row.forEachIndexed { column, cell -> cell.placeRelative(starts[column], y + (heights[i] - cell.height) / 2) }
+                y += heights[i] + lineGap
             }
-            if (name != null) withStyle(muted) { append("$name ") }
-            val percent = w.usedPercent.roundToInt()
-            withStyle(SpanStyle(color = limitColor(percent))) { append("$percent%") }
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        ProviderBadge(u.provider, size = SMALL_BADGE)
-        Text(windows, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+}
+
+/**
+ * A line's [LIMIT_CELLS] groups, icons and numbers only: `[C] 42%`, `⧗ 2:13`, `▣ 3`. Without usage
+ * the percentage is a dash and, as without a reset time, the countdown group is empty. Read out as
+ * one sentence. Reads [now] itself: the minute tick recomposes the lines, not the list.
+ */
+@Composable
+private fun LimitCells(line: LimitLine, now: () -> Long) {
+    val colors = MaterialTheme.colorScheme
+    val style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
+    val left = line.resetsAt?.let { minutesLeft(it, now()) }
+    val description = limitDescription(line, left)
+    Row(
+        Modifier.clearAndSetSemantics { contentDescription = description },
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ProviderBadge(line.provider, size = SMALL_BADGE)
+        val percent = line.percent
+        if (percent != null) {
+            Text("$percent%", color = limitColor(percent), style = style, maxLines = 1)
+        } else {
+            Text("—", color = colors.onSurfaceVariant, style = style, maxLines = 1)
+        }
+    }
+    Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
+        if (left != null) {
+            Icon(painterResource(R.drawable.ic_hourglass), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
+            Text(remainingText(left, stringResource(R.string.limit_days)), color = colors.onSurface, style = style, maxLines = 1)
+        }
+    }
+    Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
+        Icon(painterResource(R.drawable.ic_terminal), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
+        Text("${line.sessions}", color = colors.onSurface, style = style, maxLines = 1)
+    }
+}
+
+/** `Claude Code: 42% used, resets in 2 hours 13 minutes, 3 active sessions`, [left] in minutes. */
+@Composable
+private fun limitDescription(line: LimitLine, left: Long?): String {
+    val name = providerLabel(line.provider)
+    val parts = buildList {
+        add(line.percent?.let { stringResource(R.string.limit_used, name, it) } ?: stringResource(R.string.limit_unknown, name))
+        if (left != null) add(stringResource(R.string.limit_resets_in, durationWords(left)))
+        add(pluralStringResource(R.plurals.limit_sessions, line.sessions, line.sessions))
+    }
+    return parts.joinToString(", ")
+}
+
+/** [minutes] in words: `3 days` from a day, else `2 hours 13 minutes`, `2 hours`, `13 minutes`. */
+@Composable
+private fun durationWords(minutes: Long): String {
+    val days = (minutes / MINUTES_PER_DAY).toInt()
+    val hours = (minutes / 60).toInt()
+    val rest = (minutes % 60).toInt()
+    return when {
+        days > 0 -> pluralStringResource(R.plurals.duration_days, days, days)
+        hours > 0 && rest > 0 ->
+            pluralStringResource(R.plurals.duration_hours, hours, hours) + " " + pluralStringResource(R.plurals.duration_minutes, rest, rest)
+        hours > 0 -> pluralStringResource(R.plurals.duration_hours, hours, hours)
+        else -> pluralStringResource(R.plurals.duration_minutes, rest, rest)
     }
 }
 

@@ -164,13 +164,16 @@ private fun WindowRow(
     }
 }
 
+/** A window's length in minutes: as reported, else known from Claude Code's ids; null when unknown. */
+internal fun windowMinutes(window: UsageWindow): Int? = window.minutes ?: when (window.id) {
+    "5h" -> 300
+    "7d" -> 10_080
+    else -> null
+}
+
 @Composable
 internal fun windowLabel(window: UsageWindow): String {
-    val minutes = window.minutes ?: when (window.id) {
-        "5h" -> 300
-        "7d" -> 10_080
-        else -> null
-    }
+    val minutes = windowMinutes(window)
     return when {
         minutes == null || minutes <= 0 -> window.id
         minutes == 300 -> stringResource(R.string.usage_window_5h)

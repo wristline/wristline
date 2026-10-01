@@ -520,16 +520,6 @@ internal fun sessionLimit(session: Session, usage: List<Usage>): UsageWindow? {
     }
 }
 
-/** `5h`, `7d`: a window's length in its shortest form, or its id when the length is unknown. */
-internal fun windowShort(window: UsageWindow): String {
-    val minutes = window.minutes?.takeIf { it > 0 } ?: return window.id
-    return when {
-        minutes % 1_440 == 0 -> "${minutes / 1_440}d"
-        minutes % 60 == 0 -> "${minutes / 60}h"
-        else -> "${minutes}m"
-    }
-}
-
 /** Context use in percent, or null when unknown. */
 private fun contextPercent(context: ContextUsage?): Double? =
     context?.takeIf { it.window > 0 }?.let { it.used * 100.0 / it.window }

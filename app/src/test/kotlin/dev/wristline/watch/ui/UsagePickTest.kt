@@ -6,6 +6,7 @@ import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.isoToMillis
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -24,29 +25,61 @@ class UsagePickTest {
     private fun session(provider: String, account: Account?) =
         Session("$provider:1", provider, status = SessionStatus.RUNNING, lastActivity = at, account = account)
 
+    private fun sessions(provider: String, count: Int) =
+        List(count) { Session("$provider:$it", provider, status = SessionStatus.RUNNING, lastActivity = at) }
+
     @Test
-    fun glanceKeepsOneEntryPerProviderInProviderOrder() {
-        val picked = glanceUsage(listOf(codex(null, 2.0), claude(me, 14.0, 40.0)))
-        assertEquals(listOf(ProviderId.CLAUDE_CODE, ProviderId.CODEX), picked.map { it.provider })
+    fun limitLinesKeepOneLinePerProviderInProviderOrder() {
+        val lines = limitLines(listOf(codex(null, 2.0), claude(me, 14.0, 40.0)), emptyList())
+        assertEquals(listOf(ProviderId.CLAUDE_CODE, ProviderId.CODEX), lines.map { it.provider })
     }
 
     @Test
-    fun glancePicksTheAccountClosestToALimit() {
-        // school's 5h is lower, but its weekly window is the highest percentage of any window.
+    fun limitLinesShowTheShortWindow() {
+        val lines = limitLines(listOf(claude(me, 14.0, 90.0), codex(me, 12.0, 70.0)), emptyList())
+        assertEquals(listOf(14, 12), lines.map { it.percent })
+        // By length when reported: here Codex's secondary is the shorter one.
+        val reported = Usage(ProviderId.CODEX, at, listOf(UsageWindow("primary", 50.0, minutes = 10_080), UsageWindow("secondary", 5.0, minutes = 300)))
+        assertEquals(UsageWindow("secondary", 5.0, minutes = 300), shortWindow(reported))
+        // A 5-hour window of unknown length still counts as five hours.
+        assertEquals(UsageWindow("5h", 14.0), shortWindow(Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("7d", 40.0, minutes = 10_080), UsageWindow("5h", 14.0)))))
+    }
+
+    @Test
+    fun limitLinesPickTheAccountClosestToItsShortWindowLimit() {
+        // school's weekly window is the highest of any, but me is closer to its 5-hour limit.
         val a = claude(me, 60.0, 20.0)
         val b = claude(school, 10.0, 85.0)
-        assertEquals(listOf(b), glanceUsage(listOf(a, b)))
-        assertEquals(listOf(a), glanceUsage(listOf(a, claude(school, 10.0, 30.0))))
-        // A tie keeps the first entry.
-        assertEquals(listOf(a), glanceUsage(listOf(a, claude(school, 60.0, 5.0))))
+        assertEquals(60, limitLines(listOf(a, b), emptyList()).single().percent)
+        assertEquals(70, limitLines(listOf(a, claude(school, 70.0, 5.0)), emptyList()).single().percent)
+        // A tie keeps the first entry, with its reset time.
+        val first = Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("5h", 60.0, "2026-09-29T02:00:00Z")), me)
+        assertEquals(isoToMillis("2026-09-29T02:00:00Z"), limitLines(listOf(first, claude(school, 60.0, 5.0)), emptyList()).single().resetsAt)
     }
 
     @Test
-    fun glanceSkipsEntriesWithoutWindows() {
+    fun limitLinesCountEveryAccountsSessions() {
+        val lines = limitLines(
+            listOf(claude(me, 60.0, 20.0), claude(school, 10.0, 5.0), codex(me, 12.0)),
+            sessions(ProviderId.CLAUDE_CODE, 3) + sessions(ProviderId.CODEX, 1),
+        )
+        assertEquals(listOf(3, 1), lines.map { it.sessions })
+        // Usage without sessions: a count of 0.
+        assertEquals(0, limitLines(listOf(codex(me, 12.0)), emptyList()).single().sessions)
+    }
+
+    @Test
+    fun limitLinesWithoutUsageOrResetTime() {
+        // Sessions without usage: no percentage and no reset time; a provider with neither has no line.
+        val lines = limitLines(emptyList(), sessions(ProviderId.CODEX, 2) + sessions("gemini", 1))
+        assertEquals(listOf(LimitLine(ProviderId.CODEX, null, null, 2), LimitLine("gemini", null, null, 1)), lines)
+        assertEquals(emptyList<LimitLine>(), limitLines(emptyList(), emptyList()))
+        // Entries without windows count as no usage.
         val empty = Usage(ProviderId.CODEX, at, emptyList(), me)
-        assertEquals(emptyList<Usage>(), glanceUsage(listOf(empty)))
-        val codex = codex(school, 12.0, 40.0)
-        assertEquals(listOf(codex), glanceUsage(listOf(empty, codex)))
+        assertEquals(emptyList<LimitLine>(), limitLines(listOf(empty), emptyList()))
+        assertEquals(listOf(LimitLine(ProviderId.CODEX, 12, null, 0)), limitLines(listOf(empty, codex(school, 12.0, 40.0)), emptyList()))
+        // Usage without a reset time keeps its percentage.
+        assertEquals(LimitLine(ProviderId.CLAUDE_CODE, 42, null, 0), limitLines(listOf(claude(me, 41.6, 3.0)), emptyList()).single())
     }
 
     @Test
