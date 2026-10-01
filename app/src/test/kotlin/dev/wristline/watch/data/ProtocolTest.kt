@@ -103,6 +103,18 @@ class ProtocolTest {
     }
 
     @Test
+    fun limitItemAndAlertCarryTheResetTime() {
+        val item = (parseServerEvent(File(dir, "event-item-limit.json").readText()) as ServerEvent.ItemChanged).item
+        assertEquals(ItemKind.ASSISTANT, item.kind)
+        assertTrue(item.error)
+        assertEquals("2026-09-29T10:40:00.000Z", item.resetsAt)
+        val alert = parseServerEvent(File(dir, "event-alert-limit.json").readText()) as ServerEvent.Alert
+        assertEquals(AlertKind.LIMIT, alert.alert)
+        assertEquals("2026-09-29T10:40:00.000Z", alert.resetsAt)
+        assertNull((parseServerEvent(File(dir, "event-alert.json").readText()) as ServerEvent.Alert).resetsAt)
+    }
+
+    @Test
     fun unknownEventTypeIsIgnored() {
         assertNull(parseServerEvent("""{"type":"future_event","payload":{"x":[1,2]}}"""))
         assertNull(parseServerEvent("""{"type":7}"""))

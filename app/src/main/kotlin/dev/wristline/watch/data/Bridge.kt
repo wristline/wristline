@@ -796,6 +796,10 @@ object Bridge {
             AlertKind.DONE -> attention(looking, event.sessionId, done = true) {
                 Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId))
             }
+            // Posted like a done alert (the open session shows the error card), felt like a request.
+            AlertKind.LIMIT -> attention(looking, event.sessionId, done = true, haptic = Haptic.ATTENTION) {
+                Notifier.limit(appContext, event.sessionId, event.text, event.resetsAt, session(event.sessionId))
+            }
             else -> return
         }
         logReceived("alert ${event.alert}", id, looking, posted)
@@ -805,10 +809,16 @@ object Bridge {
      * A haptic ([Haptic.ATTENTION], [Haptic.DONE] for a [done] alert) or [post] a notification, as
      * [attentionFor] decides; true when posted.
      */
-    private inline fun attention(looking: Boolean, sessionId: String, done: Boolean = false, post: () -> Boolean): Boolean =
+    private inline fun attention(
+        looking: Boolean,
+        sessionId: String,
+        done: Boolean = false,
+        haptic: Haptic = if (done) Haptic.DONE else Haptic.ATTENTION,
+        post: () -> Boolean,
+    ): Boolean =
         when (attentionFor(looking, done, sessionId, subscribed)) {
             Attention.TICK -> {
-                Haptics.event(appContext, if (done) Haptic.DONE else Haptic.ATTENTION)
+                Haptics.event(appContext, haptic)
                 false
             }
             Attention.POST -> post()

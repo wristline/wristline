@@ -725,7 +725,7 @@ internal fun itemTime(
  * does not parse.
  */
 @Composable
-private fun ItemTime(ts: String) {
+private fun ItemTime(ts: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     val locale = LocalConfiguration.current.locales[0]
     val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
     val time = remember(ts, is24Hour) { itemTime(ts, is24Hour) } ?: return
@@ -734,9 +734,37 @@ private fun ItemTime(ts: String) {
         time,
         Modifier.semantics { contentDescription = spoken },
         style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = color,
         maxLines = 1,
     )
+}
+
+/**
+ * `◷ 7:40 PM`: when the usage limit an error item reports resets ([resetClockText], as of the item's
+ * composition), read out as `resets today 7:40 PM`; nothing when [resetsAt] does not parse.
+ */
+@Composable
+private fun ItemResetClock(resetsAt: String) {
+    val at = remember(resetsAt) { isoToMillis(resetsAt) } ?: return
+    val colors = MaterialTheme.colorScheme
+    val now = System.currentTimeMillis()
+    val zone = ZoneId.systemDefault()
+    val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
+    val words = resetClockWords(at, now, zone, LocalConfiguration.current.locales[0], is24Hour, stringResource(R.string.limit_today))
+    val spoken = stringResource(R.string.limit_resets_at, words)
+    Row(
+        Modifier.clearAndSetSemantics { contentDescription = spoken },
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(R.drawable.ic_clock), null, Modifier.size(PLAN_GLYPH), tint = colors.onSurfaceVariant)
+        Text(
+            resetClockText(at, now, zone, is24Hour),
+            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+            color = colors.onSurface,
+            maxLines = 1,
+        )
+    }
 }
 
 /** The start of a long message, enough to fill the collapsed lines and end in an ellipsis. */
@@ -790,6 +818,19 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                             tint = colors.primary,
                         )
                         ItemTime(item.ts)
+                    }
+                } else if (item.error) {
+                    // An error the agent wrote into the conversation (e.g. a usage limit): a warning
+                    // glyph and a red time, then the limit's reset clock when known; TalkBack reads "Error".
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            painterResource(R.drawable.ic_warning),
+                            stringResource(R.string.item_error),
+                            Modifier.size(PLAN_GLYPH),
+                            tint = colors.error,
+                        )
+                        ItemTime(item.ts, colors.error)
+                        item.resetsAt?.let { ItemResetClock(it) }
                     }
                 } else {
                     ItemTime(item.ts)

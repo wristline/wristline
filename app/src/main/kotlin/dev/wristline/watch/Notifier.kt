@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
+import android.text.format.DateFormat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.wristline.watch.data.Decision
@@ -14,9 +15,12 @@ import dev.wristline.watch.data.PendingRequest
 import dev.wristline.watch.data.RequestKind
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
+import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.ui.basename
 import dev.wristline.watch.ui.errorRes
 import dev.wristline.watch.ui.permissionQuestion
+import dev.wristline.watch.ui.resetClockText
+import java.time.ZoneId
 
 /**
  * Notification id for a request or session id. String.hashCode is specified by the Java API, so
@@ -79,6 +83,11 @@ object Notifier {
 
     private const val TAG_REQUEST = "request"
     private const val TAG_SESSION = "session"
+    /** A usage-limit alert: keyed by session id like [TAG_SESSION], apart from its needs-input and done alerts. */
+    private const val TAG_LIMIT = "limit"
+
+    /** The app's primary (the theme's), for the small icon here and in the Now Bar: gray without it. */
+    val COLOR: Int = 0xFF4FA8FF.toInt()
     private val VIBRATION = longArrayOf(0, 250, 150, 250)
     private val SHORT_VIBRATION = longArrayOf(0, 200)
 
@@ -195,6 +204,28 @@ object Notifier {
             alertOnce = false,
         )
 
+    /**
+     * The agent hit a usage limit: titled in English as the agent says it, the session and the reset
+     * clock ([limitText]) below, the agent's own message when expanded.
+     */
+    fun limit(context: Context, sessionId: String, text: String?, resetsAt: String?, session: Session?): Boolean {
+        val clock = isoToMillis(resetsAt)?.let {
+            resetClockText(it, System.currentTimeMillis(), ZoneId.systemDefault(), DateFormat.is24HourFormat(context))
+        }
+        val line = limitText(sessionTitle(context, session), clock)
+        return post(
+            context, TAG_LIMIT, sessionId, CHANNEL_REQUESTS, MainActivity.EXTRA_SESSION_ID,
+            title = context.getString(R.string.notify_limit),
+            text = line,
+            bigText = text?.takeIf { it.isNotBlank() }?.let { "$line\n$it" },
+            alertOnce = false,
+        )
+    }
+
+    /** `Fix CI · ◷ 7:40 PM`: the session, then the reset clock when known. */
+    internal fun limitText(sessionTitle: String, resetClock: String?): String =
+        if (resetClock == null) sessionTitle else "$sessionTitle · ◷ $resetClock"
+
     fun cancelRequest(context: Context, requestId: String) {
         NotificationManagerCompat.from(context).cancel(TAG_REQUEST, notificationId(requestId))
     }
@@ -208,7 +239,7 @@ object Notifier {
         val manager = context.getSystemService(NotificationManager::class.java)
         val id = notificationId(session.id)
         for (active in manager.activeNotifications) {
-            if (active.tag == TAG_SESSION && active.id == id &&
+            if ((active.tag == TAG_SESSION || active.tag == TAG_LIMIT) && active.id == id &&
                 !notificationApplies(active.tag, active.notification.channelId, id, emptyList(), listOf(session))
             ) {
                 manager.cancel(active.tag, active.id)
@@ -233,12 +264,13 @@ object Notifier {
     /**
      * Whether the notification [tag]/[id] posted on [channel] still applies: a request in
      * [requests]; a needs-input alert (requests channel) of a session in [sessions] that is still
-     * waiting; a done alert of one that is not running (an ended one is no longer listed). Untagged
-     * ones (monitoring) always do.
+     * waiting; a done or limit alert of one that is not running (an ended one is no longer listed).
+     * Untagged ones (monitoring) always do.
      */
     internal fun notificationApplies(tag: String?, channel: String?, id: Int, requests: List<PendingRequest>, sessions: List<Session>): Boolean =
         when (tag) {
             TAG_REQUEST -> requests.any { notificationId(it.id) == id }
+            TAG_LIMIT -> sessions.any { notificationId(it.id) == id && it.status != SessionStatus.RUNNING }
             TAG_SESSION -> sessions.any { session ->
                 notificationId(session.id) == id && when (channel) {
                     CHANNEL_REQUESTS -> session.status == SessionStatus.NEEDS_INPUT
@@ -256,6 +288,7 @@ object Notifier {
         extra: String,
         title: String,
         text: String,
+        bigText: String? = null,
         alertOnce: Boolean = true,
         subText: String? = null,
         silent: Boolean = false,
@@ -269,11 +302,13 @@ object Notifier {
             .apply { sessionId?.let { putExtra(MainActivity.EXTRA_SESSION_ID, it) } }
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
+            .setColor(COLOR)
+            .setColorized(false)
             .setContentTitle(title)
             .setContentText(text)
             .setSubText(subText)
             // Done alerts carry up to about 500 characters; expanded on the watch they show in full.
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText ?: text))
             // The request code keeps the PendingIntents of different notifications apart (extras do not count).
             .setContentIntent(
                 PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),

@@ -126,6 +126,8 @@
     <string name="decision_plan_approve" translatable="false">Manually approve</string>
     <string name="decision_plan_change" translatable="false">Request changes</string>
     <string name="request_plan_title" translatable="false">Plan</string>
+    <!-- TalkBack: the warning glyph of an error message in a conversation (e.g. a usage limit). -->
+    <string name="item_error">Error</string>
     <string name="request_progress">%1$d of %2$d</string>
     <string name="request_waiting">Waiting for the bridge…</string>
     <string name="request_allowed">Allowed</string>
@@ -203,6 +205,8 @@
     <string name="channel_updates">Task updates</string>
     <string name="channel_monitor">Background connection</string>
     <string name="notify_done">Finished</string>
+    <!-- A usage-limit alert's title: the agents' own English, in every locale. -->
+    <string name="notify_limit" translatable="false">Usage limit reached</string>
     <string name="notify_answer_failed">Not sent. %1$s</string>
     <string name="notify_answer_sending">Sending…</string>
     <string name="notify_answer_unconfirmed">Couldn\'t confirm. Open to check.</string>

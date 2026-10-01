@@ -57,6 +57,22 @@ class NotifierTest {
         assertFalse(applies("session", Notifier.CHANNEL_UPDATES, emptyList()))
     }
 
+    // A limit alert has its own tag: it stays until the session works again, whatever the channel.
+    @Test
+    fun limitAlertAppliesUntilTheSessionWorksAgain() {
+        for (status in listOf(SessionStatus.IDLE, SessionStatus.NEEDS_INPUT)) {
+            assertTrue(status, applies("limit", Notifier.CHANNEL_REQUESTS, listOf(session(status))))
+        }
+        assertFalse(applies("limit", Notifier.CHANNEL_REQUESTS, listOf(session(SessionStatus.RUNNING))))
+        assertFalse(applies("limit", Notifier.CHANNEL_REQUESTS, emptyList()))
+    }
+
+    @Test
+    fun limitTextIsTheSessionThenTheResetClock() {
+        assertEquals("Fix CI · ◷ 7:40 PM", Notifier.limitText("Fix CI", "7:40 PM"))
+        assertEquals("Fix CI", Notifier.limitText("Fix CI", null))
+    }
+
     @Test
     fun requestNotificationsFollowPendingRequestsAndTheMonitoringOneStays() {
         val request = PendingRequest(id = "s1", sessionId = "x", kind = RequestKind.PERMISSION, createdAt = "2026-09-30T00:00:00Z")

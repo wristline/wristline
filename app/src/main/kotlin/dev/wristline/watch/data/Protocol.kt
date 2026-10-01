@@ -72,6 +72,7 @@ object Decision {
 object AlertKind {
     const val NEEDS_INPUT = "needs_input"
     const val DONE = "done"
+    const val LIMIT = "limit"
 }
 
 object AskStatus {
@@ -130,6 +131,8 @@ data class Item(
     val error: Boolean = false,
     /** On an `assistant` item: a plan the agent proposed in plan mode. */
     val plan: Boolean = false,
+    /** On an [error] `assistant` item that is a usage limit: when it resets (ISO 8601), when known. */
+    val resetsAt: String? = null,
 )
 
 @Immutable
@@ -297,7 +300,9 @@ sealed interface ServerEvent {
     data class UsageChanged(val usage: Usage) : ServerEvent
 
     /**
-     * [alert] is `needs_input` | `done`. [title], when present, heads a done notification. [id]
+     * [alert] is `needs_input` | `done` | `limit` (others are ignored). [title], when present, heads a
+     * done notification; a limit's is the session title, and [resetsAt] (ISO 8601) is when the limit
+     * resets, when known. [id]
      * and [at] (ISO 8601) come with bridges that replay alerts in the snapshot: the id tells a
      * replayed alert from one already handled, the time keeps old ones from being replayed.
      */
@@ -309,6 +314,7 @@ sealed interface ServerEvent {
         val title: String? = null,
         val id: String? = null,
         val at: String? = null,
+        val resetsAt: String? = null,
     ) : ServerEvent
 
     /** Sent only to the device that asked. [text] is the answer, present when [status] is done. */

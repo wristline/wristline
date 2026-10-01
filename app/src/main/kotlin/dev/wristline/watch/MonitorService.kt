@@ -100,6 +100,9 @@ class MonitorService : Service() {
         var shown = statusText(Bridge.conn.value, Bridge.sessions.value, Bridge.requests.value)
         val builder = NotificationCompat.Builder(this, Notifier.CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_notification)
+            // OngoingActivity (wear-ongoing 1.1.0) has no color of its own; the Now Bar takes this one.
+            .setColor(Notifier.COLOR)
+            .setColorized(false)
             .setContentTitle(getString(R.string.monitor_title))
             .setContentText(shown)
             .setContentIntent(open)
