@@ -1,19 +1,23 @@
 package dev.wristline.watch
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.graphics.drawable.Icon
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
@@ -54,7 +58,8 @@ internal fun ongoingStatusText(
 
 /**
  * Background monitoring: holds the bridge connection ([Bridge.acquire]) while the app is closed,
- * so requests and alerts arrive as notifications. Shown as an ongoing activity with live counts.
+ * so requests and alerts arrive as notifications. Shown as an ongoing activity with live counts
+ * (on Samsung's Now Bar, a card the notification describes itself: see [nowBarExtras]).
  *
  * While the watch is off the wrist (the off-body sensor, no permission needed) the hold is
  * released, so the socket closes and the bridge's presence for this watch goes false; the status
@@ -108,14 +113,18 @@ class MonitorService : Service() {
             .setContentIntent(open)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
-        val ongoing = OngoingActivity.Builder(applicationContext, NOTIFICATION_ID, builder)
-            // Full color: the Now Bar card shows this icon as-is (not tinted with setColor). The library
-            // docs ask for a white-on-transparent icon, so other surfaces may tint it.
-            .setStaticIcon(R.drawable.ic_ongoing)
-            .setTouchIntent(open)
-            .setStatus(status(shown))
-            .build()
-        ongoing.apply(applicationContext)
+        val ongoing = if (hasSamsungNowBar()) {
+            builder.addExtras(nowBarExtras(shown))
+            null
+        } else {
+            OngoingActivity.Builder(applicationContext, NOTIFICATION_ID, builder)
+                // White on transparent, as the library asks: other surfaces tint it.
+                .setStaticIcon(R.drawable.ic_notification)
+                .setTouchIntent(open)
+                .setStatus(status(shown))
+                .build()
+                .also { it.apply(applicationContext) }
+        }
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, builder.build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         } catch (_: IllegalStateException) {
@@ -145,7 +154,12 @@ class MonitorService : Service() {
                     builder.setContentText(text)
                     // Without the permission the notification is hidden anyway.
                     if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                        ongoing.update(applicationContext, status(text))
+                        if (ongoing != null) {
+                            ongoing.update(applicationContext, status(text))
+                        } else {
+                            builder.addExtras(nowBarExtras(text))
+                            NotificationManagerCompat.from(this@MonitorService).notify(NOTIFICATION_ID, builder.build())
+                        }
                     }
                     // At most one update per interval; conflate() keeps only the newest text meanwhile.
                     delay(STATUS_INTERVAL_MS)
@@ -183,10 +197,49 @@ class MonitorService : Service() {
 
     private fun status(text: String): Status = Status.Builder().addTemplate(text).build()
 
+    /**
+     * True on One UI Watch builds with the Now Bar, recognized by the gray disc their system UI
+     * draws behind every OngoingActivity icon (it has no condition: a full-bleed icon cannot cover
+     * it either, since the icon is inset by a padding inside the disc).
+     */
+    @SuppressLint("DiscouragedApi") // A resource of another package has no R constant.
+    private fun hasSamsungNowBar(): Boolean = try {
+        packageManager.getResourcesForApplication(SAMSUNG_SYSUI)
+            .getIdentifier("nowbar_card_view_default_ongoing_icon_bg", "drawable", SAMSUNG_SYSUI) != 0
+    } catch (_: PackageManager.NameNotFoundException) {
+        false
+    }
+
+    /**
+     * A Now Bar card described by the notification itself, used instead of an OngoingActivity on
+     * Samsung: Wear OS services pass `extras["customDisplayBundle"]` through and the system UI reads
+     * the keys below, the way Samsung's media card is made. Such a card gets no backdrop behind its
+     * icon unless it names one ("cardIconBgLeft"), so the full-color [R.drawable.ic_ongoing] shows
+     * bare and fills the icon slot.
+     */
+    private fun nowBarExtras(text: String): Bundle {
+        val icon = Icon.createWithResource(this, R.drawable.ic_ongoing)
+        val card = Bundle().apply {
+            putInt("type", 1)
+            putParcelable("cardIconLeft", icon)
+            putParcelable("expandViewIcon", icon)
+            putParcelable("queIcon", icon)
+            putString("cardContents", text)
+            putString("expandPrimaryInfo", text)
+            putString("expandSecondaryInfo", getString(R.string.app_name))
+        }
+        val display = Bundle().apply {
+            putBoolean("enableNowBar", true)
+            putBundle("nowBarData", card)
+        }
+        return Bundle().apply { putBundle("customDisplayBundle", display) }
+    }
+
     companion object {
         private const val TAG = "Wristline"
         private const val NOTIFICATION_ID = 1
         private const val STATUS_INTERVAL_MS = 2_000L
+        private const val SAMSUNG_SYSUI = "com.samsung.android.wearable.sysui"
 
         /**
          * Runs the service while monitoring is on, the watch is paired and notifications are

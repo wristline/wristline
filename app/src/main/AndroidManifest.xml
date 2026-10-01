@@ -17,11 +17,13 @@
          https://developer.android.com/privacy-and-security/local-network-permission -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
-    <!-- Read-aloud binds the system text-to-speech engine, which package visibility hides otherwise. -->
+    <!-- Read-aloud binds the system text-to-speech engine, which package visibility hides otherwise.
+         Samsung's system UI is looked up to tell whether the watch has the Now Bar (MonitorService). -->
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
+        <package android:name="com.samsung.android.wearable.sysui" />
     </queries>
 
     <application
