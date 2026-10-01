@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Full-color ongoing-activity icon for the Samsung Now Bar, which shows the static icon untinted:
-     the Wristline mark (branding/wristline-mark.svg) in primary blue (Notifier.COLOR) on a
-     transparent background (the Now Bar draws its own light ring behind every app icon). The
+     the Wristline mark (branding/wristline-mark.svg) in primary blue (Notifier.COLOR) with the
+     dial filled launcher navy (like the app icon), on a transparent background (the Now Bar draws its own light ring behind every app icon). The
      512-unit mark (case spans 40..472) is scaled 0.95 about the center so it spans ~80% of the
      icon, leaving ~10% margin per side. The notification small icon stays ic_notification. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
@@ -14,6 +14,11 @@
         android:pivotY="256"
         android:scaleX="0.95"
         android:scaleY="0.95">
+        <!-- Navy dial fill: r=201 ends mid-wall (dial hole r=186, case flat side at r=216), so the
+             blue case covers its edge and nothing peeks outside the outline. -->
+        <path
+            android:pathData="M256,55A201,201 0,1 0,256 457A201,201 0,1 0,256 55Z"
+            android:fillColor="#FF16324F" />
         <!-- Case outline, then the dial circle as a hole (even-odd). -->
         <path
             android:pathData="M180,40H332C424,40 472,88 472,180V332C472,424 424,472 332,472H180C88,472 40,424 40,332V180C40,88 88,40 180,40ZM256,70A186,186 0,1 0,256 442A186,186 0,1 0,256 70Z"
