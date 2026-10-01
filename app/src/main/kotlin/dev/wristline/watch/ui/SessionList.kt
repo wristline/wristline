@@ -65,16 +65,16 @@ private val ACTION_GAP = 8.dp
 /** The provider badge beside labelSmall text (the limit card, a session card's second line). */
 private val SMALL_BADGE = 14.dp
 
-/** The limit card's glyphs (reset, sessions), the gap after one, and the gaps between groups and lines. */
-private val LIMIT_GLYPH = 12.dp
-private val LIMIT_GLYPH_GAP = 3.dp
+/** The limit card's glyphs (reset, sessions; the Usage screen's reset too), the gap after one, and the gaps between groups and lines. */
+internal val LIMIT_GLYPH = 12.dp
+internal val LIMIT_GLYPH_GAP = 3.dp
 private val LIMIT_GROUP_GAP = 8.dp
 private val LIMIT_LINE_GAP = 2.dp
 
 /** A limit line's groups: the badge and percentage, the reset countdown, the session count. */
 private const val LIMIT_CELLS = 3
 
-private const val MINUTES_PER_DAY = 1_440
+internal const val MINUTES_PER_DAY = 1_440
 
 @Composable
 internal fun SessionListScreen(
@@ -285,7 +285,10 @@ private fun windowLength(window: UsageWindow): Int = windowMinutes(window)?.take
  * reads as without usage until the bridge reports again (it drops such windows then).
  */
 internal fun currentLine(line: LimitLine, now: Long): LimitLine =
-    if (line.resetsAt != null && line.resetsAt <= now) line.copy(percent = null, resetsAt = null) else line
+    if (resetPassed(line.resetsAt, now)) line.copy(percent = null, resetsAt = null) else line
+
+/** Whether a window resetting at [resetsAt] is over by [now]: from its reset time on; never without one. */
+internal fun resetPassed(resetsAt: Long?, now: Long): Boolean = resetsAt != null && resetsAt <= now
 
 /** Whole minutes from [now] until [resetsAt]; 0 once it has passed. */
 internal fun minutesLeft(resetsAt: Long, now: Long): Long = ((resetsAt - now) / 60_000).coerceAtLeast(0)
@@ -377,13 +380,19 @@ private fun limitDescription(line: LimitLine, left: Long?): String {
     return parts.joinToString(", ")
 }
 
-/** [minutes] in words: `3 days` from a day, else `2 hours 13 minutes`, `2 hours`, `13 minutes`. */
+/**
+ * [minutes] in words, as the Usage screen shows it ([remainingFullText]): `3 days 4 hours`, `3 days`
+ * from a day, else `2 hours 13 minutes`, `2 hours`, `13 minutes`.
+ */
 @Composable
-private fun durationWords(minutes: Long): String {
+internal fun durationWords(minutes: Long): String {
     val days = (minutes / MINUTES_PER_DAY).toInt()
     val hours = (minutes / 60).toInt()
     val rest = (minutes % 60).toInt()
+    val dayHours = hours % 24
     return when {
+        days > 0 && dayHours > 0 ->
+            pluralStringResource(R.plurals.duration_days, days, days) + " " + pluralStringResource(R.plurals.duration_hours, dayHours, dayHours)
         days > 0 -> pluralStringResource(R.plurals.duration_days, days, days)
         hours > 0 && rest > 0 ->
             pluralStringResource(R.plurals.duration_hours, hours, hours) + " " + pluralStringResource(R.plurals.duration_minutes, rest, rest)

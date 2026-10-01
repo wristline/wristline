@@ -79,6 +79,9 @@
     <string name="status_ended">Ended</string>
     <!-- The limit card: icons and numbers on screen, a sentence per line for TalkBack. -->
     <string name="limit_days">%1$dd</string>
+    <string name="limit_hours">%1$dh</string>
+    <string name="limit_minutes">%1$dm</string>
+    <string name="limit_under_minute">&lt;1m</string>
     <string name="limit_used">%1$s: %2$d%% used</string>
     <string name="limit_unknown">%1$s: usage unknown</string>
     <string name="limit_resets_in">resets in %1$s</string>
@@ -132,7 +135,7 @@
     <string name="usage_window_hours">%1$d-hour limit</string>
     <string name="usage_window_days">%1$d-day limit</string>
     <string name="usage_window_minutes">%1$d-minute limit</string>
-    <string name="usage_resets">Resets %1$s</string>
+    <string name="usage_reset_passed">Reset</string>
     <string name="usage_updated">Updated %1$s</string>
     <string name="usage_updated_now">Updated just now</string>
     <string name="account_estimated">%1$s (estimated)</string>

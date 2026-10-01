@@ -284,6 +284,17 @@ internal fun ArrayDeque<String>.replayAlerts(alerts: List<ServerEvent.Alert>, se
     alerts.forEach { alert -> alert.id?.let { markSeen(it) } }
 }
 
+/**
+ * Applies a `usage` event: [usage] replaces the entry with the same [Usage.key], or is added. Without
+ * windows it removes that entry instead (its last window has reset, or its account is no longer
+ * logged in).
+ */
+internal fun List<Usage>.withUsage(usage: Usage): List<Usage> {
+    if (usage.windows.isEmpty()) return filterNot { it.key == usage.key }
+    val index = indexOfFirst { it.key == usage.key }
+    return if (index < 0) this + usage else toMutableList().apply { set(index, usage) }
+}
+
 /** Replaces the ask with the same id, or puts a new one first; never more than [ASK_KEEP]. */
 internal fun List<Ask>.withAsk(ask: Ask): List<Ask> {
     val index = indexOfFirst { it.id == ask.id }
@@ -751,11 +762,7 @@ object Bridge {
                 }
             }
             is ServerEvent.Resolved -> removeRequest(event.requestId)
-            is ServerEvent.UsageChanged -> {
-                val list = _usage.value
-                val index = list.indexOfFirst { it.key == event.usage.key }
-                _usage.value = if (index < 0) list + event.usage else list.toMutableList().apply { set(index, event.usage) }
-            }
+            is ServerEvent.UsageChanged -> _usage.value = _usage.value.withUsage(event.usage)
             is ServerEvent.Alert -> onAlert(event)
             is ServerEvent.AskChanged -> {
                 val before = _asks.value.firstOrNull { it.id == event.askId }?.status

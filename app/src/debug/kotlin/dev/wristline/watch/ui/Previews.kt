@@ -109,6 +109,26 @@ private val accountUsage = listOf(
     usage[1].copy(account = codexSchool),
 )
 
+// The Usage screen's rows: Claude's 5-hour window resets in 2h 13m and its weekly one in 3d 4h, its
+// Opus window has no reset time; Codex's primary (here weekly) resets in 5 days, its secondary reset
+// two minutes ago.
+private val detailUsage = listOf(
+    Usage(
+        ProviderId.CLAUDE_CODE, "2026-09-29T12:56:00Z",
+        listOf(
+            UsageWindow("5h", 42.0, "2026-09-29T15:13:00Z", 300),
+            UsageWindow("7d", 18.0, "2026-10-02T17:00:00Z", 10_080),
+            UsageWindow("7d_opus", 30.0, label = "7d Opus"),
+        ),
+        me,
+    ),
+    Usage(
+        ProviderId.CODEX, "2026-09-29T12:57:00Z",
+        listOf(UsageWindow("primary", 93.0, "2026-10-04T13:20:00Z", 10_080), UsageWindow("secondary", 100.0, "2026-09-29T12:58:00Z", 43_200)),
+        codexSchool,
+    ),
+)
+
 private val items = SessionItems(
     items = listOf(
         Item(1, ItemKind.USER, "2026-09-29T12:41:00Z", "Refactor the auth middleware to use the new token service."),
@@ -330,15 +350,19 @@ private fun QuestionPreview() = Frame {
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
-private fun UsagePreview() = Frame { UsageContent(usage, now) }
-
-@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
-@Composable
-private fun UsageAccountsPreview() = Frame { UsageContent(accountUsage, now) }
+private fun UsagePreview() = Frame { UsageContent(detailUsage) { now } }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
 @Composable
-private fun UsageAccountsKoPreview() = Frame { UsageContent(accountUsage, now) }
+private fun UsageKoPreview() = Frame { UsageContent(detailUsage) { now } }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun UsageAccountsPreview() = Frame { UsageContent(accountUsage) { now } }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun UsageAccountsKoPreview() = Frame { UsageContent(accountUsage) { now } }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable

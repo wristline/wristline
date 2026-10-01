@@ -73,13 +73,6 @@ import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.isoToMillis
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import java.time.format.TextStyle
-import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -192,16 +185,6 @@ fun relativeTime(iso: String?, now: Long): String {
 fun isJustNow(iso: String?, now: Long): Boolean {
     val millis = isoToMillis(iso) ?: return false
     return now - millis < 60_000
-}
-
-/** Localized short time, prefixed by the weekday when not today. */
-fun clockTime(iso: String?, locale: Locale): String? {
-    val millis = isoToMillis(iso) ?: return null
-    val zone = ZoneId.systemDefault()
-    val time = Instant.ofEpochMilli(millis).atZone(zone)
-    val clock = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(time)
-    if (time.toLocalDate() == LocalDate.now(zone)) return clock
-    return time.dayOfWeek.getDisplayName(TextStyle.SHORT, locale) + " " + clock
 }
 
 fun basename(path: String): String = path.trimEnd('/').substringAfterLast('/')

@@ -179,7 +179,7 @@ data class Usage(
     val account: Account? = null,
 )
 
-/** Identity of a usage entry: a `usage` event replaces the entry with the same key. */
+/** Identity of a usage entry: a `usage` event replaces the entry with the same key (removes it without windows). */
 val Usage.key: String get() = provider + ":" + (account?.id ?: "")
 
 /** A Quick Ask: one headless question to `claude -p` or `codex exec` on the PC, kept per device. */

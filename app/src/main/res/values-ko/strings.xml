@@ -74,6 +74,9 @@
     <string name="status_needs_input">입력 필요</string>
     <string name="status_ended">종료됨</string>
     <string name="limit_days">%1$d일</string>
+    <string name="limit_hours">%1$d시간</string>
+    <string name="limit_minutes">%1$d분</string>
+    <string name="limit_under_minute">1분 미만</string>
     <string name="limit_used">%1$s: %2$d%% 사용</string>
     <string name="limit_unknown">%1$s: 사용량 정보 없음</string>
     <string name="limit_resets_in">%1$s 후 초기화</string>
@@ -123,7 +126,7 @@
     <string name="usage_window_hours">%1$d시간 한도</string>
     <string name="usage_window_days">%1$d일 한도</string>
     <string name="usage_window_minutes">%1$d분 한도</string>
-    <string name="usage_resets">%1$s 초기화</string>
+    <string name="usage_reset_passed">초기화됨</string>
     <string name="usage_updated">%1$s 갱신</string>
     <string name="usage_updated_now">방금 갱신</string>
     <string name="account_estimated">%1$s (추정)</string>
