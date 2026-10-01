@@ -55,6 +55,10 @@ class UsagePickTest {
         // `default` in any case is the default too; an entry without an account comes first.
         val english = usageOrder(listOf(codex(pro, 1.0), codex(Account("d", "Default"), 1.0), codex(null, 1.0)))
         assertEquals(listOf(null, "Default", "Pro"), english.map { it.account?.label })
+        // So is `work`, the primary home's label next to a personal one.
+        val work = usageOrder(listOf(codex(pro, 1.0), codex(Account("w", "Work"), 1.0)))
+        assertEquals(listOf("Work", "Pro"), work.map { it.account?.label })
+        assertEquals(listOf("W", "P"), work.map { accountMark(it.account!!.label) })
     }
 
     @Test

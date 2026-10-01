@@ -358,10 +358,14 @@ fun rememberFillIn(fraction: Float, delayMs: Long?, onStarted: () -> Unit = {}):
     return rememberUpdatedState(if (started) fraction else 0f)
 }
 
-/** Small indeterminate spinner: used only for pending tool calls and connecting/sending states. */
+/** Small indeterminate spinner: used only for pending tool calls, a working session and connecting/sending states. */
 @Composable
-fun SmallSpinner(modifier: Modifier = Modifier) {
-    CircularProgressIndicator(modifier = modifier.size(16.dp), strokeWidth = 2.dp)
+fun SmallSpinner(modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary) {
+    CircularProgressIndicator(
+        modifier = modifier.size(16.dp),
+        colors = ProgressIndicatorDefaults.colors(indicatorColor = color),
+        strokeWidth = 2.dp,
+    )
 }
 
 @Composable

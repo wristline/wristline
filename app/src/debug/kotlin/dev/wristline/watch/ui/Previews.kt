@@ -82,14 +82,14 @@ private val me = Account("acc-me", "me@gmail.com")
 private val school = Account("acc-school", "school", estimated = true)
 private val codexSchool = Account("chatgpt-school", "school.account@university.ac.kr")
 
-// Two Codex accounts, each a home's login: the default home's (labelled 기본) and a Pro plan's.
-private val codexBasic = Account("chatgpt-basic", "기본")
+// Two Codex accounts, each a home's login: the default home's (labelled Work) and a Pro plan's.
+private val codexBasic = Account("chatgpt-basic", "Work")
 private val codexPro = Account("chatgpt-pro", "Pro")
 
 // The list's limit card, a line per account: Claude's 5-hour window resets today at 16:40; Codex
-// 기본's primary (weekly) on Monday at 9:00; Codex Pro's 5-hour window today at 15:10 (its weekly
-// one in 6 days). The bridge sent Pro first; 기본 still leads. Sessions: two Claude, one Codex of
-// Pro and one Codex without an account (counted on 기본's line); their times now, 2m, 1h, 2d.
+// Work's primary (weekly) on Monday at 9:00; Codex Pro's 5-hour window today at 15:10 (its weekly
+// one in 6 days). The bridge sent Pro first; Work still leads. Sessions: two Claude, one Codex of
+// Pro and one Codex without an account (counted on Work's line); their times now, 2m, 1h, 2d.
 private val listSessions = listOf(
     sessions[0],
     sessions[1].copy(account = codexPro, lastActivity = "2026-09-29T12:59:40Z"),
@@ -137,7 +137,7 @@ private val accountUsage = listOf(
 )
 
 // The Usage screen's rows: the list's accounts in full. Claude's Opus window (weekly, as the bridge
-// sends it) has no reset time; Codex 기본's 30-day secondary reset two minutes ago.
+// sends it) has no reset time; Codex Work's 30-day secondary reset two minutes ago.
 private val detailUsage = listOf(
     listUsage[0].copy(windows = listUsage[0].windows + UsageWindow("7d_opus", 30.0, minutes = 10_080, label = "7d Opus")),
     listUsage[1],
@@ -322,8 +322,9 @@ private fun AskGoneKoPreview() = AskFrame(null)
 @Composable
 private fun AskHistoryPreview() = Frame { AskHistoryContent(thread.asReversed() + asks.drop(1), { now }, onAsk = {}, onDelete = {}) }
 
-// Edge gauges: context 60% on the left, Codex's primary window at 93% (yellow) on the right. The
-// top text is the model and effort; the newest card rests near the middle, above the actions.
+// Edge gauges: context 60% on the left (a page glyph), Codex's primary window at 93% (yellow, a
+// meter glyph) on the right. The top text is the model and effort; the header shows the running
+// dot alone, and the green spinner under the newest card says it is working, above the actions.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionDetailPreview() = Frame {

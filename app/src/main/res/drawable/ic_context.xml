@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Context use: an upright page with two lines of text, unlike the wide terminal (drawn for 11dp: 2.5 strokes, tinted by the icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M7,2.75h10a2.5,2.5 0,0 1,2.5 2.5v13.5a2.5,2.5 0,0 1,-2.5 2.5h-10a2.5,2.5 0,0 1,-2.5 -2.5v-13.5a2.5,2.5 0,0 1,2.5 -2.5z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFFFF" />
+    <path
+        android:pathData="M8.75,9h6.5M8.75,14.5h4"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round" />
+</vector>

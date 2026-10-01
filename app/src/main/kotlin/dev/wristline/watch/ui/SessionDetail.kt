@@ -65,11 +65,13 @@ import androidx.wear.compose.foundation.AnchorType
 import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.LocalReduceMotion
+import androidx.wear.compose.foundation.curvedComposable
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnState
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.foundation.padding
 import androidx.wear.compose.foundation.weight
 import androidx.wear.compose.material3.AlertDialog
 import androidx.wear.compose.material3.AlertDialogDefaults
@@ -151,14 +153,18 @@ private val LIST_SIDE_TRIM = 2.dp
 private const val TIME_TEXT_SWEEP = 62f
 // Left gauge centered on 9 o'clock, in degrees clockwise from 3 o'clock; the right gauge mirrors it
 // (338 to 22, centered on 3 o'clock, where the scroll indicator is: it is hidden while the gauges
-// show). Past each upper end, GAUGE_LABEL_GAP on, its percentage, the only place it shows: `100%`
-// at GAUGE_LABEL_SIZE takes about 19 degrees, so it ends near 224 (316 on the right), short of the
-// widest time text's background, which starts at 234; at a 1.3 font scale, near 230.
+// show). Past each upper end, GAUGE_LABEL_GAP on, the glyph saying what it measures and its
+// percentage, the only place it shows: the glyph and its gap take about 7 degrees, `100%` at
+// GAUGE_LABEL_SIZE about 19, so it ends near 231 (309 on the right), short of the widest time
+// text's background, which starts at 234; at a 1.3 font scale near 237, just touching it.
 private const val GAUGE_START = 158f
 private const val GAUGE_SWEEP = 44f
 // Clears the arc's round end (half the stroke, under 2 degrees) with a little room to spare.
 private const val GAUGE_LABEL_GAP = 3f
 private val GAUGE_LABEL_SIZE = 12.sp
+// The glyph beside a gauge's percentage, and the gap between them.
+private val GAUGE_GLYPH = 11.dp
+private val GAUGE_GLYPH_GAP = 2.dp
 // The right gauge starts filling in this long after the left.
 private const val GAUGE_STAGGER_MS = 120L
 // No thinner than the scroll indicator (5dp, 6dp on screens 225dp and wider).
@@ -412,7 +418,16 @@ internal fun SessionDetailContent(
             }
             if (working) {
                 item(key = "working") {
-                    CaptionText(stringResource(R.string.detail_working), Modifier.edgeTransform(this, spec).animateItemCalmly(this))
+                    // A spinner in the running dot's color, no words; TalkBack reads them.
+                    val description = stringResource(R.string.detail_working)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .edgeTransform(this, spec)
+                            .animateItemCalmly(this)
+                            .clearAndSetSemantics { contentDescription = description },
+                        contentAlignment = Alignment.Center,
+                    ) { SmallSpinner(color = Status.Running) }
                 }
             }
             if (blockCode != null) {
@@ -568,9 +583,9 @@ private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<G
 
 /**
  * Context use (left) and the limit window (right) as bare arcs centered on 9 and 3 o'clock, each
- * with its percentage just past its upper end; the header only reads the numbers out. Both fill
- * upwards, towards the time text. With [fillIn] the arcs composed now fill in from zero, the right
- * one a little after the left; [onFillStarted] follows the first.
+ * with a glyph (a page, a meter) and its percentage just past its upper end; the header only reads
+ * the numbers out. Both fill upwards, towards the time text. With [fillIn] the arcs composed now
+ * fill in from zero, the right one a little after the left; [onFillStarted] follows the first.
  */
 @Composable
 private fun EdgeGauges(
@@ -586,6 +601,7 @@ private fun EdgeGauges(
                 percent,
                 MaterialTheme.colorScheme.primary,
                 right = false,
+                glyph = R.drawable.ic_context,
                 labelShown = shown.labels,
                 fillDelayMs = if (fillIn) 0L else null,
                 onFillStarted = onFillStarted,
@@ -600,6 +616,7 @@ private fun EdgeGauges(
                 limit.usedPercent,
                 color,
                 right = true,
+                glyph = R.drawable.ic_gauge,
                 labelShown = shown.labels,
                 fillDelayMs = if (fillIn) GAUGE_STAGGER_MS else null,
                 onFillStarted = onFillStarted,
@@ -613,6 +630,7 @@ private fun EdgeGauge(
     percent: Double,
     color: Color,
     right: Boolean,
+    glyph: Int,
     labelShown: Boolean,
     fillDelayMs: Long?,
     onFillStarted: () -> Unit,
@@ -637,15 +655,25 @@ private fun EdgeGauge(
         strokeWidth = GAUGE_STROKE,
     )
     // Not mirrored, so it reads left to right on both sides: on the left it starts past the upper
-    // end, on the right it ends before it.
+    // end, on the right it ends before it. The glyph is next to the arc, the number beyond it.
     val upperEnd = GAUGE_START + GAUGE_SWEEP
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
     AnimatedVisibility(labelShown, enter = CalmFadeIn, exit = CalmFadeOut) {
         CurvedLayout(
             Modifier.fillMaxSize().padding(edge).clearAndSetSemantics {},
             anchor = if (right) 540f - upperEnd - GAUGE_LABEL_GAP else upperEnd + GAUGE_LABEL_GAP,
             anchorType = if (right) AnchorType.End else AnchorType.Start,
         ) {
+            val mark = CurvedModifier.padding(
+                outer = 0.dp,
+                inner = 0.dp,
+                before = if (right) GAUGE_GLYPH_GAP else 0.dp,
+                after = if (right) 0.dp else GAUGE_GLYPH_GAP,
+            )
+            // Upright, unlike the text: turned with the curve, a glyph this small is hard to make out.
+            if (!right) curvedComposable(mark, rotationLocked = true) { Icon(painterResource(glyph), null, Modifier.size(GAUGE_GLYPH), tint = tint) }
             curvedText("${percent.roundToInt()}%", color = color, fontSize = GAUGE_LABEL_SIZE, fontWeight = FontWeight.Medium)
+            if (right) curvedComposable(mark, rotationLocked = true) { Icon(painterResource(glyph), null, Modifier.size(GAUGE_GLYPH), tint = tint) }
         }
     }
 }
@@ -676,8 +704,9 @@ private fun DetailTopText(session: Session?) {
 }
 
 /**
- * The session's title over its provider badge, status dot and status in a word: the model and the
- * gauges' numbers show once, at the top and at the arcs' ends. Read out as one, the numbers too.
+ * The session's title over its provider badge and status dot, the list's colors, no words: the model
+ * and the gauges' numbers show once, at the top and at the arcs' ends. Read out as one, the status
+ * in words and the numbers too.
  */
 @Composable
 private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, modifier: Modifier) {
@@ -713,13 +742,6 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
         ) {
             ProviderBadge(session.provider)
             StatusDot(session.status)
-            Text(
-                status,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }

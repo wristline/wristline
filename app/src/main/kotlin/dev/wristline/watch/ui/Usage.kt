@@ -263,7 +263,7 @@ private fun ResetTimes(resetsAt: Long, now: () -> Long) {
 /**
  * Usage entries in the order the app shows them (the limit card's lines too): by provider, and
  * within one first the entry without an account or of the account labelled as the default (`기본`,
- * `default`, as `accounts add --label` names the bridge's primary home), then the others by label
+ * `default`, `work`: the label given to the bridge's primary home), then the others by label
  * in any case, then by account id: the same entries are always in the same order. The bridge's own
  * order follows which of its homes reported first, and a `usage` event for a new entry adds it at
  * the end.
@@ -278,7 +278,7 @@ internal fun usageOrder(usage: List<Usage>): List<Usage> =
         ),
     )
 
-private val DEFAULT_LABELS = setOf("기본", "default")
+private val DEFAULT_LABELS = setOf("기본", "default", "work")
 
 private fun isDefaultAccount(account: Account?): Boolean = account == null || account.label.trim().lowercase(Locale.ROOT) in DEFAULT_LABELS
 
