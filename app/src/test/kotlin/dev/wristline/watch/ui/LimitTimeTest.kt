@@ -1,5 +1,6 @@
 package dev.wristline.watch.ui
 
+import dev.wristline.watch.data.ProviderId
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -31,5 +32,18 @@ class LimitTimeTest {
         assertEquals("3d", left((3 * 24 * 60 + 192) * minute))
         assertEquals("30d", left(30 * 24 * 60 * minute + 1))
         assertEquals("30일", left(30 * 24 * 60 * minute, "%1\$d일"))
+    }
+
+    @Test
+    fun aPassedResetEndsTheWindow() {
+        val line = LimitLine(ProviderId.CLAUDE_CODE, 100, now + minute, 2)
+        assertEquals(line, currentLine(line, now))
+        // Under a minute left the window still shows, at 0:00.
+        assertEquals(line, currentLine(line, now + 59_000))
+        // From its reset time: as without usage, the session count kept.
+        assertEquals(LimitLine(ProviderId.CLAUDE_CODE, null, null, 2), currentLine(line, now + minute))
+        // Without a reset time nothing ends it.
+        val open = line.copy(resetsAt = null)
+        assertEquals(open, currentLine(open, now + 365L * 24 * 60 * minute))
     }
 }

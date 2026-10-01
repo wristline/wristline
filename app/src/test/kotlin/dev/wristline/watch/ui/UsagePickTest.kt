@@ -58,6 +58,29 @@ class UsagePickTest {
     }
 
     @Test
+    fun claudeLineIsTheFiveHourWindowOnly() {
+        // The 5-hour window gone (reset, the next not reported yet): no percentage, not the weekly 40%.
+        val weekOnly = Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("7d", 40.0, "2026-10-03T09:00:00Z", 10_080)), me)
+        assertNull(shortWindow(weekOnly))
+        assertEquals(LimitLine(ProviderId.CLAUDE_CODE, null, null, 1), limitLines(listOf(weekOnly), sessions(ProviderId.CLAUDE_CODE, 1)).single())
+        // Without sessions either: no line.
+        assertEquals(emptyList<LimitLine>(), limitLines(listOf(weekOnly), emptyList()))
+        // One account's weekly 70% does not beat another's 5-hour 20%.
+        val a = Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("7d", 70.0)), me)
+        assertEquals(20, limitLines(listOf(a, claude(school, 20.0, 5.0)), emptyList()).single().percent)
+    }
+
+    @Test
+    fun limitLinesCompareWindowsOfOneLengthOnly() {
+        // Codex: one account's weekly primary at 70%, another's 5-hour primary at 20%.
+        val weekly = Usage(ProviderId.CODEX, at, listOf(UsageWindow("primary", 70.0, minutes = 10_080)), me)
+        val fiveHour = Usage(ProviderId.CODEX, at, listOf(UsageWindow("primary", 20.0, minutes = 300)), school)
+        assertEquals(20, limitLines(listOf(weekly, fiveHour), emptyList()).single().percent)
+        // Of one length the highest still wins.
+        assertEquals(70, limitLines(listOf(weekly, fiveHour.copy(windows = listOf(UsageWindow("primary", 20.0, minutes = 10_080)))), emptyList()).single().percent)
+    }
+
+    @Test
     fun limitLinesCountEveryAccountsSessions() {
         val lines = limitLines(
             listOf(claude(me, 60.0, 20.0), claude(school, 10.0, 5.0), codex(me, 12.0)),

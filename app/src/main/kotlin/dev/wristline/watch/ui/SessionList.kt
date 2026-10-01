@@ -51,6 +51,7 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.PendingRequest
+import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
@@ -245,14 +246,17 @@ internal data class LimitLine(
 /**
  * The limit card's lines: one per provider with usage or sessions, in provider order. Of a
  * provider's accounts the one closest to its short window's limit gives the numbers (the Usage
- * screen has the rest); the session count is the provider's total. Entries without windows count
- * as no usage.
+ * screen has the rest), compared among the windows of the provider's shortest length only; the
+ * session count is the provider's total. Entries without a [shortWindow] count as no usage.
  */
 internal fun limitLines(usage: List<Usage>, sessions: List<Session>): List<LimitLine> {
     val windows = usage
         .mapNotNull { u -> shortWindow(u)?.let { u.provider to it } }
         .groupBy({ it.first }, { it.second })
-        .mapValues { (_, windows) -> windows.maxBy { it.usedPercent } }
+        .mapValues { (_, windows) ->
+            val shortest = windows.minOf(::windowLength)
+            windows.filter { windowLength(it) == shortest }.maxBy { it.usedPercent }
+        }
     val counts = sessions.groupingBy { it.provider }.eachCount()
     return (windows.keys + counts.keys).sorted().map { provider ->
         val window = windows[provider]
@@ -261,11 +265,27 @@ internal fun limitLines(usage: List<Usage>, sessions: List<Session>): List<Limit
 }
 
 /**
- * The window a limit line shows: the shortest (Claude Code's 5-hour window, Codex's primary, which
- * may be weekly). A window of unknown length counts as the longest; of equals the first wins.
+ * The window a limit line shows: Claude Code's 5-hour window (`5h`), as on a session's gauge
+ * ([sessionLimit]), else the shortest (Codex's primary, which may be weekly; of equals the first).
+ * Null for a Claude Code entry without one, as when it has reset and no request since has reported
+ * the next: the weekly number in its place would read as the 5-hour one.
  */
 internal fun shortWindow(usage: Usage): UsageWindow? =
-    usage.windows.minByOrNull { windowMinutes(it)?.takeIf { minutes -> minutes > 0 } ?: Int.MAX_VALUE }
+    if (usage.provider == ProviderId.CLAUDE_CODE) {
+        usage.windows.firstOrNull { it.id == "5h" }
+    } else {
+        usage.windows.minByOrNull(::windowLength)
+    }
+
+/** A window's length to compare by: [windowMinutes], a window of unknown length the longest. */
+private fun windowLength(window: UsageWindow): Int = windowMinutes(window)?.takeIf { it > 0 } ?: Int.MAX_VALUE
+
+/**
+ * [line] as of [now]: past its reset time the window is over and its percentage old, so the line
+ * reads as without usage until the bridge reports again (it drops such windows then).
+ */
+internal fun currentLine(line: LimitLine, now: Long): LimitLine =
+    if (line.resetsAt != null && line.resetsAt <= now) line.copy(percent = null, resetsAt = null) else line
 
 /** Whole minutes from [now] until [resetsAt]; 0 once it has passed. */
 internal fun minutesLeft(resetsAt: Long, now: Long): Long = ((resetsAt - now) / 60_000).coerceAtLeast(0)
@@ -308,14 +328,17 @@ private fun LimitTable(lines: List<LimitLine>, now: () -> Long, modifier: Modifi
 
 /**
  * A line's [LIMIT_CELLS] groups, icons and numbers only: `[C] 42%`, `⧗ 2:13`, `▣ 3`. Without usage
- * the percentage is a dash and, as without a reset time, the countdown group is empty. Read out as
- * one sentence. Reads [now] itself: the minute tick recomposes the lines, not the list.
+ * (or past the reset time, see [currentLine]) the percentage is a dash and, as without a reset
+ * time, the countdown group is empty. Read out as one sentence. Reads [now] itself: the minute tick
+ * recomposes the lines, not the list.
  */
 @Composable
-private fun LimitCells(line: LimitLine, now: () -> Long) {
+private fun LimitCells(limit: LimitLine, now: () -> Long) {
     val colors = MaterialTheme.colorScheme
     val style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
-    val left = line.resetsAt?.let { minutesLeft(it, now()) }
+    val at = now()
+    val line = currentLine(limit, at)
+    val left = line.resetsAt?.let { minutesLeft(it, at) }
     val description = limitDescription(line, left)
     Row(
         Modifier.clearAndSetSemantics { contentDescription = description },
