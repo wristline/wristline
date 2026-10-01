@@ -13,6 +13,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -313,11 +314,20 @@ internal fun SessionDetailContent(
     // which is exactly "was the user at the bottom".
     val atBottom = !listState.canScrollBackward
     val lastSeq = items.lastOrNull()?.seq
+    var placed by remember { mutableStateOf(false) }
     LaunchedEffect(lastSeq, footers) {
         if (lastSeq == null || !atBottom) return@LaunchedEffect
-        // The list may hold the card the user saw in place, leaving the new one under the chin; a
-        // screen toward the bottom stops at the end.
-        listState.animateScrollBy(-screenHeight.toFloat())
+        if (placed) {
+            // The list may hold the card the user saw in place, leaving the new one under the chin;
+            // a screen toward the bottom stops at the end.
+            listState.animateScrollBy(-screenHeight.toFloat())
+        } else {
+            // First page: the list held the header or the spinner in place as the items came in
+            // under it, possibly screens away. Back to the newest without animating.
+            listState.scrollToItem(0)
+            listState.scrollBy(-screenHeight.toFloat())
+            placed = true
+        }
     }
 
     // Once a prompt went out, a check in the spinner's place for a moment.
