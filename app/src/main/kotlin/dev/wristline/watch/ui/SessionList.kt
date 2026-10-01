@@ -31,6 +31,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -554,6 +555,20 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             Text("·", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             ProviderBadge(session.provider, size = SMALL_BADGE)
             Text(basename(session.cwd), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        // Line 3, muted, when known: `Fable 5.1 · medium`, here only (not over the transcript). Its
+        // own line: after the folder on line 2 it would leave the folder a few letters at 226dp.
+        val setup = listOfNotNull(session.model, session.effort)
+        if (setup.isNotEmpty()) {
+            val spoken = setup.joinToString(", ")
+            Text(
+                setup.joinToString(" · "),
+                Modifier.semantics { contentDescription = spoken },
+                color = muted,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

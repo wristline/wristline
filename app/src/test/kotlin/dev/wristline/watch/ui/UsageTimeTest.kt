@@ -45,14 +45,17 @@ class UsageTimeTest {
         resetClockText(resetsAt, now, seoul, is24Hour, compact)
 
     @Test
-    fun resetClockIsTheTimeTodayTheWeekdayWithinSixDaysElseTheDate() {
+    fun resetClockIsTheTimeTodayTheWeekdayWithinSevenDaysElseTheDate() {
         assertEquals("23:30", clock(at(29, 23, 30)))
         // Tomorrow, from midnight on, whatever the hours left.
         assertEquals("Wed 00:13", clock(at(30, 0, 13)))
         assertEquals("Fri 14:30", clock(at(2, 14, 30, month = 10)))
-        // Six days on the weekday is still unambiguous; from seven it would name today's.
         assertEquals("Mon 09:00", clock(at(5, 9, 0, month = 10)))
-        assertEquals("10/6 09:00", clock(at(6, 9, 0, month = 10)))
+        // Seven days on, today's weekday is next week's: today shows the time alone.
+        assertEquals("Tue 09:00", clock(at(6, 9, 0, month = 10)))
+        assertEquals("Tue 23:59", clock(at(6, 23, 59, month = 10)))
+        // From eight days the date.
+        assertEquals("10/7 00:00", clock(at(7, 0, 0, month = 10)))
         assertEquals("10/8 14:30", clock(at(8, 14, 30, month = 10)))
     }
 
@@ -108,9 +111,11 @@ class UsageTimeTest {
         assertEquals("금요일 14:30", words(at(2, 14, 30, month = 10), Locale.KOREAN, "오늘 %1\$s"))
         assertEquals("Friday 2:30 PM", words(at(2, 14, 30, month = 10), Locale.US, "today %1\$s", is24Hour = false))
         assertEquals("금요일 오후 2:30", words(at(2, 14, 30, month = 10), Locale.KOREAN, "오늘 %1\$s", is24Hour = false))
-        // From seven days the date, in full.
-        assertEquals("October 8, 2026 14:30", words(at(8, 14, 30, month = 10), Locale.US, "today %1\$s"))
-        assertEquals("2026년 10월 8일 14:30", words(at(8, 14, 30, month = 10), Locale.KOREAN, "오늘 %1\$s"))
+        // Seven days on still the weekday; from eight the date, in full.
+        assertEquals("Tuesday 09:00", words(at(6, 9, 0, month = 10), Locale.US, "today %1\$s"))
+        assertEquals("화요일 09:00", words(at(6, 9, 0, month = 10), Locale.KOREAN, "오늘 %1\$s"))
+        assertEquals("October 7, 2026 14:30", words(at(7, 14, 30, month = 10), Locale.US, "today %1\$s"))
+        assertEquals("2026년 10월 7일 14:30", words(at(7, 14, 30, month = 10), Locale.KOREAN, "오늘 %1\$s"))
     }
 
     @Test

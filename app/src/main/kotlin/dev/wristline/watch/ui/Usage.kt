@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -61,6 +60,14 @@ import kotlin.math.roundToInt
 
 // Between one ring's start filling in and the next's.
 private const val RING_STAGGER_MS = 60L
+
+// The grid every provider's block is laid out on: the headers and the rings start USAGE_INSET from
+// the left and each row's texts USAGE_RING_GAP past its ring, whatever the texts say. At 226dp the
+// widest row (`◷ Wed 12:59 PM`) ends near 175dp, and a ring this far in clears the round edge to
+// 60dp above or below the middle: the rows sit between the list's top and bottom paddings.
+private val USAGE_INSET = 28.dp
+private val USAGE_RING = 48.dp
+private val USAGE_RING_GAP = 10.dp
 
 @Composable
 internal fun UsageScreen() {
@@ -114,11 +121,9 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
             // [Usage.key], and a repeated key would crash the list.
             sorted.forEachIndexed { index, provider ->
                 item(key = "provider/$index/${provider.key}") {
-                    // The rows' 16dp at the sides: a long account label ends in an ellipsis, not under the round edge.
-                    Column(
-                        Modifier.fillMaxWidth().edgeTransform(this, spec).padding(start = 16.dp, top = 6.dp, end = 16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
+                    // On the rings' left edge; 16dp on the right: a long account label ends in an ellipsis,
+                    // not under the round edge.
+                    Column(Modifier.fillMaxWidth().edgeTransform(this, spec).padding(start = USAGE_INSET, top = 6.dp, end = 16.dp)) {
                         Text(providerLabel(provider.provider), style = MaterialTheme.typography.titleSmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             provider.account?.let { AccountText(it, Modifier.weight(1f, fill = false)) }
@@ -198,17 +203,15 @@ private fun WindowRow(
     val percent = window.usedPercent.roundToInt()
     val spoken = if (passed) name + ", " + stringResource(R.string.usage_reset_passed) else stringResource(R.string.limit_used, name, percent)
     Row(
-        // Centered as a group under the centered headings; 16dp keeps a wide row's ring clear of the
-        // round edge in the lower half of the screen.
+        // On the grid ([USAGE_INSET]): every row's ring and texts start where the others' do.
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .wrapContentWidth(Alignment.CenterHorizontally)
+            .padding(start = USAGE_INSET, end = 16.dp)
             .semantics(mergeDescendants = true) {},
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(USAGE_RING_GAP),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(48.dp).clearAndSetSemantics { contentDescription = spoken }, contentAlignment = Alignment.Center) {
+        Box(Modifier.size(USAGE_RING).clearAndSetSemantics { contentDescription = spoken }, contentAlignment = Alignment.Center) {
             PercentRing(if (passed) 0.0 else window.usedPercent, Modifier.fillMaxSize(), fillDelayMs = fillDelayMs, onFillStarted = onFillStarted)
             if (passed) {
                 Text("—", color = muted, style = MaterialTheme.typography.labelSmall)
@@ -323,22 +326,23 @@ internal fun clockWords(time: ZonedDateTime, locale: Locale, is24Hour: Boolean):
 
 /**
  * The clock time [resetsAt] falls on in [zone], as of [now], in English whatever the language: the
- * time alone today (`14:30`), with the weekday within the next six days (`Fri 14:30`), with the
- * date from seven (`10/8 14:30`; the weekday would name today's). The clock as [clockText].
+ * time alone today (`14:30`), with the weekday within the next seven days (`Fri 14:30`; seven days
+ * on, today's weekday names next week's, as today shows the time alone), with the date from eight
+ * (`10/9 14:30`). The clock as [clockText].
  */
 internal fun resetClockText(resetsAt: Long, now: Long, zone: ZoneId, is24Hour: Boolean, compact: Boolean = false): String {
     val time = Instant.ofEpochMilli(resetsAt).atZone(zone)
     val clock = clockText(time, is24Hour, compact)
     return when (daysFrom(now, time)) {
         0L -> clock
-        in 1L..6L -> WEEKDAY.format(time) + " " + clock
+        in 1L..7L -> WEEKDAY.format(time) + " " + clock
         else -> MONTH_DAY.format(time) + " " + clock
     }
 }
 
 /**
  * [resetClockText] for TalkBack, in [locale]: [today] (`today %1$s`) with the time, the weekday in
- * full within the next six days (`Friday 14:30`), else the date (`October 8, 2026 14:30`); in the
+ * full within the next seven days (`Friday 14:30`), else the date (`October 9, 2026 14:30`); in the
  * locale's 12-hour time unless [is24Hour].
  */
 internal fun resetClockWords(resetsAt: Long, now: Long, zone: ZoneId, locale: Locale, is24Hour: Boolean, today: String): String {
@@ -346,7 +350,7 @@ internal fun resetClockWords(resetsAt: Long, now: Long, zone: ZoneId, locale: Lo
     val clock = clockWords(time, locale, is24Hour)
     return when (daysFrom(now, time)) {
         0L -> today.format(clock)
-        in 1L..6L -> time.dayOfWeek.getDisplayName(TextStyle.FULL, locale) + " " + clock
+        in 1L..7L -> time.dayOfWeek.getDisplayName(TextStyle.FULL, locale) + " " + clock
         else -> DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(locale).format(time) + " " + clock
     }
 }

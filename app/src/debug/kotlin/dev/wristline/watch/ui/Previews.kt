@@ -91,7 +91,7 @@ private val codexPro = Account("chatgpt-pro", "Pro")
 // one in 6 days). The bridge sent Pro first; Work still leads. Sessions: two Claude, one Codex of
 // Pro and one Codex without an account (counted on Work's line); their times now, 2m, 1h, 2d.
 private val listSessions = listOf(
-    sessions[0],
+    sessions[0].copy(model = "Fable 5.1", effort = "medium"),
     sessions[1].copy(account = codexPro, lastActivity = "2026-09-29T12:59:40Z"),
     sessions[2],
     Session("codex:5", ProviderId.CODEX, "Fix the flaky checkout test", "/home/dev/shop", SessionStatus.IDLE, "2026-09-27T09:00:00Z"),
@@ -210,7 +210,7 @@ private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "no
 
 // The icon row (Settings, Ask, recent questions) heads the list; the request banner sits right
 // under it, then the limit card, a line per account (Codex's two marked 기 and P) with the clock
-// time of each reset, and the two-line session cards.
+// time of each reset, and the session cards, the first with a third line for its model and effort.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {
@@ -323,8 +323,9 @@ private fun AskGoneKoPreview() = AskFrame(null)
 private fun AskHistoryPreview() = Frame { AskHistoryContent(thread.asReversed() + asks.drop(1), { now }, onAsk = {}, onDelete = {}) }
 
 // Edge gauges: context 60% on the left (a page glyph), Codex's primary window at 93% (yellow, a
-// meter glyph) on the right. The top text is the model and effort; the header shows the running
-// dot alone, and the green spinner under the newest card says it is working, above the actions.
+// meter glyph) on the right, each glyph and number upright below the arc's lower end. Nothing at
+// the top; the header shows the running dot alone, and the small gray spinner under the newest card
+// says it is working, above the actions.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionDetailPreview() = Frame {
@@ -345,13 +346,24 @@ private fun SessionDetailKoPreview() = Frame {
     )
 }
 
-// A waiting request: a compact [Respond] replaces the speak and type buttons. Without a model or
-// effort the top text names the provider.
+// A waiting request: a compact [Respond] replaces the speak and type buttons.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionDetailRespondPreview() = Frame {
     SessionDetailContent(
         sessions[0], gone = false, limit = usage[0].windows[0], state = items, hasRequest = true, sending = false, outcome = null,
+        onEarlier = {}, onAction = {}, onType = {},
+    )
+}
+
+// The widest gauge labels, `100%` on both sides at a 1.3 font scale: still inside the round edge,
+// clear of the speak and type buttons.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, fontScale = 1.3f)
+@Composable
+private fun SessionDetailFullGaugesPreview() = Frame {
+    SessionDetailContent(
+        sessions[0].copy(context = ContextUsage(200_000, 200_000)), gone = false, limit = usage[0].windows[0].copy(usedPercent = 100.0),
+        state = items, hasRequest = false, sending = false, outcome = null,
         onEarlier = {}, onAction = {}, onType = {},
     )
 }

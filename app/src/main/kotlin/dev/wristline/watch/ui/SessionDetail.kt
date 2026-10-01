@@ -25,12 +25,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -57,22 +58,17 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.wear.compose.foundation.AnchorType
-import androidx.wear.compose.foundation.CurvedLayout
-import androidx.wear.compose.foundation.CurvedModifier
 import androidx.wear.compose.foundation.LocalReduceMotion
-import androidx.wear.compose.foundation.curvedComposable
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnState
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
-import androidx.wear.compose.foundation.padding
-import androidx.wear.compose.foundation.weight
 import androidx.wear.compose.material3.AlertDialog
 import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.ButtonDefaults
@@ -92,10 +88,6 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.ScrollIndicator
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
-import androidx.wear.compose.material3.TimeText
-import androidx.wear.compose.material3.TimeTextDefaults
-import androidx.wear.compose.material3.curvedText
-import androidx.wear.compose.material3.timeTextSeparator
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
@@ -121,6 +113,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -140,31 +134,29 @@ private val ACTIONS_BOTTOM = 6.dp
 private const val END_PADDING_FRACTION = 0.3f
 // Behind the actions, rising well above them: content scrolling under them fades out.
 private val SCRIM_HEIGHT = 72.dp
-// The list's top padding: under the small top text (2dp from the edge, about 13dp at 11sp) with
-// a few dp to spare.
+// The working indicator under the newest item: smaller than the usual spinner, low-key.
+private val WORKING_SPINNER = 12.dp
+// The list's top padding: the header starts a little below the round screen's top.
 private val LIST_TOP = 20.dp
 // The list's side padding comes this much inside the default. No more: the round edge clips
 // wider cards.
 private val LIST_SIDE_TRIM = 2.dp
 
-// The curved top text (model and effort, in the time text's place) at its widest, centered on 12
-// o'clock (270 degrees clockwise from 3 o'clock); its background's round ends add about 5 degrees
-// on each side, so it spans at most about 234 to 306 degrees.
-private const val TIME_TEXT_SWEEP = 62f
 // Left gauge centered on 9 o'clock, in degrees clockwise from 3 o'clock; the right gauge mirrors it
 // (338 to 22, centered on 3 o'clock, where the scroll indicator is: it is hidden while the gauges
-// show). Past each upper end, GAUGE_LABEL_GAP on, the glyph saying what it measures and its
-// percentage, the only place it shows: the glyph and its gap take about 7 degrees, `100%` at
-// GAUGE_LABEL_SIZE about 19, so it ends near 231 (309 on the right), short of the widest time
-// text's background, which starts at 234; at a 1.3 font scale near 237, just touching it.
+// show). Below each lower end, GAUGE_LABEL_GAP on, the glyph saying what it measures and its
+// percentage, upright, the pair's outer bottom corner GAUGE_LABEL_INSET inside the round edge.
 private const val GAUGE_START = 158f
 private const val GAUGE_SWEEP = 44f
-// Clears the arc's round end (half the stroke, under 2 degrees) with a little room to spare.
-private const val GAUGE_LABEL_GAP = 3f
+// Clears the arc's round end with a little room to spare.
+private val GAUGE_LABEL_GAP = 3.dp
+private val GAUGE_LABEL_INSET = 2.dp
 private val GAUGE_LABEL_SIZE = 12.sp
-// The glyph beside a gauge's percentage, and the gap between them.
-private val GAUGE_GLYPH = 11.dp
-private val GAUGE_GLYPH_GAP = 2.dp
+// How much of the transcript under a label its pill hides.
+private const val GAUGE_LABEL_BACKDROP = 0.8f
+// The glyph before a gauge's percentage, and the gap between them.
+private val GAUGE_GLYPH = 14.dp
+private val GAUGE_GLYPH_GAP = 3.dp
 // The right gauge starts filling in this long after the left.
 private const val GAUGE_STAGGER_MS = 120L
 // No thinner than the scroll indicator (5dp, 6dp on screens 225dp and wider).
@@ -356,11 +348,12 @@ internal fun SessionDetailContent(
     var gaugesFilled by remember { mutableStateOf(false) }
     ScreenScaffold(
         scrollState = listState,
-        timeText = { DetailTopText(session) },
+        // Nothing at the top, not even the clock: the session cards show the model and effort.
+        timeText = {},
         // The scaffold keeps the indicator (at 3 o'clock, under the right gauge) for 2s after a
         // scroll, the gauges come back after GAUGE_SETTLE_MS: hidden while they show.
         scrollIndicator = {
-            AnimatedVisibility(!gaugesShown.arcs, enter = CalmFadeIn, exit = CalmFadeOut) { ScrollIndicator(listState) }
+            AnimatedVisibility(!gaugesShown, enter = CalmFadeIn, exit = CalmFadeOut) { ScrollIndicator(listState) }
         },
     ) { contentPadding ->
         val layoutDirection = LocalLayoutDirection.current
@@ -418,7 +411,7 @@ internal fun SessionDetailContent(
             }
             if (working) {
                 item(key = "working") {
-                    // A spinner in the running dot's color, no words; TalkBack reads them.
+                    // A small gray spinner, no words; TalkBack reads them.
                     val description = stringResource(R.string.detail_working)
                     Box(
                         Modifier
@@ -427,7 +420,7 @@ internal fun SessionDetailContent(
                             .animateItemCalmly(this)
                             .clearAndSetSemantics { contentDescription = description },
                         contentAlignment = Alignment.Center,
-                    ) { SmallSpinner(color = Status.Running) }
+                    ) { SmallSpinner(Modifier.size(WORKING_SPINNER), color = colors.onSurfaceVariant) }
                 }
             }
             if (blockCode != null) {
@@ -448,13 +441,8 @@ internal fun SessionDetailContent(
                 }
             }
         }
-        // The content is a Box: what is composed after the list is drawn over it. The arcs show
-        // whenever the list is at rest, their labels only at the top, with the whole header.
-        if (session != null) {
-            EdgeGauges(gaugesShown, session.context, limit, fillIn = !gaugesFilled, onFillStarted = { gaugesFilled = true })
-        }
-        // The screen's background at the very bottom, clear at its top. Drawn before the actions, so
-        // it does not dim them; with no pointer input, touches on it reach the list.
+        // The screen's background at the very bottom, clear at its top. Drawn before the gauges and
+        // the actions, so it does not dim them; with no pointer input, touches on it reach the list.
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -462,6 +450,11 @@ internal fun SessionDetailContent(
                 .height(SCRIM_HEIGHT)
                 .background(Brush.verticalGradient(listOf(Color.Transparent, colors.background))),
         )
+        // The content is a Box: what is composed after the list is drawn over it. The arcs and
+        // their labels show whenever the list is at rest.
+        if (session != null) {
+            EdgeGauges(gaugesShown, session.context, limit, fillIn = !gaugesFilled, onFillStarted = { gaugesFilled = true })
+        }
         // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
         val actions = Modifier.align(Alignment.BottomCenter).padding(bottom = ACTIONS_BOTTOM)
         if (hasRequest) {
@@ -550,59 +543,44 @@ internal fun limitColor(percent: Int): Color = when {
     else -> WristlineColors.onSurface
 }
 
-/** Which parts of the edge gauges show: see [rememberGaugesShown]. */
-private data class GaugesShown(val arcs: Boolean, val labels: Boolean)
-
 /**
- * Which parts of the edge gauges show. The arcs, only while the list is at rest (they fade out as
- * soon as it scrolls and back in [GAUGE_SETTLE_MS] after it stops), wherever it is scrolled to;
- * the labels, also only at the top of the transcript, while the header (the first item) is fully
- * on screen.
+ * Whether the edge gauges show: only while the list is at rest (they fade out as soon as it scrolls
+ * and back in [GAUGE_SETTLE_MS] after it stops), wherever it is scrolled to.
  */
 @Composable
-private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<GaugesShown> {
+private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<Boolean> {
     // Not scrolled for the last GAUGE_SETTLE_MS.
-    var resting by remember(listState) { mutableStateOf(!listState.isScrollInProgress) }
+    val resting = remember(listState) { mutableStateOf(!listState.isScrollInProgress) }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }.collectLatest { scrolling ->
             if (!scrolling) delay(GAUGE_SETTLE_MS)
-            resting = !scrolling
+            resting.value = !scrolling
         }
     }
-    return remember(listState) {
-        derivedStateOf {
-            // An item's offset is its top from the top of the list's viewport (the screen), not from
-            // the content padding: the header, at LIST_TOP when scrolled to the top, is fully in view
-            // until its top goes past the screen's.
-            val first = listState.layoutInfo.visibleItems.firstOrNull()
-            val atTop = first?.let { it.index == 0 && it.offset >= 0 } == true
-            GaugesShown(arcs = resting, labels = resting && atTop)
-        }
-    }
+    return resting
 }
 
 /**
  * Context use (left) and the limit window (right) as bare arcs centered on 9 and 3 o'clock, each
- * with a glyph (a page, a meter) and its percentage just past its upper end; the header only reads
- * the numbers out. Both fill upwards, towards the time text. With [fillIn] the arcs composed now
+ * with a glyph (a page, a meter) and its percentage just below its lower end; the header only reads
+ * the numbers out. Both fill upwards. With [fillIn] the arcs composed now
  * fill in from zero, the right one a little after the left; [onFillStarted] follows the first.
  */
 @Composable
 private fun EdgeGauges(
-    shown: GaugesShown,
+    shown: Boolean,
     context: ContextUsage?,
     limit: UsageWindow?,
     fillIn: Boolean,
     onFillStarted: () -> Unit,
 ) {
-    AnimatedVisibility(shown.arcs, enter = CalmFadeIn, exit = CalmFadeOut) {
+    AnimatedVisibility(shown, enter = CalmFadeIn, exit = CalmFadeOut) {
         contextPercent(context)?.let { percent ->
             EdgeGauge(
                 percent,
                 MaterialTheme.colorScheme.primary,
                 right = false,
                 glyph = R.drawable.ic_context,
-                labelShown = shown.labels,
                 fillDelayMs = if (fillIn) 0L else null,
                 onFillStarted = onFillStarted,
             )
@@ -617,7 +595,6 @@ private fun EdgeGauges(
                 color,
                 right = true,
                 glyph = R.drawable.ic_gauge,
-                labelShown = shown.labels,
                 fillDelayMs = if (fillIn) GAUGE_STAGGER_MS else null,
                 onFillStarted = onFillStarted,
             )
@@ -631,7 +608,6 @@ private fun EdgeGauge(
     color: Color,
     right: Boolean,
     glyph: Int,
-    labelShown: Boolean,
     fillDelayMs: Long?,
     onFillStarted: () -> Unit,
 ) {
@@ -654,58 +630,45 @@ private fun EdgeGauge(
         colors = ProgressIndicatorDefaults.colors(indicatorColor = color, trackColor = GaugeTrack),
         strokeWidth = GAUGE_STROKE,
     )
-    // Not mirrored, so it reads left to right on both sides: on the left it starts past the upper
-    // end, on the right it ends before it. The glyph is next to the arc, the number beyond it.
-    val upperEnd = GAUGE_START + GAUGE_SWEEP
-    val tint = MaterialTheme.colorScheme.onSurfaceVariant
-    AnimatedVisibility(labelShown, enter = CalmFadeIn, exit = CalmFadeOut) {
-        CurvedLayout(
-            Modifier.fillMaxSize().padding(edge).clearAndSetSemantics {},
-            anchor = if (right) 540f - upperEnd - GAUGE_LABEL_GAP else upperEnd + GAUGE_LABEL_GAP,
-            anchorType = if (right) AnchorType.End else AnchorType.Start,
-        ) {
-            val mark = CurvedModifier.padding(
-                outer = 0.dp,
-                inner = 0.dp,
-                before = if (right) GAUGE_GLYPH_GAP else 0.dp,
-                after = if (right) 0.dp else GAUGE_GLYPH_GAP,
-            )
-            // Upright, unlike the text: turned with the curve, a glyph this small is hard to make out.
-            if (!right) curvedComposable(mark, rotationLocked = true) { Icon(painterResource(glyph), null, Modifier.size(GAUGE_GLYPH), tint = tint) }
-            curvedText("${percent.roundToInt()}%", color = color, fontSize = GAUGE_LABEL_SIZE, fontWeight = FontWeight.Medium)
-            if (right) curvedComposable(mark, rotationLocked = true) { Icon(painterResource(glyph), null, Modifier.size(GAUGE_GLYPH), tint = tint) }
+    // Upright, glyph then number on both sides, just below the arc's lower end, where it fills from:
+    // on the left from the round edge in, on the right up to it. Above the upper end the cards'
+    // first lines would run under it; down here the scrim fades them and, at rest at the bottom,
+    // the newest card ends above it; on a pill of the screen's background, so text scrolled under it
+    // does not show through. The glyph in the text's white, the number in the arc's color.
+    val backdrop = MaterialTheme.colorScheme.background.copy(alpha = GAUGE_LABEL_BACKDROP)
+    Layout(
+        content = {
+            Row(
+                Modifier.background(backdrop, CircleShape).padding(horizontal = 4.dp, vertical = 1.dp),
+                horizontalArrangement = Arrangement.spacedBy(GAUGE_GLYPH_GAP),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(glyph), null, Modifier.size(GAUGE_GLYPH), tint = MaterialTheme.colorScheme.onSurface)
+                Text("${percent.roundToInt()}%", color = color, fontSize = GAUGE_LABEL_SIZE, fontWeight = FontWeight.Medium, maxLines = 1)
+            }
+        },
+        modifier = Modifier.fillMaxSize().padding(edge).clearAndSetSemantics {},
+    ) { measurables, constraints ->
+        val label = measurables.single().measure(Constraints())
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            // From the center, y down: the arc's lower end with its round cap, then the label below it.
+            val radius = constraints.maxWidth / 2f
+            val stroke = GAUGE_STROKE.toPx()
+            val endBottom = (radius - stroke / 2) * sin(Math.toRadians(GAUGE_START.toDouble())).toFloat() + stroke / 2
+            val top = endBottom + GAUGE_LABEL_GAP.toPx()
+            val bottom = top + label.height
+            // The label's bottom outer corner, the one nearest the round edge, sets how far out it goes.
+            val inner = radius - GAUGE_LABEL_INSET.toPx()
+            val half = sqrt(inner * inner - bottom * bottom)
+            val x = if (right) radius + half - label.width else radius - half
+            label.place(x.roundToInt(), (radius + top).roundToInt())
         }
     }
 }
 
 /**
- * The session's model and effort, `Fable 5.1 · high`, curved at the top in the time text's place
- * (no clock); the model is cut short when they do not fit. Its provider without either, nothing
- * without a [session].
- */
-@Composable
-private fun DetailTopText(session: Session?) {
-    if (session == null) return
-    val model = session.model
-    val effort = session.effort
-    val provider = providerLabel(session.provider)
-    // Small and muted, well under the time text's 15sp: it takes little of the screen's top.
-    val style = TimeTextDefaults.timeTextStyle(color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
-    TimeText(maxSweepAngle = TIME_TEXT_SWEEP) {
-        if (model == null && effort == null) {
-            curvedText(provider, overflow = TextOverflow.Ellipsis, style = style)
-            return@TimeText
-        }
-        // Weighted, the model takes what the effort and separator leave.
-        if (model != null) curvedText(model, CurvedModifier.weight(1f), overflow = TextOverflow.Ellipsis, style = style)
-        if (model != null && effort != null) timeTextSeparator(style)
-        if (effort != null) curvedText(effort, style = style)
-    }
-}
-
-/**
- * The session's title over its provider badge and status dot, the list's colors, no words: the model
- * and the gauges' numbers show once, at the top and at the arcs' ends. Read out as one, the status
+ * The session's title over its provider badge and status dot, the list's colors, no words: the
+ * gauges' numbers show once, at the arcs' ends. Read out as one, the status
  * in words and the numbers too.
  */
 @Composable
