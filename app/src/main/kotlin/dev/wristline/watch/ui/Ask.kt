@@ -44,7 +44,6 @@ import androidx.wear.compose.material3.AlertDialogDefaults
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.CardDefaults
-import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.CompactButton
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.FilledTonalIconButton
@@ -97,6 +96,9 @@ internal fun askThread(asks: List<Ask>, askId: String): List<Ask>? {
  * target ([touchTargetAwareSize]). The targets' margins are the 8dp between the buttons.
  */
 private val ACTION_SIZE = 40.dp
+
+/** The thinking spinner: the size of the library's indeterminate one, which the still arc in ambient keeps. */
+private val THINKING_SPINNER = 24.dp
 
 /**
  * The Ask button: speech (or typing) in, a confirm dialog with the provider badge to toggle
@@ -480,7 +482,7 @@ private fun Thinking(question: String, onCancel: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            CircularProgressIndicator()
+            Spinner(Modifier.size(THINKING_SPINNER))
             Text(stringResource(R.string.ask_thinking), style = MaterialTheme.typography.bodyMedium)
             CompactButton(onClick = onCancel, label = { Text(stringResource(R.string.ask_cancel)) })
         }

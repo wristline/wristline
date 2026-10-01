@@ -9,7 +9,6 @@ import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -127,14 +126,8 @@ internal class Reader(private val context: Context) {
 }
 
 /**
- * Whether the watch's screen is on, as MainActivity's screen-off receiver last heard: some watches
- * keep the activity resumed while the screen is off or dozing.
- */
-internal val LocalScreenOn = compositionLocalOf { true }
-
-/**
  * A [Reader] for this screen. It stops when the activity stops (another app or the watch face in
- * front, or this screen covered by another activity) or the screen turns off: Android 17 silences
+ * front, or this screen covered by another activity) or the app goes ambient: Android 17 silences
  * audio from an app that is not visible or whose screen is off, and nobody is reading along then.
  * It lets the engine go when the screen leaves.
  */
@@ -146,7 +139,7 @@ internal fun rememberReader(): Reader {
         onDispose { reader.release() }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_STOP) { reader.stop() }
-    val screenOn = LocalScreenOn.current
-    LaunchedEffect(screenOn) { if (!screenOn) reader.stop() }
+    val ambient = LocalAmbient.current
+    LaunchedEffect(ambient) { if (ambient) reader.stop() }
     return reader
 }

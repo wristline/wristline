@@ -152,6 +152,14 @@ internal fun reconnectDelayMs(attempt: Int, jitter: Double, maxMs: Long = MAX_BA
 internal enum class Attention { TICK, POST }
 
 /**
+ * The user is looking at the app: MainActivity is in the [foreground] (resumed), the screen is
+ * [interactive], and the app is not shown in [ambient] (always-on, dimmed). From Wear OS 6 the
+ * activity stays resumed in ambient, so [foreground] alone is not enough.
+ */
+internal fun isLooking(foreground: Boolean, interactive: Boolean, ambient: Boolean): Boolean =
+    foreground && interactive && !ambient
+
+/**
  * While the user is [looking] at the app a tick is enough: the screens show the request or the
  * waiting session. A [done] alert is posted anyway unless its [sessionId] is the one open in the
  * session screen ([openSession]), so a finished task elsewhere is not lost.
@@ -406,6 +414,10 @@ object Bridge {
     @Volatile
     var foreground = false
 
+    /** MainActivity is shown in ambient (always-on, dimmed), as the ambient API last said; see [looking]. */
+    @Volatile
+    var ambient = false
+
     /**
      * Set on the main thread right after the app opened the system text or speech input over
      * MainActivity, which pauses it next; see [toBackground].
@@ -414,14 +426,14 @@ object Bridge {
     var inputOpening = false
 
     /**
-     * The user is looking at the app: requests then only tick the vibrator (the screens show them);
-     * otherwise they become notifications. Some watches keep the activity resumed with the screen
-     * off or dozing, so [foreground] alone is not enough.
+     * The user is looking at the app ([isLooking]): requests then only tick the vibrator (the
+     * screens show them); otherwise they become notifications.
      */
-    private fun looking(): Boolean = foreground && appContext.getSystemService(PowerManager::class.java).isInteractive
+    private fun looking(): Boolean =
+        isLooking(foreground, appContext.getSystemService(PowerManager::class.java).isInteractive, ambient)
 
     /**
-     * MainActivity is paused, or the screen went off: the requests its screens were showing (only
+     * MainActivity is paused, or went ambient: the requests its screens were showing (only
      * ticked) become notifications. Idempotent: the ones already posted are not posted again.
      * Paused for the app's own text or speech input ([inputOpening]), the user has not left: they
      * wait [INPUT_GRACE_MS], and [toForeground] on the way back drops them.

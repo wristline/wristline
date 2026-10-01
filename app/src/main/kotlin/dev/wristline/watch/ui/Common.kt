@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -66,6 +67,7 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.CircularProgressIndicatorDefaults
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.LocalTextStyle
 import androidx.wear.compose.material3.MaterialTheme
@@ -354,11 +356,11 @@ fun PercentRing(
  * An indicator's progress: [fraction], or, when [delayMs] is not null as it is first composed, zero
  * until [delayMs] after its first frame. The indicator animates that change like any other, so it
  * fills in from zero, once: a later [delayMs] is ignored. [onStarted] follows the change. Never with
- * reduced motion, nor in a preview, which draws a single frame.
+ * reduced motion, in ambient ([LocalAmbient]), nor in a preview, which draws a single frame.
  */
 @Composable
 fun rememberFillIn(fraction: Float, delayMs: Long?, onStarted: () -> Unit = {}): State<Float> {
-    val allowed = !LocalReduceMotion.current && !LocalInspectionMode.current
+    val allowed = !LocalReduceMotion.current && !LocalAmbient.current && !LocalInspectionMode.current
     val fillDelay = remember { delayMs?.takeIf { allowed } }
     var started by remember { mutableStateOf(fillDelay == null) }
     val latestOnStarted by rememberUpdatedState(onStarted)
@@ -375,14 +377,39 @@ fun rememberFillIn(fraction: Float, delayMs: Long?, onStarted: () -> Unit = {}):
     return rememberUpdatedState(if (started) fraction else 0f)
 }
 
+/**
+ * The app is shown dimmed: in ambient (always-on), as the ambient API says, or with the screen off,
+ * as MainActivity's screen-off receiver last heard. Nothing on screen moves on its own then (no
+ * spinner turns, no countdown ticks, no gauge fills in), and read-aloud stops.
+ */
+internal val LocalAmbient = compositionLocalOf { false }
+
 /** Small indeterminate spinner: used only for pending tool calls, a working session and connecting/sending states. */
 @Composable
 fun SmallSpinner(modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.primary) {
-    CircularProgressIndicator(
-        modifier = modifier.size(16.dp),
-        colors = ProgressIndicatorDefaults.colors(indicatorColor = color),
-        strokeWidth = 2.dp,
-    )
+    Spinner(modifier.size(16.dp), color, strokeWidth = 2.dp)
+}
+
+/** How much of the ring the still arc covers that stands for a spinner in ambient. */
+private const val STILL_SPINNER = 0.75f
+
+/** An indeterminate spinner; in ambient ([LocalAmbient]) a still arc in its place. */
+@Composable
+fun Spinner(
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary,
+    strokeWidth: Dp = CircularProgressIndicatorDefaults.IndeterminateStrokeWidth,
+) {
+    if (LocalAmbient.current) {
+        CircularProgressIndicator(
+            progress = { STILL_SPINNER },
+            modifier = modifier,
+            colors = ProgressIndicatorDefaults.colors(indicatorColor = color, trackColor = Color.Transparent),
+            strokeWidth = strokeWidth,
+        )
+    } else {
+        CircularProgressIndicator(modifier = modifier, colors = ProgressIndicatorDefaults.colors(indicatorColor = color), strokeWidth = strokeWidth)
+    }
 }
 
 @Composable
@@ -526,6 +553,14 @@ fun Conn.hasBanner(): Boolean = when (this) {
     else -> true
 }
 
+/** `Retrying in 5 s. Tap to retry now.`, counting down to [retryAt] every second. */
+@Composable
+private fun RetryCountdown(retryAt: Long) {
+    val now = rememberNow(periodMs = 1_000)
+    val seconds = ((retryAt - now + 999) / 1000).coerceAtLeast(0).toInt()
+    Text(stringResource(R.string.conn_retry_in, seconds))
+}
+
 /**
  * Connection state as a list item: says what is wrong and offers the one useful action. Applies
  * the list's edge transformation and item appearance animation itself.
@@ -541,17 +576,14 @@ fun TransformingLazyColumnItemScope.ConnBanner(
     val surface = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this)
     val plain = Modifier.fillMaxWidth().edgeTransform(this, spec).animateItemCalmly(this).minListItemHeight()
     when (conn) {
-        is Conn.Unreachable -> {
-            val now = rememberNow(periodMs = 1_000)
-            val seconds = ((conn.retryAt - now + 999) / 1000).coerceAtLeast(0).toInt()
-            FilledTonalButton(
-                onClick = onRetry,
-                modifier = surface,
-                transformation = SurfaceTransformation(spec),
-                label = { Text(stringResource(R.string.conn_unreachable)) },
-                secondaryLabel = { Text(stringResource(R.string.conn_retry_in, seconds)) },
-            )
-        }
+        is Conn.Unreachable -> FilledTonalButton(
+            onClick = onRetry,
+            modifier = surface,
+            transformation = SurfaceTransformation(spec),
+            label = { Text(stringResource(R.string.conn_unreachable)) },
+            // No countdown in ambient: it would change every second.
+            secondaryLabel = if (LocalAmbient.current) null else { { RetryCountdown(conn.retryAt) } },
+        )
         Conn.Unauthorized -> Button(
             onClick = onRepair,
             modifier = surface,

@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -16,24 +17,27 @@ import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.wear.compose.foundation.AmbientMode
+import androidx.wear.compose.foundation.rememberAmbientModeManager
 import dev.wristline.watch.data.AddressResult
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Holder
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.normalizeAddress
-import dev.wristline.watch.ui.LocalScreenOn
+import dev.wristline.watch.ui.LocalAmbient
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     /** Screen to open once, from a notification tap. */
     private var openRoute by mutableStateOf<String?>(null)
 
-    /** Off from the screen turning off (or dozing) until it turns on again; see [LocalScreenOn]. */
+    /** Off from the screen turning off (or dozing) until it turns on again; see [LocalAmbient]. */
     private var screenOn by mutableStateOf(true)
 
     /**
-     * Some watches keep the activity resumed while the screen is off or dozing: turning off counts
-     * as leaving, turning on (while still resumed) as coming back.
+     * A fallback for [onAmbient], for a watch whose ambient callbacks do not come: from Wear OS 6
+     * the activity stays resumed while the screen is off or dozing, so turning off counts as
+     * leaving, turning on (while still resumed) as coming back.
      */
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -63,10 +67,26 @@ class MainActivity : ComponentActivity() {
         ContextCompat.registerReceiver(this, screen, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
-            CompositionLocalProvider(LocalScreenOn provides screenOn) {
+            // Wear OS 6 and later; older watches pause the activity when the screen dims.
+            val ambientManager = if (hasAmbientApi) rememberAmbientModeManager() else null
+            val ambient = ambientManager?.currentAmbientMode is AmbientMode.Ambient
+            LaunchedEffect(ambient) { onAmbient(ambient) }
+            CompositionLocalProvider(LocalAmbient provides (ambient || !screenOn)) {
                 App(openRoute = openRoute, onOpened = { openRoute = null })
             }
         }
+    }
+
+    /**
+     * The ambient API says the app went [ambient] (always-on, dimmed) or came back. Still resumed,
+     * the activity leaves as it does on pause, and comes back as when the screen turns on.
+     */
+    private fun onAmbient(ambient: Boolean) {
+        if (ambient == Bridge.ambient) return
+        Log.i("Wristline", "ambient=$ambient resumed=${lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)}")
+        Bridge.ambient = ambient
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        if (ambient) Bridge.toBackground() else Bridge.foreground = true
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -131,6 +151,9 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        /** The ambient API ([rememberAmbientModeManager]) needs the Wear SDK, which Wear OS 6 and later have. */
+        private val hasAmbientApi = runCatching { Class.forName("com.google.wear.Sdk") }.isSuccess
+
         /** Extra carrying a PendingRequest id; opens the request screen. */
         const val EXTRA_REQUEST_ID = "requestId"
 
