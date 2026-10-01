@@ -128,6 +128,7 @@
     <!-- Usage -->
     <string name="usage_title">Usage</string>
     <string name="usage_empty">No usage data yet.</string>
+    <!-- For TalkBack: the screen shows short English and icons in every language. -->
     <string name="usage_window_5h">5-hour limit</string>
     <string name="usage_window_7d">Weekly limit</string>
     <string name="usage_window_hours">%1$d-hour limit</string>

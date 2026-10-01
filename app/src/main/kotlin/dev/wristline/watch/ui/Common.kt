@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -60,6 +61,7 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.LocalTextStyle
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ProgressIndicatorDefaults
 import androidx.wear.compose.material3.SurfaceTransformation
@@ -171,20 +173,44 @@ fun rememberNowState(periodMs: Long = 60_000): State<Long> {
     return now
 }
 
+/** How long ago [iso] was in words, for TalkBack: `5 minutes ago`, `5분 전` (see [agoWords]). */
 fun relativeTime(iso: String?, now: Long): String {
     val millis = isoToMillis(iso) ?: return ""
-    return DateUtils.getRelativeTimeSpanString(
-        minOf(millis, now),
-        now,
-        DateUtils.MINUTE_IN_MILLIS,
-        DateUtils.FORMAT_ABBREV_RELATIVE,
-    ).toString()
+    return DateUtils.getRelativeTimeSpanString(minOf(millis, now), now, DateUtils.MINUTE_IN_MILLIS).toString()
 }
 
-/** Under a minute [relativeTime] would read "0 min. ago"; callers show "Just now" instead. */
+/** Under a minute [relativeTime] would read "0 minutes ago"; callers say "Just now" instead. */
 fun isJustNow(iso: String?, now: Long): Boolean {
     val millis = isoToMillis(iso) ?: return false
     return now - millis < 60_000
+}
+
+/**
+ * How long ago [iso] was, in short English in every language: `now` under a minute, else the
+ * largest whole unit, `5m`, `3h`, `2d`; empty without a time. A time ahead of [now] is `now`.
+ */
+internal fun agoText(iso: String?, now: Long): String {
+    val millis = isoToMillis(iso) ?: return ""
+    val minutes = (now - millis).coerceAtLeast(0) / 60_000
+    return when {
+        minutes < 1 -> "now"
+        minutes < 60 -> "${minutes}m"
+        minutes < MINUTES_PER_DAY -> "${minutes / 60}h"
+        else -> "${minutes / MINUTES_PER_DAY}d"
+    }
+}
+
+/** [agoText] read out, in the watch's language: `Just now`, `5 minutes ago`. */
+@Composable
+fun agoWords(iso: String?, now: Long): String =
+    if (isJustNow(iso, now)) stringResource(R.string.time_just_now) else relativeTime(iso, now)
+
+/** [agoText], read out as [agoWords]. Reads [now] itself: the minute tick recomposes this text only. */
+@Composable
+fun AgoText(iso: String?, now: () -> Long, modifier: Modifier = Modifier, color: Color = Color.Unspecified, style: TextStyle = LocalTextStyle.current) {
+    val at = now()
+    val words = agoWords(iso, at)
+    Text(agoText(iso, at), modifier.semantics { contentDescription = words }, color = color, style = style, maxLines = 1)
 }
 
 fun basename(path: String): String = path.trimEnd('/').substringAfterLast('/')

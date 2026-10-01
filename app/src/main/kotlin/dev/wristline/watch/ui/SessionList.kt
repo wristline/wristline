@@ -511,19 +511,15 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             StatusDot(session.status)
             Text(sessionTitle(session), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        // Line 2, muted: `12 min. ago · [C] repo`; accounts are on the Usage screen.
-        // Recomputed once per tick and activity, not on every recomposition of the card.
-        val at = now()
-        val ago = remember(session.lastActivity, at) {
-            if (isJustNow(session.lastActivity, at)) null else relativeTime(session.lastActivity, at)
-        }
+        // Line 2, muted: `12m · [C] repo`; accounts are on the Usage screen.
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
         Row(
             Modifier.padding(top = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text((ago ?: stringResource(R.string.time_just_now)) + " ·", color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            AgoText(session.lastActivity, now, color = muted, style = MaterialTheme.typography.labelSmall)
+            Text("·", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             ProviderBadge(session.provider, size = SMALL_BADGE)
             Text(basename(session.cwd), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

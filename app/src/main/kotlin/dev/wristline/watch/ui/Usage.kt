@@ -24,6 +24,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -72,7 +73,8 @@ internal fun UsageScreen() {
 
 /**
  * Per provider and account: a ring per limit window with the clock time it resets at and the time
- * left to it, and when the numbers were taken.
+ * left to it, and when the numbers were taken. Numbers, times and window names are in short English
+ * with icons in every language; TalkBack reads them out in the watch's.
  */
 @Composable
 internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
@@ -118,16 +120,10 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(providerLabel(provider.provider), style = MaterialTheme.typography.titleSmall)
-                        provider.account?.let { account ->
-                            Text(
-                                if (account.estimated) stringResource(R.string.account_estimated, account.label) else account.label,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.labelSmall,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            provider.account?.let { AccountText(it, Modifier.weight(1f, fill = false)) }
+                            UpdatedText(provider.updatedAt, now)
                         }
-                        UpdatedText(provider.updatedAt, now)
                     }
                 }
                 val firstRing = rings
@@ -146,23 +142,45 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
     }
 }
 
-/** `Updated 4 min. ago`. Reads [now] itself: the minute tick recomposes this text, not the header. */
+/** The account's label as given, `(est.)` after it when only estimated; read out with the word in the watch's language. */
 @Composable
-private fun UpdatedText(updatedAt: String, now: () -> Long) {
-    val at = now()
-    CaptionText(
-        if (isJustNow(updatedAt, at)) {
-            stringResource(R.string.usage_updated_now)
-        } else {
-            stringResource(R.string.usage_updated, relativeTime(updatedAt, at))
-        },
+private fun AccountText(account: Account, modifier: Modifier) {
+    val spoken = if (account.estimated) stringResource(R.string.account_estimated, account.label) else account.label
+    Text(
+        if (account.estimated) "${account.label} (est.)" else account.label,
+        modifier.semantics { contentDescription = spoken },
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.labelSmall,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
     )
 }
 
+/** `⟲ 4m`, read out `Updated 4 minutes ago`. Reads [now] itself: the minute tick recomposes this text, not the header. */
+@Composable
+private fun UpdatedText(updatedAt: String, now: () -> Long) {
+    val at = now()
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val spoken = if (isJustNow(updatedAt, at)) {
+        stringResource(R.string.usage_updated_now)
+    } else {
+        stringResource(R.string.usage_updated, relativeTime(updatedAt, at))
+    }
+    Row(
+        Modifier.clearAndSetSemantics { contentDescription = spoken },
+        horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(R.drawable.ic_history), null, Modifier.size(LIMIT_GLYPH), tint = muted)
+        Text(agoText(updatedAt, at), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    }
+}
+
 /**
- * A window: its ring and percentage, its name and, when it has a reset time, the clock time and the
- * time left ([ResetTimes]). From its reset time on the window is over (as on the limit card, see
- * [currentLine]): an empty ring, a dash and `Reset`, until the bridge reports the next one.
+ * A window: its ring and percentage, its name ([windowAbbrev]) and, when it has a reset time, the
+ * clock time and the time left ([ResetTimes]). From its reset time on the window is over (as on the
+ * limit card, see [currentLine]): an empty ring, a dash and `Reset`, until the bridge reports the
+ * next one. Read out as one sentence.
  */
 @Composable
 private fun WindowRow(
@@ -176,25 +194,38 @@ private fun WindowRow(
     // Changes once, at the reset: the tick recomposes the row then only.
     val passed by remember(resetsAt, now) { derivedStateOf { resetPassed(resetsAt, now()) } }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val name = windowWords(window)
+    val percent = window.usedPercent.roundToInt()
+    val spoken = if (passed) name + ", " + stringResource(R.string.usage_reset_passed) else stringResource(R.string.limit_used, name, percent)
     Row(
         // Centered as a group under the centered headings; 16dp keeps a wide row's ring clear of the
         // round edge in the lower half of the screen.
-        modifier.fillMaxWidth().padding(horizontal = 16.dp).wrapContentWidth(Alignment.CenterHorizontally),
+        modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .wrapContentWidth(Alignment.CenterHorizontally)
+            .semantics(mergeDescendants = true) {},
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(48.dp).clearAndSetSemantics { contentDescription = spoken }, contentAlignment = Alignment.Center) {
             PercentRing(if (passed) 0.0 else window.usedPercent, Modifier.fillMaxSize(), fillDelayMs = fillDelayMs, onFillStarted = onFillStarted)
             if (passed) {
                 Text("—", color = muted, style = MaterialTheme.typography.labelSmall)
             } else {
-                Text("${window.usedPercent.roundToInt()}%", style = MaterialTheme.typography.labelSmall)
+                Text("$percent%", style = MaterialTheme.typography.labelSmall)
             }
         }
         Column {
-            Text(window.label ?: windowLabel(window), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                windowAbbrev(window),
+                Modifier.clearAndSetSemantics {},
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             when {
-                passed -> Text(stringResource(R.string.usage_reset_passed), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                passed -> Text("Reset", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                 resetsAt != null -> ResetTimes(resetsAt, now)
             }
         }
@@ -313,6 +344,31 @@ internal fun windowMinutes(window: UsageWindow): Int? = window.minutes ?: when (
     else -> null
 }
 
+/**
+ * A window's name on screen, short and in English: the bridge's label (`5h`, `7d Opus`), else its
+ * length (`5h`, `7d`, `30d`, `90m`), else its id.
+ */
+internal fun windowAbbrev(window: UsageWindow): String {
+    window.label?.let { return it }
+    val minutes = windowMinutes(window)?.takeIf { it > 0 } ?: return window.id
+    return when {
+        minutes % MINUTES_PER_DAY == 0 -> "${minutes / MINUTES_PER_DAY}d"
+        minutes % 60 == 0 -> "${minutes / 60}h"
+        else -> "${minutes}m"
+    }
+}
+
+/**
+ * A window's name read out: its length in words ([windowLabel]) unless the bridge's label says more
+ * than the length (`7d Opus`, `Spend`).
+ */
+@Composable
+private fun windowWords(window: UsageWindow): String {
+    val label = window.label
+    return if (label != null && label != windowAbbrev(window.copy(label = null))) label else windowLabel(window)
+}
+
+/** A window's length in words, for TalkBack: `5-hour limit`, `Weekly limit`; its id when unknown. */
 @Composable
 internal fun windowLabel(window: UsageWindow): String {
     val minutes = windowMinutes(window)

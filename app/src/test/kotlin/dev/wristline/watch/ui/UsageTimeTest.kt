@@ -1,5 +1,6 @@
 package dev.wristline.watch.ui
 
+import dev.wristline.watch.data.UsageWindow
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.util.Locale
@@ -109,6 +110,19 @@ class UsageTimeTest {
         // From seven days the date, in full.
         assertEquals("October 8, 2026 14:30", words(at(8, 14, 30, month = 10), Locale.US, "today %1\$s"))
         assertEquals("2026년 10월 8일 14:30", words(at(8, 14, 30, month = 10), Locale.KOREAN, "오늘 %1\$s"))
+    }
+
+    @Test
+    fun windowNamesAreShortEnglish() {
+        assertEquals("5h", windowAbbrev(UsageWindow("primary", 3.0, minutes = 300)))
+        assertEquals("7d", windowAbbrev(UsageWindow("secondary", 20.0, minutes = 10_080)))
+        assertEquals("30d", windowAbbrev(UsageWindow("secondary", 20.0, minutes = 43_200)))
+        assertEquals("90m", windowAbbrev(UsageWindow("primary", 20.0, minutes = 90)))
+        // Claude Code's ids without a length, and the bridge's label first.
+        assertEquals("7d", windowAbbrev(UsageWindow("7d", 20.0)))
+        assertEquals("7d Opus", windowAbbrev(UsageWindow("7d_opus", 30.0, label = "7d Opus")))
+        // Unknown length: the id.
+        assertEquals("primary", windowAbbrev(UsageWindow("primary", 20.0)))
     }
 
     @Test

@@ -151,13 +151,7 @@ internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String)
                             overflow = TextOverflow.Ellipsis,
                         )
                     },
-                    time = {
-                        val at = now()
-                        val ago = remember(thread.newest.createdAt, at) {
-                            if (isJustNow(thread.newest.createdAt, at)) null else relativeTime(thread.newest.createdAt, at)
-                        }
-                        Text(ago ?: stringResource(R.string.time_just_now), maxLines = 1)
-                    },
+                    time = { AgoText(thread.newest.createdAt, now) },
                     subtitle = {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             ProviderBadge(thread.first.provider)
