@@ -437,8 +437,8 @@ private fun TransformingLazyColumnScope.askItems(ask: Ask, spec: TransformationS
             }
         }
         ask.status == AskStatus.DONE && answer != null -> item(key = "answer/${ask.id}") {
+            // Not clickable: TalkBack reads the answer without offering an action.
             Card(
-                onClick = {},
                 modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
                 transformation = SurfaceTransformation(spec),
                 // A card's content is gray by default; the answer is the screen's main text.

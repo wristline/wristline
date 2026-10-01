@@ -1,14 +1,12 @@
 package dev.wristline.watch.ui
 
 import android.text.format.DateFormat
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -33,6 +31,7 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.itemsIndexed
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
+import androidx.wear.compose.material3.Card
 import androidx.wear.compose.material3.CardDefaults
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
@@ -144,7 +143,8 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
                     WindowCard(
                         window,
                         now,
-                        Modifier.edgeTransform(this, spec).minimumVerticalContentPadding(top = 0.dp, bottom = bottom),
+                        Modifier.transformedHeight(this, spec).minimumVerticalContentPadding(top = 0.dp, bottom = bottom),
+                        SurfaceTransformation(spec),
                         fillDelayMs = if (ringsFilled) null else (firstRing + i) * RING_STAGGER_MS,
                         onFillStarted = { ringsFilled = true },
                     )
@@ -199,6 +199,7 @@ private fun WindowCard(
     window: UsageWindow,
     now: () -> Long,
     modifier: Modifier,
+    transformation: SurfaceTransformation,
     fillDelayMs: Long?,
     onFillStarted: () -> Unit,
 ) {
@@ -209,36 +210,29 @@ private fun WindowCard(
     val name = windowWords(window)
     val percent = window.usedPercent.roundToInt()
     val spoken = if (passed) name + ", " + stringResource(R.string.usage_reset_passed) else stringResource(R.string.limit_used, name, percent)
-    // A card's look without its click (a Card is always clickable): its color, shape and padding,
-    // shrinking and fading with the list as a whole (see [edgeTransform]).
-    Row(
-        modifier
-            .fillMaxWidth()
-            .background(CardDefaults.cardColors().containerColor, CardDefaults.shape)
-            .padding(CardDefaults.ContentPadding)
-            .semantics(mergeDescendants = true) {},
-        horizontalArrangement = Arrangement.spacedBy(USAGE_RING_GAP),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(USAGE_RING).clearAndSetSemantics { contentDescription = spoken }, contentAlignment = Alignment.Center) {
-            PercentRing(if (passed) 0.0 else window.usedPercent, Modifier.fillMaxSize(), fillDelayMs = fillDelayMs, onFillStarted = onFillStarted)
-            if (passed) {
-                Text("—", color = muted, style = MaterialTheme.typography.labelSmall)
-            } else {
-                Text("$percent%", style = MaterialTheme.typography.labelSmall)
+    // The Card without onClick: nothing for TalkBack to activate, read out as one.
+    Card(modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, transformation = transformation) {
+        Row(horizontalArrangement = Arrangement.spacedBy(USAGE_RING_GAP), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(USAGE_RING).clearAndSetSemantics { contentDescription = spoken }, contentAlignment = Alignment.Center) {
+                PercentRing(if (passed) 0.0 else window.usedPercent, Modifier.fillMaxSize(), fillDelayMs = fillDelayMs, onFillStarted = onFillStarted)
+                if (passed) {
+                    Text("—", color = muted, style = MaterialTheme.typography.labelSmall)
+                } else {
+                    Text("$percent%", style = MaterialTheme.typography.labelSmall)
+                }
             }
-        }
-        Column {
-            Text(
-                windowAbbrev(window),
-                Modifier.clearAndSetSemantics {},
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            when {
-                passed -> Text("Reset", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                resetsAt != null -> ResetTimes(resetsAt, now)
+            Column {
+                Text(
+                    windowAbbrev(window),
+                    Modifier.clearAndSetSemantics {},
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                when {
+                    passed -> Text("Reset", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    resetsAt != null -> ResetTimes(resetsAt, now)
+                }
             }
         }
     }
