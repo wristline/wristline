@@ -11,6 +11,21 @@ sealed interface AddressResult {
     data class Error(val reason: AddressError) : AddressResult
 }
 
+/*
+ * targetSdk 37 plan, local network permission (not done while targetSdk is 36; the manifest
+ * already declares it). https://developer.android.com/privacy-and-security/local-network-permission
+ * - Apps targeting Android 17 need the runtime permission ACCESS_LOCAL_NETWORK for any TCP
+ *   connection to a local network address, HTTPS included. Denied, a connection typically times
+ *   out: to the user it reads as Sent.Unreachable / Conn.Offline, with no hint why.
+ * - Request it only for a bridge that resolves to a local address: 10/8, 172.16/12, 192.168/16,
+ *   169.254/16, fc00::/7, fe80::/10, or a `.local` name. A public name (Tailscale Funnel) needs nothing.
+ * - Unknown: whether a tailnet address (100.64.0.0/10, the CGNAT range; fd7a:115c:a1e0::/48) counts
+ *   as local; the page lists no ranges. Test on an Android 17 watch with the permission denied
+ *   (docs/dev-setup.md, "targetSdk 37 체크리스트") and treat it as local until then.
+ * - Ask in the address step, before pairing, so the code screen never times out for it; on denial
+ *   show the reason with a link to the app's permission settings, as the notifications-off row does.
+ */
+
 /**
  * Turns what the user typed or dictated into the bridge base URL. A bare host gets `https://`;
  * `http://` is refused (the bridge is reached through HTTPS only); paths, queries and user info are

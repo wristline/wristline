@@ -11,6 +11,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <!-- One haptic tick when a request arrives while the app is open; notifications vibrate through their channel. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- targetSdk 37 (Android 17) makes every connection to a local network address, HTTPS included,
+         need this runtime permission (NEARBY_DEVICES group). Not enforced while targetSdk is 36, and
+         not requested yet: see the plan in data/Address.kt before bumping targetSdk.
+         https://developer.android.com/privacy-and-security/local-network-permission -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
     <!-- Read-aloud binds the system text-to-speech engine, which package visibility hides otherwise. -->
     <queries>

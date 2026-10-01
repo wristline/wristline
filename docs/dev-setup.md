@@ -144,6 +144,36 @@ adb exec-out screencap -p > shot.png
 adb shell cmd locale set-app-locales dev.wristline.watch --locales ko-KR
 ```
 
+### targetSdk 37 체크리스트
+
+`targetSdk` stays 36 for now. Before raising it to 37 (Android 17):
+
+- **Local network permission.** Apps targeting 37 need the runtime permission
+  `ACCESS_LOCAL_NETWORK` for every connection to a local network address, HTTPS included; denied,
+  a connection times out ([docs](https://developer.android.com/privacy-and-security/local-network-permission)).
+  The manifest declares it; the request is still to be built (plan in `data/Address.kt`). Check
+  whether a tailnet address (100.64.0.0/10) counts as local, which the docs do not say:
+
+  ```sh
+  # Wear OS 6 (Android 16): turn the enforcement on early, then reboot.
+  adb shell am compat enable RESTRICT_LOCAL_NETWORK dev.wristline.watch && adb reboot
+  # Android 17 with targetSdk 37: deny the permission, then pair with a LAN IP and with a 100.x address.
+  adb shell pm revoke dev.wristline.watch android.permission.ACCESS_LOCAL_NETWORK
+  adb shell am compat disable RESTRICT_LOCAL_NETWORK dev.wristline.watch   # undo
+  ```
+
+- **Background audio hardening.** Android 17 silences playback, fails audio focus and ignores
+  volume calls from the background without a while-in-use foreground service
+  ([docs](https://developer.android.com/about/versions/17/changes/bg-audio)). Read-aloud stops when
+  the app is left or the screen goes off; confirm nothing tries to play after that:
+
+  ```sh
+  adb shell cmd audio set-enable-hardening throw    # all apps, any targetSdk; failures throw
+  # start read-aloud on an answer, then press the side button or let the screen go off
+  adb logcat | grep AudioHardening                  # expect no line for dev.wristline.watch
+  adb shell cmd audio set-enable-hardening disable
+  ```
+
 ## 8. Wear OS emulator (optional)
 
 The emulator needs hardware acceleration through `/dev/kvm`. On this machine `/dev/kvm` exists
