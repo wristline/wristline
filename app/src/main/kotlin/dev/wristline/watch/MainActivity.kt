@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -20,11 +21,15 @@ import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Holder
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.normalizeAddress
+import dev.wristline.watch.ui.LocalScreenOn
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     /** Screen to open once, from a notification tap. */
     private var openRoute by mutableStateOf<String?>(null)
+
+    /** Off from the screen turning off (or dozing) until it turns on again; see [LocalScreenOn]. */
+    private var screenOn by mutableStateOf(true)
 
     /**
      * Some watches keep the activity resumed while the screen is off or dozing: turning off counts
@@ -34,10 +39,14 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 // Paused, the activity already went to the background in onPause.
-                Intent.ACTION_SCREEN_OFF ->
+                Intent.ACTION_SCREEN_OFF -> {
+                    screenOn = false
                     if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) Bridge.toBackground()
-                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT ->
+                }
+                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
+                    screenOn = true
                     if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) Bridge.foreground = true
+                }
             }
         }
     }
@@ -53,7 +62,11 @@ class MainActivity : ComponentActivity() {
         }
         ContextCompat.registerReceiver(this, screen, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
         if (savedInstanceState == null) handleIntent(intent)
-        setContent { App(openRoute = openRoute, onOpened = { openRoute = null }) }
+        setContent {
+            CompositionLocalProvider(LocalScreenOn provides screenOn) {
+                App(openRoute = openRoute, onOpened = { openRoute = null })
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
