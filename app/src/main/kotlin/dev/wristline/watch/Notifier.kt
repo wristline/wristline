@@ -300,6 +300,8 @@ object Notifier {
         val id = notificationId(key)
         val open = MainActivity.openIntent(context).putExtra(extra, key)
             .apply { sessionId?.let { putExtra(MainActivity.EXTRA_SESSION_ID, it) } }
+        // The request code keeps the PendingIntents of different notifications apart (extras do not count).
+        val openIntent = PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setColor(COLOR)
@@ -309,15 +311,16 @@ object Notifier {
             .setSubText(subText)
             // Done alerts carry up to about 500 characters; expanded on the watch they show in full.
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText ?: text))
-            // The request code keeps the PendingIntents of different notifications apart (extras do not count).
-            .setContentIntent(
-                PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT),
-            )
+            .setContentIntent(openIntent)
             .setAutoCancel(true)
             .setOnlyAlertOnce(alertOnce)
             .setSilent(silent)
             .apply { timeoutMs?.let(::setTimeoutAfter) }
+            // Open first, as the content action: on Wear OS a tap on the notification itself opens its
+            // session or request, without scrolling to an Open button. Allow and Deny follow.
+            .addAction(NotificationCompat.Action.Builder(R.drawable.ic_open, context.getString(R.string.notify_open), openIntent).build())
             .apply { actions.forEach(::addAction) }
+            .extend(NotificationCompat.WearableExtender().setContentAction(0).setHintContentIntentLaunchesActivity(true))
             .build()
         NotificationManagerCompat.from(context).notify(tag, id, notification)
         return true

@@ -205,6 +205,7 @@
     <string name="channel_updates">Task updates</string>
     <string name="channel_monitor">Background connection</string>
     <string name="notify_done">Finished</string>
+    <string name="notify_open">Open</string>
     <!-- A usage-limit alert's title: the agents' own English, in every locale. -->
     <string name="notify_limit" translatable="false">Usage limit reached</string>
     <string name="notify_answer_failed">Not sent. %1$s</string>
