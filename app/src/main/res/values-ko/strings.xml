@@ -26,7 +26,7 @@
     <string name="probe_not_bridge">이 주소에 Wristline 브릿지가 없습니다.</string>
     <string name="probe_unreachable">이 주소에 연결할 수 없습니다.</string>
     <string name="code_title">페어링 코드</string>
-    <string name="code_digit">%1$d번째 자리: %2$d</string>
+    <string name="code_digits">%1$d, %2$d번째 자리: %3$s</string>
     <string name="code_pair">페어링</string>
     <string name="token_use">토큰으로 연결</string>
     <string name="token_label">wristline-bridge pair --token으로 받은 토큰</string>

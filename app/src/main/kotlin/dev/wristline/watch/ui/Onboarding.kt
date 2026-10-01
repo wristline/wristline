@@ -303,7 +303,11 @@ private fun AddressStatus(state: AddressState) {
 
 // ---- pairing code ----
 
-private const val CODE_LENGTH = 6
+/** The six-digit code as three two-digit pickers: columns wide enough for a 48dp touch target. */
+private const val CODE_PAIRS = 3
+
+/** The code the pickers show, e.g. 1, 23, 0 → "012300". */
+internal fun pairingCode(pairs: List<Int>): String = pairs.joinToString("") { it.toString().padStart(2, '0') }
 
 /** Pairs with the bridge at [baseUrl]; the address is saved together with the token. */
 @Composable
@@ -325,10 +329,14 @@ internal fun CodeScreen(baseUrl: String, onPaired: () -> Unit) {
     }
 }
 
-/** Six 0–9 pickers; the selected one follows taps and receives rotary input. */
+/**
+ * Three 00–99 pickers; the selected one follows taps and receives rotary input. Six 0–9 pickers
+ * would be 30dp wide each at most, under the 48dp touch target; the pickers wrap around, so any
+ * two digits are at most 50 rotary steps away.
+ */
 @Composable
 internal fun CodeContent(busy: Boolean, error: String?, onSubmit: (String) -> Unit) {
-    val pickers = List(CODE_LENGTH) { rememberPickerState(initialNumberOfOptions = 10) }
+    val pickers = List(CODE_PAIRS) { rememberPickerState(initialNumberOfOptions = 100) }
     var selected by rememberSaveable { mutableIntStateOf(0) }
     val resources = LocalResources.current
     ScreenScaffold { contentPadding ->
@@ -356,7 +364,7 @@ internal fun CodeContent(busy: Boolean, error: String?, onSubmit: (String) -> Un
                 modifier = Modifier.padding(horizontal = 28.dp),
             )
             Spacer(Modifier.height(4.dp))
-            // No auto-centering: the six pickers fit on screen, and centering the selected one
+            // No auto-centering: the three pickers fit on screen, and centering the selected one
             // would push the row past the round edge.
             PickerGroup(
                 selectedPickerState = pickers[selected],
@@ -368,17 +376,19 @@ internal fun CodeContent(busy: Boolean, error: String?, onSubmit: (String) -> Un
                         pickerState = state,
                         selected = selected == index,
                         onSelected = { selected = index },
-                        modifier = Modifier.width(30.dp),
+                        modifier = Modifier.width(CODE_PICKER_WIDTH),
                         // Read lazily: selectedOptionIndex changes on every scroll frame.
-                        contentDescription = { resources.getString(R.string.code_digit, index + 1, state.selectedOptionIndex) },
+                        contentDescription = {
+                            resources.getString(R.string.code_digits, 2 * index + 1, 2 * index + 2, pairingCode(listOf(state.selectedOptionIndex)))
+                        },
                     ) { option, _ ->
-                        Text("$option", style = MaterialTheme.typography.numeralSmall)
+                        Text(pairingCode(listOf(option)), style = MaterialTheme.typography.numeralSmall)
                     }
                 }
             }
         }
         EdgeButton(
-            onClick = { onSubmit(pickers.joinToString("") { it.selectedOptionIndex.toString() }) },
+            onClick = { onSubmit(pairingCode(pickers.map { it.selectedOptionIndex })) },
             modifier = Modifier.align(Alignment.BottomCenter),
             buttonSize = EdgeButtonSize.Small,
             enabled = !busy,
@@ -387,6 +397,9 @@ internal fun CodeContent(busy: Boolean, error: String?, onSubmit: (String) -> Un
         }
     }
 }
+
+/** A pairing code picker: over the 48dp touch target, three still clear of the round edge. */
+private val CODE_PICKER_WIDTH = 56.dp
 
 /** Height of [EdgeButtonSize.Small]. */
 private val EDGE_BUTTON_SMALL_HEIGHT = 56.dp

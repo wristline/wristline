@@ -29,7 +29,7 @@
     <string name="probe_not_bridge">No Wristline bridge at this address.</string>
     <string name="probe_unreachable">Can\'t reach this address.</string>
     <string name="code_title">Pairing code</string>
-    <string name="code_digit">Digit %1$d: %2$d</string>
+    <string name="code_digits">Digits %1$d and %2$d: %3$s</string>
     <string name="code_pair">Pair</string>
     <string name="token_use">Use a token instead</string>
     <string name="token_label">Token from wristline-bridge pair --token</string>
