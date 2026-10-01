@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launch screen (Wear app quality WO-V15): the launcher icon on black. The adaptive icon is
+         masked to a circle as on the launcher, so it needs no icon background (that is for
+         non-round icons). installSplashScreen() switches to the app's theme for the first frame. -->
+    <style name="Theme.Wristline.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/black</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@android:style/Theme.DeviceDefault</item>
+    </style>
+</resources>

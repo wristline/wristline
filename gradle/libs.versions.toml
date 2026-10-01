@@ -4,6 +4,7 @@ kotlin = "2.4.20"
 composeBom = "2026.09.00"
 wearCompose = "1.7.0"
 activityCompose = "1.13.0"
+coreSplashscreen = "1.2.0"
 wearOngoing = "1.1.0"
 wearInput = "1.2.0"
 wearToolingPreview = "1.0.0"
@@ -14,6 +15,7 @@ junit = "4.13.2"
 [libraries]
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
 androidx-wear-compose-material3 = { group = "androidx.wear.compose", name = "compose-material3", version.ref = "wearCompose" }
 androidx-wear-compose-foundation = { group = "androidx.wear.compose", name = "compose-foundation", version.ref = "wearCompose" }
 androidx-wear-compose-navigation = { group = "androidx.wear.compose", name = "compose-navigation", version.ref = "wearCompose" }

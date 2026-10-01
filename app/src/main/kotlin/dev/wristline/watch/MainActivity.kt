@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import dev.wristline.watch.data.AddressResult
@@ -42,6 +43,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before super.onCreate: the launch theme gives way to the app's (see themes.xml).
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         Bridge.init(this)
         val filter = IntentFilter(Intent.ACTION_SCREEN_OFF).apply {
