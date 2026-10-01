@@ -99,6 +99,7 @@
         <item quantity="one">%d minute</item>
         <item quantity="other">%d minutes</item>
     </plurals>
+    <string name="duration_under_minute">less than a minute</string>
 
     <!-- Session detail -->
     <string name="detail_earlier">Earlier</string>
@@ -149,7 +150,7 @@
     <string name="ask_again">Ask again</string>
     <string name="ask_other_claude">Ask Claude</string>
     <string name="ask_other_codex">Ask Codex</string>
-    <string name="ask_took">%1$s s</string>
+    <string name="ask_took">%1$s seconds</string>
     <string name="ask_gone">This answer is no longer on the bridge.</string>
     <string name="ask_history_title">Recent questions</string>
     <string name="ask_history_empty">No questions yet.</string>

@@ -1,5 +1,6 @@
 package dev.wristline.watch.ui
 
+import android.text.format.DateFormat
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -51,6 +52,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -115,7 +117,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -724,28 +725,43 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
 }
 
 /**
- * An item's time in the locale's short form (`4:52 PM`, `오후 4:52`), after its `M/d` date when it
- * is not from [today]; null when [iso] does not parse.
+ * An item's time, after its `M/d` date when it is not from [today]: on screen (no [locale]) in
+ * English whatever the language, as the reset clocks ([clockText]: `16:52`, `4:52 PM`); for
+ * TalkBack in [locale] ([clockWords]: `오후 4:52`). In 24 hours when [is24Hour]. Null when [iso]
+ * does not parse.
  */
 internal fun itemTime(
     iso: String,
-    locale: Locale,
+    is24Hour: Boolean,
+    locale: Locale? = null,
     zone: ZoneId = ZoneId.systemDefault(),
     today: LocalDate = LocalDate.now(zone),
 ): String? {
     val millis = isoToMillis(iso) ?: return null
     val time = Instant.ofEpochMilli(millis).atZone(zone)
-    val clock = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(time)
+    val clock = if (locale == null) clockText(time, is24Hour) else clockWords(time, locale, is24Hour)
     if (time.toLocalDate() == today) return clock
-    return DateTimeFormatter.ofPattern("M/d", locale).format(time) + " " + clock
+    return DateTimeFormatter.ofPattern("M/d", locale ?: Locale.US).format(time) + " " + clock
 }
 
-/** An item's time as a small muted caption; formatted once per item, nothing when it does not parse. */
+/**
+ * An item's time as a small muted caption, read out in the watch's language; formatted once per
+ * item (a change of the 12/24-hour setting shows from the screen's next visit), nothing when it
+ * does not parse.
+ */
 @Composable
 private fun ItemTime(ts: String) {
     val locale = LocalConfiguration.current.locales[0]
-    val time = remember(ts, locale) { itemTime(ts, locale) } ?: return
-    Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
+    val time = remember(ts, is24Hour) { itemTime(ts, is24Hour) } ?: return
+    val spoken = remember(ts, is24Hour, locale) { itemTime(ts, is24Hour, locale) } ?: time
+    Text(
+        time,
+        Modifier.semantics { contentDescription = spoken },
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+    )
 }
 
 /** The start of a long message, enough to fill the collapsed lines and end in an ellipsis. */

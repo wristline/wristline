@@ -153,7 +153,10 @@ fun Modifier.pressScale(depth: State<Float>): Modifier = graphicsLayer {
     scaleY = scale
 }
 
-/** Wall-clock time refreshed every [periodMs] while the screen is at least STARTED. */
+/**
+ * Wall-clock time refreshed on every wall-clock [periodMs] boundary (each minute at :00, as the
+ * system clock turns) while the screen is at least STARTED.
+ */
 @Composable
 fun rememberNow(periodMs: Long = 60_000): Long = rememberNowState(periodMs).value
 
@@ -166,7 +169,9 @@ fun rememberNowState(periodMs: Long = 60_000): State<Long> {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 now.longValue = System.currentTimeMillis()
-                delay(periodMs)
+                // To the next boundary, not a period from the screen's start: a reset at 14:30 shows
+                // as passed when the status bar's clock turns 14:30, not up to a minute later.
+                delay(periodMs - System.currentTimeMillis() % periodMs)
             }
         }
     }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -18,6 +19,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -155,12 +158,20 @@ internal fun AskHistoryContent(asks: List<Ask>, now: () -> Long, onAsk: (String)
                     subtitle = {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                             ProviderBadge(thread.first.provider)
-                            val summary = if (thread.count > 1) {
-                                pluralStringResource(R.plurals.ask_thread_count, thread.count, thread.count)
+                            if (thread.count > 1) {
+                                // A bubble and the count in every language, read out in the watch's (`2 questions`, `질문 2개`).
+                                val spoken = pluralStringResource(R.plurals.ask_thread_count, thread.count, thread.count)
+                                Row(
+                                    Modifier.clearAndSetSemantics { contentDescription = spoken },
+                                    horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(painterResource(R.drawable.ic_chat), null, Modifier.size(LIMIT_GLYPH))
+                                    Text("${thread.count}", maxLines = 1)
+                                }
                             } else {
-                                askSummary(thread.newest)
+                                Text(askSummary(thread.newest), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            Text(summary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                     },
                 )

@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -448,7 +449,11 @@ private fun TransformingLazyColumnScope.askItems(ask: Ask, spec: TransformationS
     }
     val took = ask.durationMs
     if (took != null) {
-        item(key = "took/${ask.id}") { CaptionText(stringResource(R.string.ask_took, askSeconds(took)), Modifier.edgeTransform(this, spec)) }
+        item(key = "took/${ask.id}") {
+            // `2.9s` in every language, read out in the watch's (`2.9 seconds`, `2.9초`).
+            val spoken = stringResource(R.string.ask_took, askSeconds(took))
+            CaptionText("${askSeconds(took)}s", Modifier.edgeTransform(this, spec).semantics { contentDescription = spoken })
+        }
     }
 }
 

@@ -263,12 +263,20 @@ private fun ResetTimes(resetsAt: Long, now: () -> Long) {
 /**
  * Usage entries in the order the app shows them (the limit card's lines too): by provider, and
  * within one first the entry without an account or of the account labelled as the default (`기본`,
- * `default`, as `accounts add --label` names the bridge's primary home), then the others by label.
- * The bridge's own order follows which of its homes reported first, and a `usage` event for a new
- * entry adds it at the end.
+ * `default`, as `accounts add --label` names the bridge's primary home), then the others by label
+ * in any case, then by account id: the same entries are always in the same order. The bridge's own
+ * order follows which of its homes reported first, and a `usage` event for a new entry adds it at
+ * the end.
  */
 internal fun usageOrder(usage: List<Usage>): List<Usage> =
-    usage.sortedWith(compareBy({ it.provider }, { if (isDefaultAccount(it.account)) 0 else 1 }, { it.account?.label }))
+    usage.sortedWith(
+        compareBy(
+            { it.provider },
+            { if (isDefaultAccount(it.account)) 0 else 1 },
+            { it.account?.label?.lowercase(Locale.ROOT) },
+            { it.account?.id },
+        ),
+    )
 
 private val DEFAULT_LABELS = setOf("기본", "default")
 
@@ -302,19 +310,25 @@ private val MONTH_DAY = DateTimeFormatter.ofPattern("M/d", Locale.US)
 private fun daysFrom(now: Long, time: ZonedDateTime): Long =
     ChronoUnit.DAYS.between(Instant.ofEpochMilli(now).atZone(time.zone).toLocalDate(), time.toLocalDate())
 
+/** [time]'s clock in English whatever the language: `14:30` when [is24Hour], else `2:30 PM`, or with [compact] `2:30p`. */
+internal fun clockText(time: ZonedDateTime, is24Hour: Boolean, compact: Boolean = false): String = when {
+    is24Hour -> CLOCK_24.format(time)
+    compact -> CLOCK_12_DIGITS.format(time) + if (time.hour < 12) "a" else "p"
+    else -> CLOCK_12.format(time)
+}
+
+/** [clockText] for TalkBack: `14:30` when [is24Hour], else the 12-hour time of [locale] (`2:30 PM`, `오후 2:30`). */
+internal fun clockWords(time: ZonedDateTime, locale: Locale, is24Hour: Boolean): String =
+    if (is24Hour) CLOCK_24.format(time) else DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(time)
+
 /**
  * The clock time [resetsAt] falls on in [zone], as of [now], in English whatever the language: the
  * time alone today (`14:30`), with the weekday within the next six days (`Fri 14:30`), with the
- * date from seven (`10/8 14:30`; the weekday would name today's). In 24 hours when [is24Hour], else
- * `2:30 PM`, or with [compact] `2:30p`.
+ * date from seven (`10/8 14:30`; the weekday would name today's). The clock as [clockText].
  */
 internal fun resetClockText(resetsAt: Long, now: Long, zone: ZoneId, is24Hour: Boolean, compact: Boolean = false): String {
     val time = Instant.ofEpochMilli(resetsAt).atZone(zone)
-    val clock = when {
-        is24Hour -> CLOCK_24.format(time)
-        compact -> CLOCK_12_DIGITS.format(time) + if (time.hour < 12) "a" else "p"
-        else -> CLOCK_12.format(time)
-    }
+    val clock = clockText(time, is24Hour, compact)
     return when (daysFrom(now, time)) {
         0L -> clock
         in 1L..6L -> WEEKDAY.format(time) + " " + clock
@@ -329,7 +343,7 @@ internal fun resetClockText(resetsAt: Long, now: Long, zone: ZoneId, is24Hour: B
  */
 internal fun resetClockWords(resetsAt: Long, now: Long, zone: ZoneId, locale: Locale, is24Hour: Boolean, today: String): String {
     val time = Instant.ofEpochMilli(resetsAt).atZone(zone)
-    val clock = if (is24Hour) CLOCK_24.format(time) else DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(time)
+    val clock = clockWords(time, locale, is24Hour)
     return when (daysFrom(now, time)) {
         0L -> today.format(clock)
         in 1L..6L -> time.dayOfWeek.getDisplayName(TextStyle.FULL, locale) + " " + clock
@@ -359,13 +373,24 @@ internal fun windowAbbrev(window: UsageWindow): String {
 }
 
 /**
- * A window's name read out: its length in words ([windowLabel]) unless the bridge's label says more
- * than the length (`7d Opus`, `Spend`).
+ * A window's name read out: its length in words ([windowLabel]) and what the bridge's label adds
+ * to the length (`7d Opus` is `Weekly limit Opus`, `주간 한도 Opus`); a label that does not start
+ * with the length (`Spend`) as it is.
  */
 @Composable
 private fun windowWords(window: UsageWindow): String {
-    val label = window.label
-    return if (label != null && label != windowAbbrev(window.copy(label = null))) label else windowLabel(window)
+    val rest = labelAfterLength(window) ?: return window.label.orEmpty()
+    return windowLabel(window) + rest
+}
+
+/**
+ * What a window's label says after its length ([windowAbbrev] without the label): ` Opus` of
+ * `7d Opus`, empty for `7d` or without a label; null for a label that does not start with it.
+ */
+internal fun labelAfterLength(window: UsageWindow): String? {
+    val label = window.label ?: return ""
+    val length = windowAbbrev(window.copy(label = null))
+    return if (label.startsWith(length)) label.removePrefix(length) else null
 }
 
 /** A window's length in words, for TalkBack: `5-hour limit`, `Weekly limit`; its id when unknown. */

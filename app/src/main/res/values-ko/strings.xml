@@ -90,6 +90,7 @@
     <plurals name="duration_minutes">
         <item quantity="other">%d분</item>
     </plurals>
+    <string name="duration_under_minute">1분 미만</string>
 
     <!-- Session detail -->
     <string name="detail_earlier">이전 항목</string>

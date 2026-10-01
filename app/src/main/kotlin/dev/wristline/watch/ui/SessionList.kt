@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +34,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
@@ -67,6 +69,8 @@ import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
 import dev.wristline.watch.data.isoToMillis
+import java.text.BreakIterator
+import java.text.Normalizer
 import java.time.ZoneId
 import kotlin.math.roundToInt
 
@@ -83,8 +87,9 @@ internal val LIMIT_GLYPH_GAP = 3.dp
 private val LIMIT_GROUP_GAP = 6.dp
 private val LIMIT_LINE_GAP = 2.dp
 
-/** The account mark on a [SMALL_BADGE] badge (see [BadgeWithMark]), and the ring around it in the card's color. */
-private val MARK = 8.dp
+/** The account mark on a [SMALL_BADGE] badge (see [BadgeWithMark]), its letter, and the ring around it in the card's color. */
+private val MARK = 9.dp
+private val MARK_LETTER = 7.dp
 private val MARK_RING = 1.dp
 
 /**
@@ -291,10 +296,15 @@ internal fun limitLines(usage: List<Usage>, sessions: List<Session>): List<Limit
     }
 }
 
-/** The mark of an account on its provider's badge: its label's first character, as given. */
+/**
+ * The mark of an account on its provider's badge: its label's first character as a person sees it,
+ * as given: a whole syllable of a decomposed (NFD) Hangul label, a whole emoji or flag.
+ */
 internal fun accountMark(label: String): String {
-    val trimmed = label.trim()
-    return if (trimmed.isEmpty()) "" else trimmed.substring(0, trimmed.offsetByCodePoints(0, 1))
+    val text = Normalizer.normalize(label.trim(), Normalizer.Form.NFC)
+    if (text.isEmpty()) return ""
+    val characters = BreakIterator.getCharacterInstance().apply { setText(text) }
+    return text.substring(0, characters.next())
 }
 
 /**
@@ -330,6 +340,8 @@ internal fun minutesLeft(resetsAt: Long, now: Long): Long = ((resetsAt - now) / 
  * The limit card's [lines] as a table: each group starts at the same place on every line, the
  * widest of a column setting its width; a column no line uses (no reset times) takes no room. The
  * reset clocks are the full ones unless those make the table wider than the card, then the compact.
+ * Wider than the card even so (a small watch, a large font), the table is scaled down to fit: a
+ * line never wraps nor loses its end under the card's edge.
  */
 @Composable
 private fun LimitTable(lines: List<LimitLine>, now: () -> Long, modifier: Modifier = Modifier) {
@@ -346,10 +358,26 @@ private fun LimitTable(lines: List<LimitLine>, now: () -> Long, modifier: Modifi
         val starts = starts(widths)
         val heights = rows.map { row -> columns.maxOf { row[it].height } }
         val height = heights.sum() + lineGap * (rows.size - 1)
-        layout(constraints.constrainWidth(width(widths)), constraints.constrainHeight(height)) {
+        val natural = width(widths)
+        val scale = if (natural > constraints.maxWidth) constraints.maxWidth / natural.toFloat() else 1f
+        layout(constraints.constrainWidth((natural * scale).roundToInt()), constraints.constrainHeight((height * scale).roundToInt())) {
+            // Scaled from the cell's start, so a cell mirrored in right-to-left stays in its column.
+            val origin = TransformOrigin(if (layoutDirection == LayoutDirection.Rtl) 1f else 0f, 0f)
             var y = 0
             rows.forEachIndexed { i, row ->
-                columns.forEachIndexed { column, cell -> row[cell].placeRelative(starts[column], y + (heights[i] - row[cell].height) / 2) }
+                columns.forEachIndexed { column, cell ->
+                    val x = starts[column]
+                    val top = y + (heights[i] - row[cell].height) / 2
+                    if (scale == 1f) {
+                        row[cell].placeRelative(x, top)
+                    } else {
+                        row[cell].placeRelativeWithLayer((x * scale).roundToInt(), (top * scale).roundToInt()) {
+                            scaleX = scale
+                            scaleY = scale
+                            transformOrigin = origin
+                        }
+                    }
+                }
                 y += heights[i] + lineGap
             }
         }
@@ -372,14 +400,17 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
     val style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
     val line by remember(limit, now) { derivedStateOf { currentLine(limit, now()) } }
     val resetsAt = line.resetsAt
-    val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
+    val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     val today = stringResource(R.string.limit_today)
-    val clock by remember(resetsAt, now, is24Hour, locale, today) {
+    val clock by remember(resetsAt, now, context, locale, today) {
         derivedStateOf {
             resetsAt?.let {
                 val at = now()
                 val zone = ZoneId.systemDefault()
+                // Read on each tick: a change of the 12/24-hour setting is no configuration change,
+                // and the card is not recomposed for it.
+                val is24Hour = DateFormat.is24HourFormat(context)
                 ResetClock(
                     resetClockText(it, at, zone, is24Hour),
                     resetClockText(it, at, zone, is24Hour, compact = true),
@@ -428,7 +459,7 @@ private fun BadgeWithMark(provider: String, mark: String?) {
         if (mark != null) {
             // Sized in dp, as the badge's letter: in sp a large font scale would overflow the disc.
             val letterStyle = with(LocalDensity.current) {
-                MaterialTheme.typography.labelSmall.copy(fontSize = (MARK * 0.8f).toSp(), lineHeight = MARK.toSp(), fontWeight = FontWeight.Bold)
+                MaterialTheme.typography.labelSmall.copy(fontSize = MARK_LETTER.toSp(), lineHeight = MARK.toSp(), fontWeight = FontWeight.Bold)
             }
             Box(
                 Modifier
@@ -460,7 +491,7 @@ private fun limitDescription(line: LimitLine, clock: String?): String {
 
 /**
  * [minutes] in words, as the Usage screen shows it ([remainingIn]): `3 days 4 hours`, `3 days`
- * from a day, else `2 hours 13 minutes`, `2 hours`, `13 minutes`.
+ * from a day, else `2 hours 13 minutes`, `2 hours`, `13 minutes`; under a minute `less than a minute`.
  */
 @Composable
 internal fun durationWords(minutes: Long): String {
@@ -475,7 +506,8 @@ internal fun durationWords(minutes: Long): String {
         hours > 0 && rest > 0 ->
             pluralStringResource(R.plurals.duration_hours, hours, hours) + " " + pluralStringResource(R.plurals.duration_minutes, rest, rest)
         hours > 0 -> pluralStringResource(R.plurals.duration_hours, hours, hours)
-        else -> pluralStringResource(R.plurals.duration_minutes, rest, rest)
+        rest > 0 -> pluralStringResource(R.plurals.duration_minutes, rest, rest)
+        else -> stringResource(R.string.duration_under_minute)
     }
 }
 

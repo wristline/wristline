@@ -6,6 +6,7 @@ import java.time.ZonedDateTime
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -123,6 +124,16 @@ class UsageTimeTest {
         assertEquals("7d Opus", windowAbbrev(UsageWindow("7d_opus", 30.0, label = "7d Opus")))
         // Unknown length: the id.
         assertEquals("primary", windowAbbrev(UsageWindow("primary", 20.0)))
+    }
+
+    @Test
+    fun spokenWindowNamesKeepWhatTheLabelAddsToTheLength() {
+        // `7d Opus` is read as the weekly limit's words and ` Opus`; a plain length as the words alone.
+        assertEquals(" Opus", labelAfterLength(UsageWindow("7d_opus", 30.0, minutes = 10_080, label = "7d Opus")))
+        assertEquals("", labelAfterLength(UsageWindow("5h", 42.0, minutes = 300, label = "5h")))
+        assertEquals("", labelAfterLength(UsageWindow("primary", 3.0, minutes = 300)))
+        // A label that is not a length is read as it is.
+        assertNull(labelAfterLength(UsageWindow("spend", 12.0, label = "Spend")))
     }
 
     @Test

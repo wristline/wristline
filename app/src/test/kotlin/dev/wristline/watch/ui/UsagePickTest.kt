@@ -7,6 +7,8 @@ import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
 import dev.wristline.watch.data.isoToMillis
+import java.text.Normalizer
+import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -48,10 +50,24 @@ class UsagePickTest {
         val zed = Account("z", "zed")
         val alpha = Account("a", "alpha")
         val order = usageOrder(listOf(codex(zed, 1.0), codex(pro, 1.0), claude(me, 1.0, 1.0), codex(basic, 1.0), codex(alpha, 1.0)))
-        assertEquals(listOf("me@gmail.com", "기본", "Pro", "alpha", "zed"), order.map { it.account?.label })
+        // The labels in any case.
+        assertEquals(listOf("me@gmail.com", "기본", "alpha", "Pro", "zed"), order.map { it.account?.label })
         // `default` in any case is the default too; an entry without an account comes first.
         val english = usageOrder(listOf(codex(pro, 1.0), codex(Account("d", "Default"), 1.0), codex(null, 1.0)))
         assertEquals(listOf(null, "Default", "Pro"), english.map { it.account?.label })
+    }
+
+    @Test
+    fun usageOrderIsTheSameWhateverOrderTheBridgeSentIn() {
+        // Two defaults, and two accounts with the same label: the account id settles it.
+        val entries = listOf(
+            codex(null, 1.0), codex(basic, 1.0), codex(Account("b", "default"), 1.0),
+            codex(Account("pro-2", "Pro"), 1.0), codex(Account("pro-1", "pro"), 1.0), codex(pro, 1.0),
+        )
+        val expected = listOf(null, "b", "chatgpt-basic", "chatgpt-pro", "pro-1", "pro-2")
+        for (seed in 0 until 20) {
+            assertEquals(expected, usageOrder(entries.shuffled(Random(seed))).map { it.account?.id })
+        }
     }
 
     @Test
@@ -64,6 +80,18 @@ class UsagePickTest {
         assertEquals("p", accountMark(" personal"))
         assertEquals("\uD83D\uDE80", accountMark("\uD83D\uDE80 rocket"))
         assertEquals("", accountMark(" "))
+    }
+
+    @Test
+    fun accountMarkIsTheFirstCharacterAsAPersonSeesIt() {
+        // A decomposed (NFD) label, as pasted from macOS: the syllable, not its first jamo.
+        val nfd = Normalizer.normalize("기본", Normalizer.Form.NFD)
+        assertEquals(5, nfd.length)
+        assertEquals("기", accountMark(nfd))
+        // An emoji with a skin tone, a ZWJ sequence and a flag: whole.
+        assertEquals("\uD83D\uDC4D\uD83C\uDFFD", accountMark("\uD83D\uDC4D\uD83C\uDFFD ok"))
+        assertEquals("\uD83D\uDC69\u200D\uD83D\uDCBB", accountMark("\uD83D\uDC69\u200D\uD83D\uDCBB work"))
+        assertEquals("\uD83C\uDDF0\uD83C\uDDF7", accountMark("\uD83C\uDDF0\uD83C\uDDF7 kr"))
     }
 
     @Test

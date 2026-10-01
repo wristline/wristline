@@ -22,6 +22,7 @@ import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
 import java.time.Instant
+import java.util.TimeZone
 
 // Debug-only previews for the round 454 px LARGE_ROUND device (closest preset to the 480 px
 // Galaxy Watch Ultra). Screens take plain data here; nothing touches Bridge.
@@ -135,10 +136,10 @@ private val accountUsage = listOf(
     usage[1].copy(account = codexSchool),
 )
 
-// The Usage screen's rows: the list's accounts in full. Claude's Opus window has no reset time; Codex
-// 기본's 30-day secondary reset two minutes ago.
+// The Usage screen's rows: the list's accounts in full. Claude's Opus window (weekly, as the bridge
+// sends it) has no reset time; Codex 기본's 30-day secondary reset two minutes ago.
 private val detailUsage = listOf(
-    listUsage[0].copy(windows = listUsage[0].windows + UsageWindow("7d_opus", 30.0, label = "7d Opus")),
+    listUsage[0].copy(windows = listUsage[0].windows + UsageWindow("7d_opus", 30.0, minutes = 10_080, label = "7d Opus")),
     listUsage[1],
     listUsage[2].copy(windows = listUsage[2].windows + UsageWindow("secondary", 100.0, "2026-09-29T12:58:00Z", 43_200)),
 )
@@ -183,6 +184,9 @@ private val thread = listOf(
 
 @Composable
 private fun Frame(content: @Composable () -> Unit) {
+    // The data's times and [now] are in UTC and the clocks use the device's zone: in UTC the
+    // previews show the days they name (Claude resets today at 16:40) wherever they are rendered.
+    TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
     WristlineTheme { AppScaffold { content() } }
 }
 
@@ -245,7 +249,18 @@ private fun SessionListLimitsFullKoPreview() = Frame {
     )
 }
 
-// Sessions but no usage yet: a dash for each percentage, no countdowns; the provider without its
+// On a small watch with a large font even the compact lines are wider than the card: the table is
+// scaled down to fit, not cut off.
+@Preview(device = WearDevices.SMALL_ROUND, showSystemUi = true, fontScale = 1.15f)
+@Composable
+private fun SessionListLimitsFullSmallPreview() = Frame {
+    SessionListContent(
+        Conn.Online, fullSessions, emptyList(), fullUsage, { now },
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+// Sessions but no usage yet: a dash for each percentage, no reset clocks; the provider without its
 // own badge gets a line too.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
