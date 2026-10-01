@@ -8,10 +8,15 @@ import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import dev.wristline.watch.data.Decision
+import dev.wristline.watch.data.PERMISSION_QUESTION
 import dev.wristline.watch.data.PendingRequest
+import dev.wristline.watch.data.RequestKind
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.ui.basename
+import dev.wristline.watch.ui.errorRes
+import dev.wristline.watch.ui.permissionQuestion
 
 /**
  * Notification id for a request or session id. String.hashCode is specified by the Java API, so
@@ -19,6 +24,33 @@ import dev.wristline.watch.ui.basename
  * cancelled after a restart.
  */
 internal fun notificationId(key: String): Int = key.hashCode()
+
+/** Characters of a request's question its notification shows. */
+internal const val NOTIFY_TEXT_MAX = 400
+
+/** [text] cut to at most [max] characters, ending in "…" when cut, never between a surrogate pair. */
+internal fun clipText(text: String, max: Int): String {
+    if (text.length <= max) return text
+    var end = max - 1
+    if (Character.isHighSurrogate(text[end - 1])) end--
+    return text.substring(0, end) + "…"
+}
+
+/**
+ * The decisions a request's notification offers as actions, in order: Allow only when the
+ * notification shows the whole command on one line (what is approved must be what was read), and
+ * when the bridge did not clip it either ("…" at the end); Deny whenever the question has it.
+ * Never Always: a lasting rule wants the full screen. None for questions, which need choices.
+ */
+internal fun notificationDecisions(request: PendingRequest): List<String> {
+    if (request.kind != RequestKind.PERMISSION) return emptyList()
+    val question = request.permissionQuestion() ?: return emptyList()
+    if (question.multi) return emptyList()
+    val ids = question.options.map { it.id }
+    val text = question.text
+    val whole = text.isNotBlank() && text.length <= NOTIFY_TEXT_MAX && !text.endsWith('…') && text.lines().size == 1
+    return listOfNotNull(Decision.ALLOW.takeIf { whole && it in ids }, Decision.DENY.takeIf { it in ids })
+}
 
 /**
  * Notifications for requests and alerts; while the user looks at the app a haptic plays instead
@@ -74,11 +106,50 @@ object Notifier {
 
     /** True when posted (false without the notification permission); likewise below. */
     fun request(context: Context, request: PendingRequest, session: Session?): Boolean =
-        post(
+        request(context, request, sessionTitle(context, session))
+
+    /**
+     * The request's question (clipped to [NOTIFY_TEXT_MAX]) under its title, the session as the
+     * sub text, and the [notificationDecisions] as actions ([NotificationActionReceiver]). [error]
+     * is an action's error code: posted again, the notification says it was not sent. Re-posting
+     * does not alert again (alert once).
+     */
+    internal fun request(context: Context, request: PendingRequest, sessionTitle: String, error: String? = null): Boolean {
+        val question = request.permissionQuestion()?.text.orEmpty()
+        val body = clipText(question, NOTIFY_TEXT_MAX).ifBlank { sessionTitle }
+        val failed = error?.let {
+            val message = errorRes(it)?.let(context::getString) ?: context.getString(R.string.error_generic, it)
+            context.getString(R.string.notify_answer_failed, message)
+        }
+        return post(
             context, TAG_REQUEST, request.id, CHANNEL_REQUESTS, MainActivity.EXTRA_REQUEST_ID,
             title = request.title.ifBlank { context.getString(R.string.status_needs_input) },
-            text = sessionTitle(context, session),
+            text = listOfNotNull(failed, body).joinToString("\n"),
+            subText = sessionTitle.takeIf { question.isNotBlank() },
+            actions = notificationDecisions(request).map { decisionAction(context, request, it, sessionTitle) },
         )
+    }
+
+    /**
+     * Answers without opening the app. Authentication: a locked watch asks to unlock first. No UI:
+     * the receiver answers in the background, and Wear OS is told the tap opens nothing.
+     */
+    private fun decisionAction(context: Context, request: PendingRequest, decision: String, sessionTitle: String): NotificationCompat.Action {
+        val question = request.permissionQuestion()?.id ?: PERMISSION_QUESTION
+        val intent = NotificationActionReceiver.intent(context, request, question, decision, sessionTitle)
+        // The intent's data is unique per request and decision, so the PendingIntents stay apart.
+        val pending = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val allow = decision == Decision.ALLOW
+        return NotificationCompat.Action.Builder(
+            if (allow) R.drawable.ic_check else R.drawable.ic_block,
+            context.getString(if (allow) R.string.decision_allow else R.string.decision_deny),
+            pending,
+        )
+            .setAuthenticationRequired(true)
+            .setShowsUserInterface(false)
+            .extend(NotificationCompat.Action.WearableExtender().setHintLaunchesActivity(false))
+            .build()
+    }
 
     /** The agent waits for input that is not a PendingRequest (e.g. a dialog only the terminal shows). */
     fun needsInput(context: Context, sessionId: String, text: String?, session: Session?): Boolean =
@@ -163,6 +234,8 @@ object Notifier {
         title: String,
         text: String,
         alertOnce: Boolean = true,
+        subText: String? = null,
+        actions: List<NotificationCompat.Action> = emptyList(),
     ): Boolean {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         val id = notificationId(key)
@@ -171,6 +244,7 @@ object Notifier {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(text)
+            .setSubText(subText)
             // Done alerts carry up to about 500 characters; expanded on the watch they show in full.
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             // The request code keeps the PendingIntents of different notifications apart (extras do not count).
@@ -179,6 +253,7 @@ object Notifier {
             )
             .setAutoCancel(true)
             .setOnlyAlertOnce(alertOnce)
+            .apply { actions.forEach(::addAction) }
             .build()
         NotificationManagerCompat.from(context).notify(tag, id, notification)
         return true

@@ -350,29 +350,32 @@ fun SmallSpinner(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun errorMessage(code: String): String = when (code) {
-    "unreachable" -> stringResource(R.string.error_unreachable)
-    "invalid_code" -> stringResource(R.string.error_invalid_code)
-    "rate_limited" -> stringResource(R.string.error_rate_limited)
-    "incompatible" -> stringResource(R.string.error_incompatible)
-    "unauthorized" -> stringResource(R.string.error_unauthorized)
-    "already_resolved" -> stringResource(R.string.error_already_resolved)
-    "payload_too_large" -> stringResource(R.string.error_too_long)
-    "bad_request" -> stringResource(R.string.error_bad_request)
+fun errorMessage(code: String): String = errorRes(code)?.let { stringResource(it) } ?: stringResource(R.string.error_generic, code)
+
+/** The message for an error [code]; null for a code without its own, shown as [R.string.error_generic]. Also used by notifications. */
+internal fun errorRes(code: String): Int? = when (code) {
+    "unreachable" -> R.string.error_unreachable
+    "invalid_code" -> R.string.error_invalid_code
+    "rate_limited" -> R.string.error_rate_limited
+    "incompatible" -> R.string.error_incompatible
+    "unauthorized" -> R.string.error_unauthorized
+    "already_resolved" -> R.string.error_already_resolved
+    "payload_too_large" -> R.string.error_too_long
+    "bad_request" -> R.string.error_bad_request
     // A prompt to a session the bridge no longer has (pairing maps it to its own message).
-    "not_found" -> stringResource(R.string.detail_gone)
-    "not_live" -> stringResource(R.string.block_not_live)
-    "no_tmux" -> stringResource(R.string.block_no_tmux)
-    "awaiting_input" -> stringResource(R.string.block_awaiting_input)
-    "busy" -> stringResource(R.string.block_busy)
-    "unsupported" -> stringResource(R.string.block_unsupported)
-    "unsafe_prefix" -> stringResource(R.string.block_unsafe_prefix)
+    "not_found" -> R.string.detail_gone
+    "not_live" -> R.string.block_not_live
+    "no_tmux" -> R.string.block_no_tmux
+    "awaiting_input" -> R.string.block_awaiting_input
+    "busy" -> R.string.block_busy
+    "unsupported" -> R.string.block_unsupported
+    "unsafe_prefix" -> R.string.block_unsafe_prefix
     // Quick Ask
-    "ask_unavailable" -> stringResource(R.string.error_ask_unavailable)
-    "timeout" -> stringResource(R.string.error_timeout)
-    "cancelled" -> stringResource(R.string.error_cancelled)
-    "bad_output" -> stringResource(R.string.error_bad_output)
-    else -> stringResource(R.string.error_generic, code)
+    "ask_unavailable" -> R.string.error_ask_unavailable
+    "timeout" -> R.string.error_timeout
+    "cancelled" -> R.string.error_cancelled
+    "bad_output" -> R.string.error_bad_output
+    else -> null
 }
 
 private const val INPUT_KEY = "text"

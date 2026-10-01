@@ -47,6 +47,11 @@
             android:name=".MonitorService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Allow or Deny on a request notification; only the app's own PendingIntents reach it. -->
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

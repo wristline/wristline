@@ -84,7 +84,7 @@ private const val CONFIRMATION_MS = 1_200L
 internal enum class Answered { ALLOWED, DENIED, OTHER }
 
 /** The question a permission request asks: the decision, or its only question. */
-private fun PendingRequest.permissionQuestion(): Question? =
+internal fun PendingRequest.permissionQuestion(): Question? =
     questions.firstOrNull { it.id == PERMISSION_QUESTION } ?: questions.firstOrNull()
 
 /** What [answers] to [request] did, once the bridge accepted them. */

@@ -984,14 +984,15 @@ object Bridge {
         }
     }
 
-    suspend fun answer(requestId: String, answers: Answers): Sent = withContext(dispatcher + NonCancellable) {
+    /** [timeoutMs], when not 0, bounds the whole call (a notification action must finish within 10 s). */
+    suspend fun answer(requestId: String, answers: Answers, timeoutMs: Long = 0): Sent = withContext(dispatcher + NonCancellable) {
         if (demo != null) {
             demoAnswer(requestId)
             return@withContext Sent.Ok
         }
         val body = WireJson.encodeToString(AnswerBody.serializer(), AnswerBody(answers))
         val url = apiUrl(prefs.baseUrl, "requests", requestId)
-        val result = send(authed(url).post(body.toRequestBody(jsonType)).build()) ?: return@withContext Sent.Unreachable
+        val result = send(authed(url).post(body.toRequestBody(jsonType)).build(), timeoutMs) ?: return@withContext Sent.Unreachable
         when (result.code) {
             200 -> {
                 removeRequest(requestId)
@@ -1161,9 +1162,10 @@ object Bridge {
 
     private class HttpResult(val code: Int, val body: String, val authenticate: String?)
 
-    /** Null when the bridge could not be reached. */
-    private suspend fun send(request: Request): HttpResult? = suspendCancellableCoroutine { cont ->
+    /** Null when the bridge could not be reached, or not within [timeoutMs] when that is not 0. */
+    private suspend fun send(request: Request, timeoutMs: Long = 0): HttpResult? = suspendCancellableCoroutine { cont ->
         val call = client.newCall(request)
+        if (timeoutMs > 0) call.timeout().timeout(timeoutMs, TimeUnit.MILLISECONDS)
         cont.invokeOnCancellation { call.cancel() }
         call.enqueue(
             object : Callback {
