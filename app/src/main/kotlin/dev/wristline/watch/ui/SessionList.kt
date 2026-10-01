@@ -192,12 +192,12 @@ internal fun SessionListContent(
             }
             if (oldestRequest != null) {
                 item(key = "requests") {
-                    val colors = MaterialTheme.colorScheme
                     Button(
                         onClick = { onRequest(oldestRequest.id) },
                         modifier = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this),
                         transformation = SurfaceTransformation(spec),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
+                        // Fixed yellow, not the theme's tertiary: watch colors could make it any hue.
+                        colors = ButtonDefaults.buttonColors(containerColor = Status.Attention, contentColor = Color.Black),
                         label = {
                             Text(pluralStringResource(R.plurals.requests_waiting, requests.size, requests.size))
                         },
@@ -344,8 +344,9 @@ internal fun minutesLeft(resetsAt: Long, now: Long): Long = ((resetsAt - now) / 
  * The limit card's [lines] as a table: each group starts at the same place on every line, the
  * widest of a column setting its width; a column no line uses (no reset times) takes no room. The
  * reset clocks are the full ones unless those make the table wider than the card, then the compact.
- * Wider than the card even so (a small watch, a large font), the table is scaled down to fit: a
- * line never wraps nor loses its end under the card's edge.
+ * Wider than the card even so (a large font), each line's session count goes under its clock, so
+ * the user's font size holds. Only if that is still too wide (a small watch at the largest font)
+ * is the table scaled down to fit: a line never loses its end under the card's edge.
  */
 @Composable
 private fun LimitTable(lines: List<LimitLine>, now: () -> Long, modifier: Modifier = Modifier) {
@@ -357,21 +358,29 @@ private fun LimitTable(lines: List<LimitLine>, now: () -> Long, modifier: Modifi
         fun starts(widths: List<Int>) = widths.runningFold(0) { x, width -> if (width > 0) x + width + groupGap else x }
         fun width(widths: List<Int>) = starts(widths).let { starts -> widths.indices.maxOf { starts[it] + widths[it] } }
         val full = listOf(0, CELL_CLOCK, LIMIT_CELLS - 1)
-        val columns = if (width(widths(full)) <= constraints.maxWidth) full else listOf(0, CELL_CLOCK_COMPACT, LIMIT_CELLS - 1)
-        val widths = widths(columns)
+        val compact = listOf(0, CELL_CLOCK_COMPACT, LIMIT_CELLS - 1)
+        val columns = if (width(widths(full)) <= constraints.maxWidth) full else compact
+        // The count on a second line, at the clock's start: what the first line keeps is the badge,
+        // the percentage and the clock.
+        val wrap = width(widths(columns)) > constraints.maxWidth
+        val count = LIMIT_CELLS - 1
+        val firstLine = if (wrap) columns - count else columns
+        val widths = widths(firstLine)
         val starts = starts(widths)
-        val heights = rows.map { row -> columns.maxOf { row[it].height } }
+        val countX = if (wrap) starts[1] else 0
+        val firstHeights = rows.map { row -> firstLine.maxOf { row[it].height } }
+        val heights = rows.mapIndexed { i, row -> firstHeights[i] + if (wrap) row[count].height else 0 }
         val height = heights.sum() + lineGap * (rows.size - 1)
-        val natural = width(widths)
+        val natural = maxOf(width(widths), if (wrap) countX + rows.maxOf { it[count].width } else 0)
         val scale = if (natural > constraints.maxWidth) constraints.maxWidth / natural.toFloat() else 1f
         layout(constraints.constrainWidth((natural * scale).roundToInt()), constraints.constrainHeight((height * scale).roundToInt())) {
             // Scaled from the cell's start, so a cell mirrored in right-to-left stays in its column.
             val origin = TransformOrigin(if (layoutDirection == LayoutDirection.Rtl) 1f else 0f, 0f)
             var y = 0
             rows.forEachIndexed { i, row ->
-                columns.forEachIndexed { column, cell ->
-                    val x = starts[column]
-                    val top = y + (heights[i] - row[cell].height) / 2
+                val cells = firstLine.mapIndexed { column, cell -> Triple(cell, starts[column], y + (firstHeights[i] - row[cell].height) / 2) } +
+                    if (wrap) listOf(Triple(count, countX, y + firstHeights[i])) else emptyList()
+                cells.forEach { (cell, x, top) ->
                     if (scale == 1f) {
                         row[cell].placeRelative(x, top)
                     } else {

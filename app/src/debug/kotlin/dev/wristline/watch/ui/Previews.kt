@@ -250,8 +250,18 @@ private fun SessionListLimitsFullKoPreview() = Frame {
     )
 }
 
-// On a small watch with a large font even the compact lines are wider than the card: the table is
-// scaled down to fit, not cut off.
+// At a 1.3 font scale the compact lines are wider than the card: each session count goes under
+// its clock, at the user's font size.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, fontScale = 1.3f)
+@Composable
+private fun SessionListLimitsLargeFontPreview() = Frame {
+    SessionListContent(
+        Conn.Online, fullSessions, emptyList(), fullUsage, { now },
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+// On a small watch with a large font the lines wrap (see above), scaled down only if still too wide.
 @Preview(device = WearDevices.SMALL_ROUND, showSystemUi = true, fontScale = 1.15f)
 @Composable
 private fun SessionListLimitsFullSmallPreview() = Frame {
