@@ -37,6 +37,8 @@
             android:name="com.google.android.wearable.standalone"
             android:value="true" />
 
+        <!-- The empty taskAffinity also keeps this task from counting as the monitoring Ongoing
+             Activity's (see OpenActivity). -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -48,8 +50,9 @@
             </intent-filter>
         </activity>
 
-        <!-- Opens MainActivity from the monitoring Ongoing Activity; not always-on, so the watch
-             face still comes back after the screen goes off. Theme.NoDisplay: it finishes in onCreate. -->
+        <!-- Opens MainActivity from the monitoring Ongoing Activity, so that MainActivity's task is not
+             the Ongoing Activity's and the watch face still comes back in ambient (see OpenActivity).
+             Theme.NoDisplay: it finishes in onCreate. -->
         <activity
             android:name=".OpenActivity"
             android:excludeFromRecents="true"
