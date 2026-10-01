@@ -109,7 +109,9 @@ class MonitorService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
         val ongoing = OngoingActivity.Builder(applicationContext, NOTIFICATION_ID, builder)
-            .setStaticIcon(R.drawable.ic_notification)
+            // Full color: the Now Bar card shows this icon as-is (not tinted with setColor). The library
+            // docs ask for a white-on-transparent icon, so other surfaces may tint it.
+            .setStaticIcon(R.drawable.ic_ongoing)
             .setTouchIntent(open)
             .setStatus(status(shown))
             .build()
