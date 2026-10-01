@@ -1,12 +1,15 @@
 package dev.wristline.watch.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.AnchorType
 import androidx.wear.compose.foundation.CurvedLayout
 import androidx.wear.compose.foundation.CurvedModifier
+import androidx.wear.compose.foundation.LocalReduceMotion
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnState
@@ -95,6 +99,7 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.ContextUsage
+import dev.wristline.watch.data.Haptics
 import dev.wristline.watch.data.Item
 import dev.wristline.watch.data.ItemKind
 import dev.wristline.watch.data.ProviderId
@@ -105,6 +110,7 @@ import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
 import dev.wristline.watch.data.isoToMillis
+import dev.wristline.watch.data.sentHaptic
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -120,6 +126,8 @@ private const val COLLAPSED_LINES = 6
 // Far more than COLLAPSED_LINES hold: a collapsed message lays out this much of its up to 4000 chars.
 private const val COLLAPSED_CHARS = 1_000
 private const val SENT_NOTICE_MS = 4_000L
+// How long the speak button shows a check after a prompt went out.
+private const val SENT_CHECK_MS = 1_200L
 private val ACTION_SIZE = 44.dp
 private val ACTION_GAP = 10.dp
 // Low in the round screen's bottom chin, the two buttons still inside the circle.
@@ -249,8 +257,10 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
                     confirming = false
                     sending = true
                     scope.launch {
-                        outcome = Bridge.prompt(sessionId, draft)
+                        val sent = Bridge.prompt(sessionId, draft)
+                        outcome = sent
                         sending = false
+                        Haptics.touch(context, sentHaptic(sent))
                     }
                 },
             )
@@ -319,6 +329,15 @@ internal fun SessionDetailContent(
             // First page: start at the bottom without animating.
             listState.scrollToItem(lastIndex, screenHeight)
             placed = true
+        }
+    }
+
+    // Once a prompt went out, a check in the spinner's place for a moment.
+    var sentCheck by remember(outcome) { mutableStateOf(outcome == Sent.Ok) }
+    LaunchedEffect(outcome) {
+        if (sentCheck) {
+            delay(SENT_CHECK_MS)
+            sentCheck = false
         }
     }
 
@@ -440,16 +459,45 @@ internal fun SessionDetailContent(
                 // past the round screen's edge. The same size, so the pair never shifts.
                 val shapes = IconButtonDefaults.animatedShapes(pressedShape = MaterialTheme.shapes.medium)
                 FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
-                    if (sending) {
-                        SmallSpinner()
-                    } else {
-                        Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.detail_speak))
-                    }
+                    SpeakIcon(
+                        when {
+                            sending -> SpeakState.SENDING
+                            sentCheck -> SpeakState.SENT
+                            else -> SpeakState.MIC
+                        },
+                    )
                 }
                 FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.size(ACTION_SIZE), shapes = shapes) {
                     Icon(painterResource(R.drawable.ic_keyboard), stringResource(R.string.detail_type))
                 }
             }
+        }
+    }
+}
+
+private enum class SpeakState { MIC, SENDING, SENT }
+
+/** The speak button's mic, its spinner while a prompt is sent, then a check that pops in. */
+@Composable
+private fun SpeakIcon(state: SpeakState) {
+    val motion = MaterialTheme.motionScheme
+    val reduceMotion = LocalReduceMotion.current
+    AnimatedContent(
+        targetState = state,
+        transitionSpec = {
+            val fade = fadeIn(motion.fastEffectsSpec())
+            // No size change to animate: the button is fixed.
+            (if (reduceMotion) fade else fade + scaleIn(motion.fastSpatialSpec(), initialScale = 0.6f))
+                .togetherWith(fadeOut(motion.fastEffectsSpec()))
+                .using(null)
+        },
+        contentAlignment = Alignment.Center,
+        label = "speak",
+    ) { shown ->
+        when (shown) {
+            SpeakState.SENDING -> SmallSpinner()
+            SpeakState.SENT -> Icon(painterResource(R.drawable.ic_check), stringResource(R.string.detail_sent))
+            SpeakState.MIC -> Icon(painterResource(R.drawable.ic_mic), stringResource(R.string.detail_speak))
         }
     }
 }

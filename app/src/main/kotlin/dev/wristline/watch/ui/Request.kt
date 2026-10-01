@@ -1,6 +1,7 @@
 package dev.wristline.watch.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -36,16 +40,21 @@ import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.CheckboxButton
+import androidx.wear.compose.material3.ConfirmationDialog
+import androidx.wear.compose.material3.ConfirmationDialogDefaults
 import androidx.wear.compose.material3.EdgeButton
 import androidx.wear.compose.material3.EdgeButtonSize
 import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.OutlinedButton
 import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.SuccessConfirmationDialog
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.confirmationDialogCurvedText
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
@@ -54,6 +63,8 @@ import dev.wristline.watch.data.Answers
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.Decision
+import dev.wristline.watch.data.Haptic
+import dev.wristline.watch.data.Haptics
 import dev.wristline.watch.data.Option
 import dev.wristline.watch.data.PERMISSION_QUESTION
 import dev.wristline.watch.data.PendingRequest
@@ -66,6 +77,37 @@ import kotlinx.coroutines.launch
 /** How long "Already handled" stays before the screen closes itself. */
 private const val HANDLED_MS = 1_500L
 
+/** How long "Allowed" or "Denied" stays (the library lengthens it for accessibility services). */
+private const val CONFIRMATION_MS = 1_200L
+
+/** What an accepted answer did: allowed or denied a permission, or anything else. */
+internal enum class Answered { ALLOWED, DENIED, OTHER }
+
+/** The question a permission request asks: the decision, or its only question. */
+private fun PendingRequest.permissionQuestion(): Question? =
+    questions.firstOrNull { it.id == PERMISSION_QUESTION } ?: questions.firstOrNull()
+
+/** What [answers] to [request] did, once the bridge accepted them. */
+internal fun answeredAs(request: PendingRequest, answers: Answers): Answered {
+    if (request.kind != RequestKind.PERMISSION) return Answered.OTHER
+    val question = request.permissionQuestion() ?: return Answered.OTHER
+    return when (answers[question.id]?.singleOrNull()) {
+        Decision.ALLOW, Decision.ALWAYS -> Answered.ALLOWED
+        Decision.DENY -> Answered.DENIED
+        else -> Answered.OTHER
+    }
+}
+
+/**
+ * The haptic an accepted answer plays: none when allowed, as the success dialog plays its own
+ * confirming one; [Haptic.REJECT] when denied; [Haptic.CONFIRM] for anything else sent.
+ */
+internal fun answeredHaptic(answered: Answered): Haptic? = when (answered) {
+    Answered.ALLOWED -> null
+    Answered.DENIED -> Haptic.REJECT
+    Answered.OTHER -> Haptic.CONFIRM
+}
+
 @Composable
 internal fun RequestScreen(requestId: String, onDone: () -> Unit) {
     val requests by Bridge.requests.collectAsStateWithLifecycle()
@@ -75,7 +117,10 @@ internal fun RequestScreen(requestId: String, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var sending by remember { mutableStateOf(false) }
     var answered by remember { mutableStateOf(false) }
+    // Allowed or denied here: confirmed in a dialog, which then closes the screen.
+    var confirmed by remember { mutableStateOf<Answered?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     // Gone from an up-to-date list without our answer: answered in the terminal, timed out, or 409.
     val handled = request == null && !answered && !sending && (conn is Conn.Online || conn is Conn.Demo)
@@ -98,14 +143,18 @@ internal fun RequestScreen(requestId: String, onDone: () -> Unit) {
                     sending = true
                     error = null
                     scope.launch {
-                        when (val result = Bridge.answer(request.id, answers)) {
+                        val result = Bridge.answer(request.id, answers)
+                        when (result) {
                             Sent.Ok -> {
                                 answered = true
-                                onDone()
+                                val how = answeredAs(request, answers)
+                                answeredHaptic(how)?.let { Haptics.touch(context, it) }
+                                if (how == Answered.OTHER) onDone() else confirmed = how
                             }
                             Sent.Unreachable -> error = "unreachable"
                             is Sent.Refused -> error = result.code
                         }
+                        if (result != Sent.Ok) Haptics.touch(context, Haptic.ERROR)
                         sending = false
                     }
                 },
@@ -113,6 +162,47 @@ internal fun RequestScreen(requestId: String, onDone: () -> Unit) {
         }
         handled -> StatusScreen(stringResource(R.string.error_already_resolved), spinner = false)
         !answered -> StatusScreen(stringResource(R.string.request_waiting), spinner = true)
+    }
+
+    // Outside the when(): once answered, the bridge has dropped the request and nothing above
+    // draws. Nor does `handled` close the screen meanwhile: it is never true once answered.
+    AnsweredDialogs(
+        confirmed = confirmed,
+        // Once, whichever comes first: the timeout, a swipe, back or a tap.
+        onClose = {
+            if (confirmed != null) {
+                confirmed = null
+                onDone()
+            }
+        },
+    )
+}
+
+/** "Allowed" (the library's check, green as the Allow button) or "Denied" (red as Deny); a tap closes either. */
+@Composable
+private fun AnsweredDialogs(confirmed: Answered?, onClose: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val style = ConfirmationDialogDefaults.curvedTextStyle
+    val allowed = stringResource(R.string.request_allowed)
+    val denied = stringResource(R.string.request_denied)
+    val tapToClose = Modifier.clickable(interactionSource = null, indication = null, onClick = onClose)
+    SuccessConfirmationDialog(
+        visible = confirmed == Answered.ALLOWED,
+        onDismissRequest = onClose,
+        curvedText = { confirmationDialogCurvedText(allowed, style) },
+        modifier = tapToClose,
+        colors = ConfirmationDialogDefaults.successColors(iconColor = Color.Black, iconContainerColor = Status.Running),
+        durationMillis = CONFIRMATION_MS,
+    )
+    ConfirmationDialog(
+        visible = confirmed == Answered.DENIED,
+        onDismissRequest = onClose,
+        curvedText = { confirmationDialogCurvedText(denied, style) },
+        modifier = tapToClose,
+        colors = ConfirmationDialogDefaults.colors(iconColor = colors.error, iconContainerColor = colors.surfaceContainer),
+        durationMillis = CONFIRMATION_MS,
+    ) {
+        Icon(painterResource(R.drawable.ic_block), contentDescription = null, modifier = Modifier.size(ConfirmationDialogDefaults.IconSize))
     }
 }
 
@@ -139,8 +229,7 @@ internal fun RequestContent(
     onAnswer: (Answers) -> Unit,
 ) {
     if (request.kind == RequestKind.PERMISSION) {
-        val question = request.questions.firstOrNull { it.id == PERMISSION_QUESTION } ?: request.questions.firstOrNull()
-        PermissionContent(request, question, sessionTitle, sending, error, onAnswer)
+        PermissionContent(request, request.permissionQuestion(), sessionTitle, sending, error, onAnswer)
     } else {
         QuestionsContent(request, sessionTitle, sending, error, onAnswer)
     }

@@ -757,7 +757,12 @@ object Bridge {
                 _usage.value = if (index < 0) list + event.usage else list.toMutableList().apply { set(index, event.usage) }
             }
             is ServerEvent.Alert -> onAlert(event)
-            is ServerEvent.AskChanged -> _asks.update { it.withAskEvent(event) }
+            is ServerEvent.AskChanged -> {
+                val before = _asks.value.firstOrNull { it.id == event.askId }?.status
+                _asks.update { it.withAskEvent(event) }
+                // Only while the user looks: the Ask screen shows the answer, and no notification stands in.
+                askHaptic(before, event)?.let { if (looking()) Haptics.event(appContext, it) }
+            }
         }
     }
 
@@ -777,11 +782,14 @@ object Bridge {
         logReceived("alert ${event.alert}", id, looking, posted)
     }
 
-    /** A vibration tick or [post] a notification, as [attentionFor] decides; true when posted. */
+    /**
+     * A haptic ([Haptic.ATTENTION], [Haptic.DONE] for a [done] alert) or [post] a notification, as
+     * [attentionFor] decides; true when posted.
+     */
     private inline fun attention(looking: Boolean, sessionId: String, done: Boolean = false, post: () -> Boolean): Boolean =
         when (attentionFor(looking, done, sessionId, subscribed)) {
             Attention.TICK -> {
-                Notifier.tick(appContext, light = done)
+                Haptics.event(appContext, if (done) Haptic.DONE else Haptic.ATTENTION)
                 false
             }
             Attention.POST -> post()

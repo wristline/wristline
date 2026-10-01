@@ -6,8 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.VibrationEffect
-import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.wristline.watch.data.PendingRequest
@@ -23,10 +21,11 @@ import dev.wristline.watch.ui.basename
 internal fun notificationId(key: String): Int = key.hashCode()
 
 /**
- * Notifications for requests and alerts, and the haptic tick used instead while the user looks at
- * the app. Request notifications are tagged [TAG_REQUEST] and keyed by request id; alert
- * notifications are tagged [TAG_SESSION] and keyed by session id, so a newer alert for a session
- * replaces the older one. The tags keep both apart from the monitoring notification (no tag).
+ * Notifications for requests and alerts; while the user looks at the app a haptic plays instead
+ * ([dev.wristline.watch.data.Haptics]). Request notifications are tagged [TAG_REQUEST] and keyed
+ * by request id; alert notifications are tagged [TAG_SESSION] and keyed by session id, so a newer
+ * alert for a session replaces the older one. The tags keep both apart from the monitoring
+ * notification (no tag).
  */
 object Notifier {
     const val CHANNEL_REQUESTS = "requests"
@@ -154,16 +153,6 @@ object Notifier {
             }
             else -> true
         }
-
-    /**
-     * One short click so the user notices a request while looking at the app; [light] (a done alert
-     * of the open session) a lighter one.
-     */
-    fun tick(context: Context, light: Boolean = false) {
-        val effect = if (light) VibrationEffect.EFFECT_TICK else VibrationEffect.EFFECT_HEAVY_CLICK
-        context.getSystemService(VibratorManager::class.java).defaultVibrator
-            .vibrate(VibrationEffect.createPredefined(effect))
-    }
 
     private fun post(
         context: Context,

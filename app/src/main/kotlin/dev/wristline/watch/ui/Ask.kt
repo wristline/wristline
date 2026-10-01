@@ -64,6 +64,8 @@ import dev.wristline.watch.data.AskSent
 import dev.wristline.watch.data.AskStatus
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
+import dev.wristline.watch.data.Haptic
+import dev.wristline.watch.data.Haptics
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.thread
@@ -137,6 +139,7 @@ internal fun rememberQuickAsk(
     if (code != null) {
         val message = if (code == "unreachable") stringResource(R.string.error_unreachable) else errorMessage(code)
         LaunchedEffect(code) {
+            Haptics.touch(context, Haptic.ERROR)
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             error = null
         }
@@ -167,6 +170,7 @@ internal fun rememberQuickAsk(
                 ProviderChip(
                     provider = provider,
                     onClick = {
+                        Haptics.touch(context, Haptic.SEGMENT)
                         provider = otherProvider(provider)
                         if (threadId == null) prefs.askProvider = provider
                     },
@@ -242,6 +246,7 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
     if (code != null) {
         val message = if (code == "unreachable") stringResource(R.string.error_unreachable) else errorMessage(code)
         LaunchedEffect(code) {
+            Haptics.touch(context, Haptic.ERROR)
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
             error = null
         }

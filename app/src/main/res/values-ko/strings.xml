@@ -96,6 +96,8 @@
     <string name="decision_defer">PC에서 응답</string>
     <string name="request_progress">%1$d/%2$d</string>
     <string name="request_waiting">브릿지를 기다리는 중…</string>
+    <string name="request_allowed">허용함</string>
+    <string name="request_denied">거부함</string>
 
     <!-- Usage -->
     <string name="usage_title">사용량</string>
