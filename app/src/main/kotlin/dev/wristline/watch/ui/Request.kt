@@ -78,8 +78,12 @@ import kotlinx.coroutines.launch
 /** How long "Already handled" stays before the screen closes itself. */
 private const val HANDLED_MS = 1_500L
 
-/** How long "Allowed" or "Denied" stays (the library lengthens it for accessibility services). */
-private const val CONFIRMATION_MS = 1_200L
+/**
+ * How long "Allowed" or "Denied" stays: long enough to read the word and feel the haptic, not the
+ * library's 4s, as the screen (and any next request) waits behind it; a tap closes it sooner. The
+ * library lengthens it for accessibility services.
+ */
+private const val CONFIRMATION_MS = 2_000L
 
 /** What an accepted answer did: allowed or denied a permission, or anything else. */
 internal enum class Answered { ALLOWED, DENIED, OTHER }
