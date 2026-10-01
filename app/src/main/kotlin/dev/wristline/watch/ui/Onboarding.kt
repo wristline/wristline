@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.material3.EdgeButton
@@ -68,6 +69,7 @@ internal fun WelcomeScreen(onSetUp: () -> Unit, onDemo: () -> Unit) {
         TransformingLazyColumn(
             state = listState,
             contentPadding = contentPadding,
+            flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState),
             rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
         ) {
             item(key = "title") {
@@ -119,6 +121,7 @@ internal fun MessageScreen(title: String, body: String, action: String, onAction
         TransformingLazyColumn(
             state = listState,
             contentPadding = contentPadding,
+            flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState),
             rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
         ) {
             item(key = "title") {
@@ -212,6 +215,7 @@ internal fun AddressContent(
         TransformingLazyColumn(
             state = listState,
             contentPadding = contentPadding,
+            flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState),
             rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
         ) {
             item(key = "title") {

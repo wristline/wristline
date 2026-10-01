@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnScope
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
@@ -340,6 +341,7 @@ private fun QuestionsContent(
                 TransformingLazyColumn(
                     state = listState,
                     contentPadding = contentPadding,
+                    flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState),
                     rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
                 ) {
                     requestHeader(question.header ?: request.title, listOfNotNull(progress, sessionTitle).joinToString(" · "), spec)
