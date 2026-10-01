@@ -1,6 +1,5 @@
 package dev.wristline.watch.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -15,7 +14,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -72,14 +70,13 @@ internal fun askThreads(asks: List<Ask>): List<AskThread> =
 internal fun AskHistoryScreen(onAsk: (String) -> Unit) {
     val asks by Bridge.asks.collectAsStateWithLifecycle()
     val now = rememberNowState()
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var error by remember { mutableStateOf<String?>(null) }
     val code = error
     if (code != null) {
         val message = if (code == "unreachable") stringResource(R.string.error_unreachable) else errorMessage(code)
         LaunchedEffect(code) {
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            Failure.show(message)
             error = null
         }
     }

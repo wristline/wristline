@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.speech.RecognizerIntent
 import android.text.format.DateUtils
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.wear.compose.foundation.LocalReduceMotion
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
@@ -68,6 +68,8 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
 import androidx.wear.compose.material3.CircularProgressIndicator
 import androidx.wear.compose.material3.CircularProgressIndicatorDefaults
+import androidx.wear.compose.material3.ConfirmationDialog
+import androidx.wear.compose.material3.ConfirmationDialogDefaults
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.LocalTextStyle
 import androidx.wear.compose.material3.MaterialTheme
@@ -87,6 +89,9 @@ import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.isoToMillis
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -543,9 +548,43 @@ internal fun rememberTouchHaptics(): (Haptic) -> Unit {
     }
 }
 
+/**
+ * The failure of an action the user took (sending, deleting, opening the input, reading aloud),
+ * shown over any screen by [FailureNotice]; in place of toasts.
+ */
+internal object Failure {
+    private val current = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = current.asStateFlow()
+
+    fun show(text: String) {
+        current.value = text
+    }
+
+    fun dismiss() {
+        current.value = null
+    }
+}
+
+/** [Failure]'s message as a failure confirmation: the library's icon over the text, gone after a few seconds. */
+@Composable
+internal fun FailureNotice() {
+    val message by Failure.message.collectAsStateWithLifecycle()
+    // Kept while the dialog animates out, after the message is cleared.
+    var shown by remember { mutableStateOf("") }
+    message?.let { shown = it }
+    // The text variant, not FailureConfirmationDialog: its curved text fits a word or two, and
+    // these messages are sentences.
+    ConfirmationDialog(
+        visible = message != null,
+        onDismissRequest = Failure::dismiss,
+        text = { Text(shown, textAlign = TextAlign.Center) },
+        colors = ConfirmationDialogDefaults.failureColors(),
+    ) { ConfirmationDialogDefaults.GenericFailureIcon() }
+}
+
 /** Says that nothing on this watch can take the input (no text input activity or speech recognizer). */
 fun inputUnavailable(context: Context) {
-    Toast.makeText(context, R.string.input_unavailable, Toast.LENGTH_SHORT).show()
+    Failure.show(context.getString(R.string.input_unavailable))
 }
 
 fun Conn.hasBanner(): Boolean = when (this) {

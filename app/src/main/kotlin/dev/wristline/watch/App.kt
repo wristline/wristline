@@ -21,6 +21,7 @@ import dev.wristline.watch.ui.AddressScreen
 import dev.wristline.watch.ui.AskHistoryScreen
 import dev.wristline.watch.ui.AskScreen
 import dev.wristline.watch.ui.CodeScreen
+import dev.wristline.watch.ui.FailureNotice
 import dev.wristline.watch.ui.NotifyScreen
 import dev.wristline.watch.ui.RequestScreen
 import dev.wristline.watch.ui.SessionDetailScreen
@@ -136,6 +137,8 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
                     )
                 }
             }
+
+            FailureNotice()
 
             LaunchedEffect(openRoute) {
                 if (openRoute == null) return@LaunchedEffect

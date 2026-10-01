@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -80,7 +79,7 @@ internal class Reader(private val context: Context) {
             tts = null
             speaking = false
             pending = null
-            Toast.makeText(context, R.string.tts_unavailable, Toast.LENGTH_SHORT).show()
+            Failure.show(context.getString(R.string.tts_unavailable))
             return
         }
         ready = true
@@ -112,12 +111,12 @@ internal class Reader(private val context: Context) {
         val language = engine.setLanguage(locale)
         if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
             speaking = false
-            Toast.makeText(context, context.getString(R.string.tts_no_language, locale.getDisplayLanguage()), Toast.LENGTH_SHORT).show()
+            Failure.show(context.getString(R.string.tts_no_language, locale.getDisplayLanguage()))
             return
         }
         val spoken = text.take(TextToSpeech.getMaxSpeechInputLength())
         speaking = engine.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID) == TextToSpeech.SUCCESS
-        if (!speaking) Toast.makeText(context, R.string.tts_unavailable, Toast.LENGTH_SHORT).show()
+        if (!speaking) Failure.show(context.getString(R.string.tts_unavailable))
     }
 
     private companion object {

@@ -1,6 +1,5 @@
 package dev.wristline.watch.ui
 
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -147,7 +146,7 @@ internal fun rememberQuickAsk(
         val message = if (code == "unreachable") stringResource(R.string.error_unreachable) else errorMessage(code)
         LaunchedEffect(code) {
             touch(Haptic.ERROR)
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            Failure.show(message)
             error = null
         }
     }
@@ -199,11 +198,12 @@ internal fun rememberQuickAsk(
         }
     }
 
-    return remember(speak) {
+    val unpaired = stringResource(R.string.conn_unauthorized)
+    return remember(speak, unpaired) {
         {
             when (Bridge.conn.value) {
                 // Same message as the list's banner: nothing can be sent until the watch pairs again.
-                Conn.Unauthorized, Conn.NotPaired -> Toast.makeText(context, R.string.conn_unauthorized, Toast.LENGTH_SHORT).show()
+                Conn.Unauthorized, Conn.NotPaired -> Failure.show(unpaired)
                 else -> speak()
             }
         }
@@ -243,7 +243,6 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var sending by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
     val touch = rememberTouchHaptics()
     val reader = rememberReader()
 
@@ -255,7 +254,7 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
         val message = if (code == "unreachable") stringResource(R.string.error_unreachable) else errorMessage(code)
         LaunchedEffect(code) {
             touch(Haptic.ERROR)
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            Failure.show(message)
             error = null
         }
     }
