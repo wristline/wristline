@@ -292,7 +292,7 @@ internal fun SettingsContent(
                     item(key = "tokenError") {
                         CaptionText(
                             stringResource(R.string.settings_token_needs_address),
-                            Modifier.edgeTransform(this, spec).animateItemCalmly(this),
+                            Modifier.edgeTransform(this, spec).animateItemCalmly(this).minListItemHeight().announced(),
                             color = colors.error,
                         )
                     }
@@ -311,7 +311,7 @@ internal fun SettingsContent(
                 }
             }
             item(key = "version") {
-                CaptionText(stringResource(R.string.settings_version, BuildConfig.VERSION_NAME), Modifier.edgeTransform(this, spec))
+                CaptionText(stringResource(R.string.settings_version, BuildConfig.VERSION_NAME), Modifier.edgeTransform(this, spec).minListItemHeight())
             }
             item(key = "privacy") {
                 CaptionText(

@@ -21,8 +21,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -44,8 +46,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -87,6 +91,15 @@ fun Modifier.edgeTransform(scope: TransformingLazyColumnItemScope, spec: Transfo
     transformedHeight(scope, spec).graphicsLayer {
         with(scope) { with(spec) { applyContainerTransformation(scrollProgress) } }
     }
+
+/**
+ * TalkBack skips list items under 32dp tall (https://developer.android.com/training/wearables/accessibility):
+ * a one-line caption or a small indicator is held to that, its content centered in it.
+ */
+fun Modifier.minListItemHeight(): Modifier = heightIn(min = 32.dp).wrapContentHeight()
+
+/** Read out by TalkBack when it appears or changes, after what it is saying: a result the user waits for. */
+fun Modifier.announced(): Modifier = semantics { liveRegion = LiveRegionMode.Polite }
 
 /**
  * [TransformingLazyColumnItemScope.animateItem] in [CalmMotion]: the item fades in and out, and
@@ -497,7 +510,7 @@ fun TransformingLazyColumnItemScope.ConnBanner(
 ) {
     val colors = MaterialTheme.colorScheme
     val surface = Modifier.fillMaxWidth().transformedHeight(this, spec).animateItemCalmly(this)
-    val plain = Modifier.fillMaxWidth().edgeTransform(this, spec).animateItemCalmly(this)
+    val plain = Modifier.fillMaxWidth().edgeTransform(this, spec).animateItemCalmly(this).minListItemHeight()
     when (conn) {
         is Conn.Unreachable -> {
             val now = rememberNow(periodMs = 1_000)

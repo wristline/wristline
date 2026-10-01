@@ -448,7 +448,7 @@ private fun TransformingLazyColumnScope.askItems(ask: Ask, spec: TransformationS
             }
         }
         else -> item(key = "error/${ask.id}") {
-            CaptionText(errorMessage(ask.error ?: "bad_output"), Modifier.edgeTransform(this, spec), color = MaterialTheme.colorScheme.error)
+            CaptionText(errorMessage(ask.error ?: "bad_output"), Modifier.edgeTransform(this, spec).minListItemHeight().announced(), color = MaterialTheme.colorScheme.error)
         }
     }
     val took = ask.durationMs
@@ -456,7 +456,7 @@ private fun TransformingLazyColumnScope.askItems(ask: Ask, spec: TransformationS
         item(key = "took/${ask.id}") {
             // `2.9s` in every language, read out in the watch's (`2.9 seconds`, `2.9초`).
             val spoken = stringResource(R.string.ask_took, askSeconds(took))
-            CaptionText("${askSeconds(took)}s", Modifier.edgeTransform(this, spec).semantics { contentDescription = spoken })
+            CaptionText("${askSeconds(took)}s", Modifier.edgeTransform(this, spec).minListItemHeight().semantics { contentDescription = spoken })
         }
     }
 }

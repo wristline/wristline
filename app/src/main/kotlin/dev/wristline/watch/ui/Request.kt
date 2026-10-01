@@ -409,7 +409,7 @@ private fun TransformingLazyColumnScope.requestHeader(title: String, subtitle: S
         ) { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis) }
     }
     if (!subtitle.isNullOrEmpty()) {
-        item(key = "subtitle") { CaptionText(subtitle, Modifier.edgeTransform(this, spec)) }
+        item(key = "subtitle") { CaptionText(subtitle, Modifier.edgeTransform(this, spec).minListItemHeight()) }
     }
 }
 
@@ -418,7 +418,7 @@ private fun TransformingLazyColumnScope.errorItem(error: String?, spec: Transfor
     item(key = "error") {
         CaptionText(
             errorMessage(error),
-            Modifier.edgeTransform(this, spec).animateItemCalmly(this),
+            Modifier.edgeTransform(this, spec).animateItemCalmly(this).minListItemHeight().announced(),
             color = MaterialTheme.colorScheme.error,
         )
     }

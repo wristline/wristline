@@ -236,7 +236,7 @@ internal fun AddressContent(
                 }
             }
             item(key = "status") {
-                AnimatedContent(targetState = state, modifier = Modifier.fillMaxWidth().edgeTransform(this, spec), label = "probe") {
+                AnimatedContent(targetState = state, modifier = Modifier.fillMaxWidth().edgeTransform(this, spec).minListItemHeight().announced(), label = "probe") {
                     AddressStatus(it)
                 }
             }

@@ -389,11 +389,11 @@ internal fun SessionDetailContent(
             }
             if (showFailed) {
                 item(key = "failed") {
-                    CaptionText(stringResource(R.string.detail_load_failed), Modifier.edgeTransform(this, spec), color = colors.error)
+                    CaptionText(stringResource(R.string.detail_load_failed), Modifier.edgeTransform(this, spec).minListItemHeight(), color = colors.error)
                 }
             }
             if (showEmpty) {
-                item(key = "empty") { CaptionText(stringResource(R.string.detail_empty), Modifier.edgeTransform(this, spec)) }
+                item(key = "empty") { CaptionText(stringResource(R.string.detail_empty), Modifier.edgeTransform(this, spec).minListItemHeight()) }
             }
             items(items, key = { it.seq }, contentType = { it.kind }) { item ->
                 ItemRow(
@@ -412,13 +412,14 @@ internal fun SessionDetailContent(
                             .fillMaxWidth()
                             .edgeTransform(this, spec)
                             .animateItemCalmly(this)
+                            .minListItemHeight()
                             .clearAndSetSemantics { contentDescription = description },
                         contentAlignment = Alignment.Center,
                     ) { SmallSpinner(Modifier.size(WORKING_SPINNER), color = colors.onSurfaceVariant) }
                 }
             }
             if (blockCode != null) {
-                item(key = "block") { CaptionText(errorMessage(blockCode), Modifier.edgeTransform(this, spec)) }
+                item(key = "block") { CaptionText(errorMessage(blockCode), Modifier.edgeTransform(this, spec).minListItemHeight()) }
             }
             if (outcome != null) {
                 item(key = "outcome") {
@@ -429,7 +430,7 @@ internal fun SessionDetailContent(
                     }
                     CaptionText(
                         text,
-                        Modifier.edgeTransform(this, spec).animateItemCalmly(this),
+                        Modifier.edgeTransform(this, spec).animateItemCalmly(this).minListItemHeight().announced(),
                         color = if (outcome == Sent.Ok) colors.primary else colors.error,
                     )
                 }
@@ -815,7 +816,7 @@ private fun TransformingLazyColumnItemScope.ItemRow(
             }
         }
         else -> Column(
-            Modifier.fillMaxWidth().edgeTransform(this, spec).then(appear),
+            Modifier.fillMaxWidth().edgeTransform(this, spec).then(appear).minListItemHeight(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             ItemTime(item.ts)
