@@ -28,8 +28,8 @@ import dev.wristline.watch.ui.LocalAmbient
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    /** Screen to open once, from a notification tap. */
-    private var openRoute by mutableStateOf<String?>(null)
+    /** Screens to open once, from a notification tap ([notificationTarget]). */
+    private var openTarget by mutableStateOf<List<Route>?>(null)
 
     /** Off from the screen turning off (or dozing) until it turns on again; see [LocalAmbient]. */
     private var screenOn by mutableStateOf(true)
@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
             val ambient = ambientManager?.currentAmbientMode is AmbientMode.Ambient
             LaunchedEffect(ambient) { onAmbient(ambient) }
             CompositionLocalProvider(LocalAmbient provides (ambient || !screenOn)) {
-                App(openRoute = openRoute, onOpened = { openRoute = null })
+                App(openTarget = openTarget, onOpened = { openTarget = null })
             }
         }
     }
@@ -124,8 +124,8 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent) {
         // A task first opened from a notification keeps that intent; Recents replays it later.
         if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
-            intent.getStringExtra(EXTRA_REQUEST_ID)?.let { openRoute = Route.request(it) }
-            intent.getStringExtra(EXTRA_SESSION_ID)?.let { openRoute = Route.session(it) }
+            notificationTarget(intent.getStringExtra(EXTRA_REQUEST_ID), intent.getStringExtra(EXTRA_SESSION_ID))
+                ?.let { openTarget = it }
         }
         if (BuildConfig.DEBUG) debugPair(intent)
     }
@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
         /** The ambient API ([rememberAmbientModeManager]) needs the Wear SDK, which Wear OS 6 and later have. */
         private val hasAmbientApi = runCatching { Class.forName("com.google.wear.Sdk") }.isSuccess
 
-        /** Extra carrying a PendingRequest id; opens the request screen. */
+        /** Extra carrying a PendingRequest id; opens the request screen (over its session, given [EXTRA_SESSION_ID]). */
         const val EXTRA_REQUEST_ID = "requestId"
 
         /** Extra carrying a session id (alert notifications); opens the session. */

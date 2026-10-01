@@ -2,20 +2,21 @@ package dev.wristline.watch
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavHostController
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
+import androidx.savedstate.serialization.SavedStateConfiguration
 import androidx.wear.compose.material3.AppScaffold
-import androidx.wear.compose.navigation.SwipeDismissableNavHost
-import androidx.wear.compose.navigation.composable
-import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import androidx.wear.compose.navigation3.rememberSwipeDismissableSceneStrategy
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.ui.AddressScreen
 import dev.wristline.watch.ui.AskHistoryScreen
@@ -31,118 +32,173 @@ import dev.wristline.watch.ui.UsageScreen
 import dev.wristline.watch.ui.WelcomeScreen
 import dev.wristline.watch.ui.WristlineTheme
 import kotlinx.coroutines.launch
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.modules.SerializersModule
+import kotlinx.serialization.modules.polymorphic
 
-/** Navigation routes. The onboarding steps are separate routes so a swipe goes back one step. */
-object Route {
-    const val ONBOARDING = "onboarding"
-    const val NOTIFY = "onboarding/notify"
-    const val ADDRESS = "onboarding/address"
-    const val CODE = "onboarding/code/{url}"
-    const val SESSIONS = "sessions"
-    const val SESSION = "session/{id}"
-    const val REQUEST = "request/{id}"
-    const val USAGE = "usage"
-    const val ASK = "ask/{id}"
-    const val ASKS = "asks"
-    const val SETTINGS = "settings"
+/** Navigation keys. The onboarding steps are separate keys so a swipe goes back one step. */
+@Serializable
+sealed interface Route : NavKey {
+    @Serializable
+    data object Welcome : Route
+
+    @Serializable
+    data object Notify : Route
+
+    @Serializable
+    data object Address : Route
 
     /** Pairing screen for the bridge at [url]. */
-    fun code(url: String) = "onboarding/code/" + Uri.encode(url)
+    @Serializable
+    data class Code(val url: String) : Route
 
-    fun session(id: String) = "session/" + Uri.encode(id)
+    @Serializable
+    data object Sessions : Route
 
-    fun request(id: String) = "request/" + Uri.encode(id)
+    @Serializable
+    data class Session(val id: String) : Route
 
-    fun ask(id: String) = "ask/" + Uri.encode(id)
+    @Serializable
+    data class Request(val id: String) : Route
+
+    @Serializable
+    data object Usage : Route
+
+    @Serializable
+    data class Ask(val id: String) : Route
+
+    @Serializable
+    data object Asks : Route
+
+    @Serializable
+    data object Settings : Route
+}
+
+/** Saves the back stack's [Route]s by their serial names, without reflection (R8 renames classes). */
+@OptIn(ExperimentalSerializationApi::class)
+internal val routeModule = SerializersModule { polymorphic(NavKey::class) { subclassesOfSealed<Route>() } }
+
+/**
+ * The screens a notification opens above the session list: a request over its session when the
+ * notification names one, so Back goes request, session, list.
+ */
+internal fun notificationTarget(requestId: String?, sessionId: String?): List<Route>? = when {
+    requestId != null -> listOfNotNull(sessionId?.let(Route::Session), Route.Request(requestId))
+    sessionId != null -> listOf(Route.Session(sessionId))
+    else -> null
 }
 
 /**
- * Root composable. [openRoute] comes from a notification tap (a request or a session) and is
+ * [stack] with [target] opened on top. A session or request on top gives way to it; any other
+ * screen stays below, so an Ask screen a notification covers is not popped (that would cancel its
+ * question, see AskCanceller).
+ */
+internal fun notificationStack(stack: List<NavKey>, target: List<Route>): List<NavKey> =
+    stack.dropLastWhile { it is Route.Session || it is Route.Request } + target
+
+/**
+ * Makes this back stack [keys], keeping the entries both share at the bottom: only the screens
+ * that go away are popped (and their ViewModels cleared).
+ */
+internal fun MutableList<NavKey>.replaceWith(keys: List<NavKey>) {
+    val same = zip(keys).takeWhile { (old, new) -> old == new }.size
+    subList(same, size).clear()
+    addAll(keys.drop(same))
+}
+
+/**
+ * Root composable. [openTarget] comes from a notification tap (a request or a session) and is
  * opened once. AppScaffold shows the TimeText above every screen; each screen brings its own
  * ScreenScaffold.
  */
 @Composable
-fun App(openRoute: String?, onOpened: () -> Unit) {
+fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
     val watchColors by Bridge.prefs.watchColorsState.collectAsStateWithLifecycle()
     WristlineTheme(followWatchColors = watchColors) {
         AppScaffold {
-            val nav = rememberSwipeDismissableNavController()
-            val start = remember { if (Bridge.prefs.isPaired) Route.SESSIONS else Route.ONBOARDING }
+            val backStack = rememberNavBackStack(
+                SavedStateConfiguration { serializersModule = routeModule },
+                if (Bridge.prefs.isPaired) Route.Sessions else Route.Welcome,
+            )
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
 
-            SwipeDismissableNavHost(navController = nav, startDestination = start) {
-                composable(Route.ONBOARDING) {
-                    WelcomeScreen(
-                        onSetUp = {
-                            Bridge.stopDemo()
-                            val granted = context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
-                                PackageManager.PERMISSION_GRANTED
-                            nav.navigate(if (granted) Route.ADDRESS else Route.NOTIFY)
-                        },
-                        onDemo = {
-                            scope.launch {
-                                Bridge.startDemo()
-                                // A second tap while the demo data loads must not stack a second list.
-                                nav.navigate(Route.SESSIONS) { launchSingleTop = true }
-                            }
-                        },
-                    )
-                }
-                composable(Route.NOTIFY) {
-                    NotifyScreen(onNext = { nav.navigate(Route.ADDRESS) { popUpTo(Route.NOTIFY) { inclusive = true } } })
-                }
-                composable(Route.ADDRESS) {
-                    AddressScreen(onFound = { nav.navigate(Route.code(it)) }, onPairedWithToken = { nav.showSessions() })
-                }
-                composable(Route.CODE) { entry ->
-                    CodeScreen(baseUrl = entry.arguments?.getString("url").orEmpty(), onPaired = { nav.showSessions() })
-                }
-                composable(Route.SESSIONS) {
-                    SessionListScreen(
-                        onSession = { nav.navigate(Route.session(it)) },
-                        onRequest = { nav.navigate(Route.request(it)) },
-                        onUsage = { nav.navigate(Route.USAGE) },
-                        onAsk = { nav.navigate(Route.ask(it)) },
-                        onAskHistory = { nav.navigate(Route.ASKS) },
-                        onSettings = { nav.navigate(Route.SETTINGS) },
-                        onRepair = { nav.navigate(Route.code(Bridge.prefs.baseUrl)) },
-                    )
-                }
-                // A notification tap (launchSingleTop) reuses the entry on top for another id; keyed by
-                // the id, the screen starts afresh instead of keeping the last one's draft or dialog.
-                composable(Route.SESSION) { entry ->
-                    val id = entry.arguments?.getString("id").orEmpty()
-                    key(id) { SessionDetailScreen(sessionId = id, onRespond = { nav.navigate(Route.request(it)) }) }
-                }
-                composable(Route.REQUEST) { entry ->
-                    val id = entry.arguments?.getString("id").orEmpty()
-                    key(id) { RequestScreen(requestId = id, onDone = { nav.popBackStack() }) }
-                }
-                composable(Route.USAGE) { UsageScreen() }
-                composable(Route.ASK) { entry ->
-                    val id = entry.arguments?.getString("id").orEmpty()
-                    // A new question from this screen replaces it, so a swipe back lands on the list.
-                    AskScreen(askId = id, onReplaced = { nav.navigate(Route.ask(it)) { popUpTo(Route.ASK) { inclusive = true } } })
-                }
-                composable(Route.ASKS) { AskHistoryScreen(onAsk = { nav.navigate(Route.ask(it)) }) }
-                composable(Route.SETTINGS) {
-                    SettingsScreen(
-                        onAddress = { nav.navigate(Route.ADDRESS) },
-                        onRepair = { nav.navigate(Route.code(Bridge.prefs.baseUrl)) },
-                        onPaired = { nav.showSessions() },
-                        onSignedOut = {
-                            nav.navigate(Route.ONBOARDING) { popUpTo(nav.graph.id) { inclusive = true } }
-                        },
-                    )
-                }
-            }
+            NavDisplay(
+                backStack = backStack,
+                // The ViewModel decorator clears an entry's ViewModels when it is popped (AskCanceller).
+                entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator(), rememberViewModelStoreNavEntryDecorator()),
+                sceneStrategies = listOf(rememberSwipeDismissableSceneStrategy()),
+                entryProvider = entryProvider {
+                    entry<Route.Welcome> {
+                        WelcomeScreen(
+                            onSetUp = {
+                                Bridge.stopDemo()
+                                val granted = context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+                                    PackageManager.PERMISSION_GRANTED
+                                backStack.add(if (granted) Route.Address else Route.Notify)
+                            },
+                            onDemo = {
+                                scope.launch {
+                                    Bridge.startDemo()
+                                    // A second tap while the demo data loads must not stack a second list.
+                                    if (backStack.lastOrNull() != Route.Sessions) backStack.add(Route.Sessions)
+                                }
+                            },
+                        )
+                    }
+                    entry<Route.Notify> {
+                        NotifyScreen(onNext = { backStack.replaceWith(backStack.takeWhile { it != Route.Notify } + Route.Address) })
+                    }
+                    entry<Route.Address> {
+                        AddressScreen(onFound = { backStack.add(Route.Code(it)) }, onPairedWithToken = { backStack.showSessions() })
+                    }
+                    entry<Route.Code> { key ->
+                        CodeScreen(baseUrl = key.url, onPaired = { backStack.showSessions() })
+                    }
+                    entry<Route.Sessions> {
+                        SessionListScreen(
+                            onSession = { backStack.add(Route.Session(it)) },
+                            onRequest = { backStack.add(Route.Request(it)) },
+                            onUsage = { backStack.add(Route.Usage) },
+                            onAsk = { backStack.add(Route.Ask(it)) },
+                            onAskHistory = { backStack.add(Route.Asks) },
+                            onSettings = { backStack.add(Route.Settings) },
+                            onRepair = { backStack.add(Route.Code(Bridge.prefs.baseUrl)) },
+                        )
+                    }
+                    entry<Route.Session> { key ->
+                        SessionDetailScreen(sessionId = key.id, onRespond = { backStack.add(Route.Request(it)) })
+                    }
+                    entry<Route.Request> { key ->
+                        // This entry, not whatever is on top: a notification may have opened a screen over it.
+                        RequestScreen(requestId = key.id, onDone = { backStack.remove(key) })
+                    }
+                    entry<Route.Usage> { UsageScreen() }
+                    entry<Route.Ask> { key ->
+                        // A new question from this screen replaces it, so a swipe back lands on the list.
+                        AskScreen(
+                            askId = key.id,
+                            onReplaced = { id -> backStack.replaceWith(backStack.map { if (it == key) Route.Ask(id) else it }) },
+                        )
+                    }
+                    entry<Route.Asks> { AskHistoryScreen(onAsk = { backStack.add(Route.Ask(it)) }) }
+                    entry<Route.Settings> {
+                        SettingsScreen(
+                            onAddress = { backStack.add(Route.Address) },
+                            onRepair = { backStack.add(Route.Code(Bridge.prefs.baseUrl)) },
+                            onPaired = { backStack.showSessions() },
+                            onSignedOut = { backStack.replaceWith(listOf(Route.Welcome)) },
+                        )
+                    }
+                },
+            )
 
             FailureNotice()
 
-            LaunchedEffect(openRoute) {
-                if (openRoute == null) return@LaunchedEffect
-                if (Bridge.prefs.isPaired) nav.navigate(openRoute) { launchSingleTop = true }
+            LaunchedEffect(openTarget) {
+                if (openTarget == null) return@LaunchedEffect
+                if (Bridge.prefs.isPaired) backStack.replaceWith(notificationStack(backStack, openTarget))
                 onOpened()
             }
         }
@@ -150,6 +206,4 @@ fun App(openRoute: String?, onOpened: () -> Unit) {
 }
 
 /** Replaces the whole back stack with the session list (after pairing). */
-private fun NavHostController.showSessions() {
-    navigate(Route.SESSIONS) { popUpTo(graph.id) { inclusive = true } }
-}
+private fun MutableList<NavKey>.showSessions() = replaceWith(listOf(Route.Sessions))

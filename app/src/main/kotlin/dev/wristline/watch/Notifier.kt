@@ -136,6 +136,8 @@ object Notifier {
         val body = clipText(question, NOTIFY_TEXT_MAX).ifBlank { sessionTitle }
         return post(
             context, TAG_REQUEST, request.id, CHANNEL_REQUESTS, MainActivity.EXTRA_REQUEST_ID,
+            // Opens the request over its session, so Back goes to the session first.
+            sessionId = request.sessionId,
             title = request.title.ifBlank { context.getString(R.string.status_needs_input) },
             text = listOfNotNull(note, body).joinToString("\n"),
             subText = sessionTitle.takeIf { question.isNotBlank() },
@@ -259,10 +261,12 @@ object Notifier {
         silent: Boolean = false,
         timeoutMs: Long? = null,
         actions: List<NotificationCompat.Action> = emptyList(),
+        sessionId: String? = null,
     ): Boolean {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         val id = notificationId(key)
         val open = MainActivity.openIntent(context).putExtra(extra, key)
+            .apply { sessionId?.let { putExtra(MainActivity.EXTRA_SESSION_ID, it) } }
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
