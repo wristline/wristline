@@ -54,6 +54,22 @@ class PlanApprovalTest {
     }
 
     @Test
+    fun planApprovalButtonsAreAllNeutral() {
+        assertEquals(
+            listOf(OptionStyle.NEUTRAL, OptionStyle.NEUTRAL, OptionStyle.NEUTRAL, OptionStyle.NEUTRAL),
+            decisions.map { optionStyle(plan = true, it.id) },
+        )
+    }
+
+    @Test
+    fun otherToolsKeepTheirColours() {
+        assertEquals(
+            listOf(OptionStyle.ALLOW, OptionStyle.TONAL, OptionStyle.DENY, OptionStyle.NEUTRAL),
+            decisions.map { optionStyle(plan = false, it.id) },
+        )
+    }
+
+    @Test
     fun onlyAPermissionIsAPlanApproval() {
         assertFalse(permission("ExitPlanMode", RequestKind.QUESTION).isPlanApproval())
     }

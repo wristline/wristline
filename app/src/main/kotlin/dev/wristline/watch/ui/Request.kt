@@ -106,8 +106,8 @@ internal fun shownOptions(request: PendingRequest, question: Question): List<Opt
 }
 
 /**
- * The label of a permission option, null for the bridge's own: a plan approval's in Claude Code's
- * own English words in every locale, except "Answer on PC".
+ * The label of a permission option, null for the bridge's own: a plan approval's are Claude Code's
+ * terminal choices in short English in every locale, except "Answer on PC".
  */
 @StringRes
 internal fun decisionLabelRes(plan: Boolean, optionId: String): Int? = when (optionId) {
@@ -116,6 +116,17 @@ internal fun decisionLabelRes(plan: Boolean, optionId: String): Int? = when (opt
     Decision.DENY -> if (plan) R.string.decision_plan_change else R.string.decision_deny
     Decision.DEFER -> R.string.decision_defer
     else -> null
+}
+
+/** How an option's button looks. */
+internal enum class OptionStyle { ALLOW, DENY, TONAL, NEUTRAL }
+
+/** Allow is green, Deny red text on the dark tonal button; "Answer on PC" and every option of a plan approval are neutral. */
+internal fun optionStyle(plan: Boolean, optionId: String): OptionStyle = when {
+    plan || optionId == Decision.DEFER -> OptionStyle.NEUTRAL
+    optionId == Decision.ALLOW -> OptionStyle.ALLOW
+    optionId == Decision.DENY -> OptionStyle.DENY
+    else -> OptionStyle.TONAL
 }
 
 /** What [answers] to [request] did, once the bridge accepted them. */
@@ -307,16 +318,15 @@ private fun PermissionContent(
                         .fillMaxWidth()
                         .transformedHeight(this, spec)
                         .minimumVerticalContentPadding(top = 0.dp, bottom = ButtonDefaults.minimumVerticalListContentPadding)
-                    // A plan's labels are longer; its "mode: acceptEdits" only repeats auto-accept.
                     val label: @Composable RowScope.() -> Unit = {
-                        Text(decisionLabel(plan, option), maxLines = if (plan) 2 else 1, overflow = TextOverflow.Ellipsis)
+                        Text(decisionLabel(plan, option), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    // A plan's "mode: acceptEdits" only repeats auto-accept.
                     val secondary: (@Composable RowScope.() -> Unit)? =
                         option.description?.takeUnless { plan }?.let { { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
                     val transformation = SurfaceTransformation(spec)
-                    // Allow is green with black text, Deny red text on the dark tonal button.
-                    when (option.id) {
-                        Decision.ALLOW -> Button(
+                    when (optionStyle(plan, option.id)) {
+                        OptionStyle.ALLOW -> Button(
                             onClick = answer, modifier = modifier, enabled = !sending, transformation = transformation,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Status.Running,
@@ -325,16 +335,16 @@ private fun PermissionContent(
                             ),
                             secondaryLabel = secondary, label = label,
                         )
-                        Decision.DENY -> FilledTonalButton(
+                        OptionStyle.DENY -> FilledTonalButton(
                             onClick = answer, modifier = modifier, enabled = !sending, transformation = transformation,
                             colors = ButtonDefaults.filledTonalButtonColors(contentColor = colors.error),
                             secondaryLabel = secondary, label = label,
                         )
-                        Decision.DEFER -> OutlinedButton(
+                        OptionStyle.NEUTRAL -> OutlinedButton(
                             onClick = answer, modifier = modifier, enabled = !sending, transformation = transformation,
                             secondaryLabel = secondary, label = label,
                         )
-                        else -> FilledTonalButton(
+                        OptionStyle.TONAL -> FilledTonalButton(
                             onClick = answer, modifier = modifier, enabled = !sending, transformation = transformation,
                             secondaryLabel = secondary, label = label,
                         )
