@@ -42,6 +42,7 @@ import androidx.wear.compose.material3.TextDefaults
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import dev.wristline.watch.R
+import dev.wristline.watch.data.Account
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
@@ -49,6 +50,7 @@ import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.key
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.format.TextStyle
@@ -69,15 +71,14 @@ internal fun UsageScreen() {
 }
 
 /**
- * Per provider: a ring per limit window with the time left to its reset and the clock time it
- * resets at, and when the numbers were taken.
+ * Per provider and account: a ring per limit window with the clock time it resets at and the time
+ * left to it, and when the numbers were taken.
  */
 @Composable
 internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
-    val locale = LocalConfiguration.current.locales[0]
-    val sorted = remember(usage) { usage.sortedWith(compareBy({ it.provider }, { it.account?.label })) }
+    val sorted = remember(usage) { usageOrder(usage) }
     // Only the last item's bottom value takes effect; it keeps the final row off the round edge.
     val bottom = TextDefaults.minimumBottomListContentPadding
     // The rings on screen fill in from zero one after another, once per visit: rings the list
@@ -135,7 +136,6 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
                     WindowRow(
                         window,
                         now,
-                        locale,
                         Modifier.edgeTransform(this, spec).minimumVerticalContentPadding(top = 0.dp, bottom = bottom),
                         fillDelayMs = if (ringsFilled) null else (firstRing + i) * RING_STAGGER_MS,
                         onFillStarted = { ringsFilled = true },
@@ -160,15 +160,14 @@ private fun UpdatedText(updatedAt: String, now: () -> Long) {
 }
 
 /**
- * A window: its ring and percentage, its name and, when it has a reset time, the time left and the
- * clock time ([ResetTimes]). From its reset time on the window is over (as on the limit card, see
+ * A window: its ring and percentage, its name and, when it has a reset time, the clock time and the
+ * time left ([ResetTimes]). From its reset time on the window is over (as on the limit card, see
  * [currentLine]): an empty ring, a dash and `Reset`, until the bridge reports the next one.
  */
 @Composable
 private fun WindowRow(
     window: UsageWindow,
     now: () -> Long,
-    locale: Locale,
     modifier: Modifier,
     fillDelayMs: Long?,
     onFillStarted: () -> Unit,
@@ -196,83 +195,114 @@ private fun WindowRow(
             Text(window.label ?: windowLabel(window), style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             when {
                 passed -> Text(stringResource(R.string.usage_reset_passed), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                resetsAt != null -> ResetTimes(resetsAt, now, locale)
+                resetsAt != null -> ResetTimes(resetsAt, now)
             }
         }
     }
 }
 
 /**
- * `⧗ 2h 13m` over `3:13 PM`: the time left to [resetsAt] in full units ([remainingFullText]) and the
- * clock time it resets at ([resetClock]), in the watch's 12 or 24-hour setting. Reads [now]
- * itself: the minute tick recomposes these two lines only.
+ * `◷ Fri 14:30` over `in 2h 13m`: the clock time [resetsAt] falls on ([resetClockText]), in the
+ * watch's 12 or 24-hour setting, and the time left to it ([remainingIn]); read out as `resets Friday
+ * 14:30, 2 hours 13 minutes left`. Reads [now] itself: the minute tick recomposes these two lines only.
  */
 @Composable
-private fun ResetTimes(resetsAt: Long, now: () -> Long, locale: Locale) {
+private fun ResetTimes(resetsAt: Long, now: () -> Long) {
     val colors = MaterialTheme.colorScheme
     val at = now()
     val left = minutesLeft(resetsAt, at)
-    val description = stringResource(R.string.limit_resets_in, durationWords(left))
-    Row(
-        Modifier.clearAndSetSemantics { contentDescription = description },
-        horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(painterResource(R.drawable.ic_hourglass), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
-        Text(
-            remainingFullText(
-                left,
-                stringResource(R.string.limit_days),
-                stringResource(R.string.limit_hours),
-                stringResource(R.string.limit_minutes),
-                stringResource(R.string.limit_under_minute),
-            ),
-            color = colors.onSurface,
-            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
-            maxLines = 1,
-        )
-    }
+    val zone = ZoneId.systemDefault()
     val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
-    Text(
-        resetClock(resetsAt, at, ZoneId.systemDefault(), locale, is24Hour),
-        color = colors.onSurfaceVariant,
-        style = MaterialTheme.typography.bodyExtraSmall,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
+    val words = resetClockWords(resetsAt, at, zone, LocalConfiguration.current.locales[0], is24Hour, stringResource(R.string.limit_today))
+    val spoken = stringResource(R.string.limit_resets_at, words) + ", " + stringResource(R.string.limit_left, durationWords(left))
+    Column(Modifier.clearAndSetSemantics { contentDescription = spoken }) {
+        Row(horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_clock), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
+            Text(
+                resetClockText(resetsAt, at, zone, is24Hour),
+                color = colors.onSurface,
+                style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
+                maxLines = 1,
+            )
+        }
+        Text(remainingIn(left), color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyExtraSmall, maxLines = 1)
+    }
 }
 
 /**
- * [minutes] left in full units, at most two: days and hours from a day ([dayPattern] `%1$dd`,
- * [hourPattern] `%1$dh`), else hours and minutes ([minutePattern] `%1$dm`), a zero second unit left
- * out: `3d 4h`, `3d`, `2h 13m`, `2h`, `5m`; under a minute [underMinute] (`<1m`).
+ * Usage entries in the order the app shows them (the limit card's lines too): by provider, and
+ * within one first the entry without an account or of the account labelled as the default (`기본`,
+ * `default`, as `accounts add --label` names the bridge's primary home), then the others by label.
+ * The bridge's own order follows which of its homes reported first, and a `usage` event for a new
+ * entry adds it at the end.
  */
-internal fun remainingFullText(minutes: Long, dayPattern: String, hourPattern: String, minutePattern: String, underMinute: String): String {
+internal fun usageOrder(usage: List<Usage>): List<Usage> =
+    usage.sortedWith(compareBy({ it.provider }, { if (isDefaultAccount(it.account)) 0 else 1 }, { it.account?.label }))
+
+private val DEFAULT_LABELS = setOf("기본", "default")
+
+private fun isDefaultAccount(account: Account?): Boolean = account == null || account.label.trim().lowercase(Locale.ROOT) in DEFAULT_LABELS
+
+/**
+ * [minutes] left in full units, at most two, in short English in every language: days and hours
+ * from a day, else hours and minutes, a zero second unit left out: `in 3d 4h`, `in 3d`, `in 2h 13m`,
+ * `in 2h`, `in 5m`; under a minute `in <1m`.
+ */
+internal fun remainingIn(minutes: Long): String {
     val days = minutes / MINUTES_PER_DAY
     val hours = minutes / 60 % 24
     val rest = minutes % 60
     val parts = when {
-        days > 0 -> listOf(dayPattern.format(days), hourPattern.takeIf { hours > 0 }?.format(hours))
-        hours > 0 -> listOf(hourPattern.format(hours), minutePattern.takeIf { rest > 0 }?.format(rest))
-        rest > 0 -> listOf(minutePattern.format(rest))
-        else -> return underMinute
+        days > 0 -> listOf("${days}d", "${hours}h".takeIf { hours > 0 })
+        hours > 0 -> listOf("${hours}h", "${rest}m".takeIf { rest > 0 })
+        rest > 0 -> listOf("${rest}m")
+        else -> listOf("<1m")
     }
-    return parts.filterNotNull().joinToString(" ")
+    return "in " + parts.filterNotNull().joinToString(" ")
+}
+
+private val CLOCK_24 = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+private val CLOCK_12 = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+private val CLOCK_12_DIGITS = DateTimeFormatter.ofPattern("h:mm", Locale.US)
+private val WEEKDAY = DateTimeFormatter.ofPattern("EEE", Locale.US)
+private val MONTH_DAY = DateTimeFormatter.ofPattern("M/d", Locale.US)
+
+/** Calendar days in [zone] from [now] to [time]: 0 today, 1 tomorrow; negative before today. */
+private fun daysFrom(now: Long, time: ZonedDateTime): Long =
+    ChronoUnit.DAYS.between(Instant.ofEpochMilli(now).atZone(time.zone).toLocalDate(), time.toLocalDate())
+
+/**
+ * The clock time [resetsAt] falls on in [zone], as of [now], in English whatever the language: the
+ * time alone today (`14:30`), with the weekday within the next six days (`Fri 14:30`), with the
+ * date from seven (`10/8 14:30`; the weekday would name today's). In 24 hours when [is24Hour], else
+ * `2:30 PM`, or with [compact] `2:30p`.
+ */
+internal fun resetClockText(resetsAt: Long, now: Long, zone: ZoneId, is24Hour: Boolean, compact: Boolean = false): String {
+    val time = Instant.ofEpochMilli(resetsAt).atZone(zone)
+    val clock = when {
+        is24Hour -> CLOCK_24.format(time)
+        compact -> CLOCK_12_DIGITS.format(time) + if (time.hour < 12) "a" else "p"
+        else -> CLOCK_12.format(time)
+    }
+    return when (daysFrom(now, time)) {
+        0L -> clock
+        in 1L..6L -> WEEKDAY.format(time) + " " + clock
+        else -> MONTH_DAY.format(time) + " " + clock
+    }
 }
 
 /**
- * The clock time [resetsAt] falls on in [zone], as of [now]: the time alone today (`14:30`), with
- * the weekday within the next six days (`Fri 14:30`), with the date from seven days (`10/8 14:30`).
- * In [locale]'s short time, or in 24 hours when [is24Hour].
+ * [resetClockText] for TalkBack, in [locale]: [today] (`today %1$s`) with the time, the weekday in
+ * full within the next six days (`Friday 14:30`), else the date (`October 8, 2026 14:30`); in the
+ * locale's 12-hour time unless [is24Hour].
  */
-internal fun resetClock(resetsAt: Long, now: Long, zone: ZoneId, locale: Locale, is24Hour: Boolean): String {
+internal fun resetClockWords(resetsAt: Long, now: Long, zone: ZoneId, locale: Locale, is24Hour: Boolean, today: String): String {
     val time = Instant.ofEpochMilli(resetsAt).atZone(zone)
-    val timeFormat = if (is24Hour) DateTimeFormatter.ofPattern("H:mm", locale) else DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale)
-    val clock = timeFormat.format(time)
-    return when (ChronoUnit.DAYS.between(Instant.ofEpochMilli(now).atZone(zone).toLocalDate(), time.toLocalDate())) {
-        0L -> clock
-        in 1L..6L -> time.dayOfWeek.getDisplayName(TextStyle.SHORT, locale) + " " + clock
-        else -> DateTimeFormatter.ofPattern("M/d", locale).format(time) + " " + clock
+    val clock = if (is24Hour) CLOCK_24.format(time) else DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(time)
+    return when (daysFrom(now, time)) {
+        0L -> today.format(clock)
+        in 1L..6L -> time.dayOfWeek.getDisplayName(TextStyle.FULL, locale) + " " + clock
+        else -> DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(locale).format(time) + " " + clock
     }
 }
 

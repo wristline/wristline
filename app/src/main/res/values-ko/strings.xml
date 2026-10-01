@@ -73,13 +73,11 @@
     <string name="status_idle">대기</string>
     <string name="status_needs_input">입력 필요</string>
     <string name="status_ended">종료됨</string>
-    <string name="limit_days">%1$d일</string>
-    <string name="limit_hours">%1$d시간</string>
-    <string name="limit_minutes">%1$d분</string>
-    <string name="limit_under_minute">1분 미만</string>
     <string name="limit_used">%1$s: %2$d%% 사용</string>
     <string name="limit_unknown">%1$s: 사용량 정보 없음</string>
-    <string name="limit_resets_in">%1$s 후 초기화</string>
+    <string name="limit_resets_at">%1$s 초기화</string>
+    <string name="limit_today">오늘 %1$s</string>
+    <string name="limit_left">%1$s 남음</string>
     <plurals name="limit_sessions">
         <item quantity="other">활성 세션 %d개</item>
     </plurals>

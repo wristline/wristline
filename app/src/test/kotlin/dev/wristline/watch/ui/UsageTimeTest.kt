@@ -9,33 +9,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UsageTimeTest {
-    private fun en(minutes: Long) = remainingFullText(minutes, "%1\$dd", "%1\$dh", "%1\$dm", "<1m")
-    private fun ko(minutes: Long) = remainingFullText(minutes, "%1\$d일", "%1\$d시간", "%1\$d분", "1분 미만")
-
     @Test
     fun remainingIsInFullUnitsAZeroSecondUnitLeftOut() {
-        assertEquals("<1m", en(0))
-        assertEquals("5m", en(5))
-        assertEquals("2h", en(120))
-        assertEquals("2h 13m", en(133))
-        assertEquals("23h 59m", en(1_439))
-        assertEquals("1d", en(1_440))
+        assertEquals("in <1m", remainingIn(0))
+        assertEquals("in 5m", remainingIn(5))
+        assertEquals("in 2h", remainingIn(120))
+        assertEquals("in 2h 13m", remainingIn(133))
+        assertEquals("in 23h 59m", remainingIn(1_439))
+        assertEquals("in 1d", remainingIn(1_440))
         // From a day the minutes are dropped.
-        assertEquals("1d", en(1_440 + 59))
-        assertEquals("3d 4h", en(3 * 1_440 + 4 * 60 + 12))
-        assertEquals("1분 미만", ko(0))
-        assertEquals("5분", ko(5))
-        assertEquals("2시간", ko(120))
-        assertEquals("2시간 13분", ko(133))
-        assertEquals("1일", ko(1_440))
-        assertEquals("3일 4시간", ko(3 * 1_440 + 4 * 60 + 12))
+        assertEquals("in 1d", remainingIn(1_440 + 59))
+        assertEquals("in 3d 4h", remainingIn(3 * 1_440 + 4 * 60 + 12))
     }
 
     @Test
     fun remainingCountsWholeMinutesLeft() {
         val now = 1_800_000_000_000L
-        assertEquals("<1m", en(minutesLeft(now + 59_000, now)))
-        assertEquals("2h 13m", en(minutesLeft(now + (133 * 60 + 59) * 1_000L, now)))
+        assertEquals("in <1m", remainingIn(minutesLeft(now + 59_000, now)))
+        assertEquals("in 2h 13m", remainingIn(minutesLeft(now + (133 * 60 + 59) * 1_000L, now)))
+        // Past the reset: none left.
+        assertEquals("in <1m", remainingIn(minutesLeft(now - 60_000, now)))
     }
 
     private val seoul = ZoneId.of("Asia/Seoul")
@@ -46,21 +39,19 @@ class UsageTimeTest {
     private fun at(day: Int, hour: Int, minute: Int, month: Int = 9) =
         ZonedDateTime.of(2026, month, day, hour, minute, 0, 0, seoul).toInstant().toEpochMilli()
 
-    private fun clock(resetsAt: Long, locale: Locale) = resetClock(resetsAt, now, seoul, locale, is24Hour = true)
+    private fun clock(resetsAt: Long, is24Hour: Boolean = true, compact: Boolean = false) =
+        resetClockText(resetsAt, now, seoul, is24Hour, compact)
 
     @Test
-    fun resetClockIsTheTimeTodayTheWeekdayWithinTheWeekElseTheDate() {
-        assertEquals("23:30", clock(at(29, 23, 30), Locale.ENGLISH))
-        assertEquals("23:30", clock(at(29, 23, 30), Locale.KOREAN))
-        // Past midnight it is tomorrow, whatever the hours left.
-        assertEquals("Wed 0:13", clock(at(30, 0, 13), Locale.ENGLISH))
-        assertEquals("수 0:13", clock(at(30, 0, 13), Locale.KOREAN))
-        assertEquals("Fri 14:30", clock(at(2, 14, 30, month = 10), Locale.ENGLISH))
-        assertEquals("금 14:30", clock(at(2, 14, 30, month = 10), Locale.KOREAN))
+    fun resetClockIsTheTimeTodayTheWeekdayWithinSixDaysElseTheDate() {
+        assertEquals("23:30", clock(at(29, 23, 30)))
+        // Tomorrow, from midnight on, whatever the hours left.
+        assertEquals("Wed 00:13", clock(at(30, 0, 13)))
+        assertEquals("Fri 14:30", clock(at(2, 14, 30, month = 10)))
         // Six days on the weekday is still unambiguous; from seven it would name today's.
-        assertEquals("Mon 9:00", clock(at(5, 9, 0, month = 10), Locale.ENGLISH))
-        assertEquals("10/6 9:00", clock(at(6, 9, 0, month = 10), Locale.ENGLISH))
-        assertEquals("10/8 14:30", clock(at(8, 14, 30, month = 10), Locale.KOREAN))
+        assertEquals("Mon 09:00", clock(at(5, 9, 0, month = 10)))
+        assertEquals("10/6 09:00", clock(at(6, 9, 0, month = 10)))
+        assertEquals("10/8 14:30", clock(at(8, 14, 30, month = 10)))
     }
 
     @Test
@@ -68,17 +59,56 @@ class UsageTimeTest {
         // 15:13 UTC on the 29th: still today in UTC, already tomorrow in Seoul.
         val resetsAt = ZonedDateTime.of(2026, 9, 29, 15, 13, 0, 0, ZoneId.of("UTC")).toInstant().toEpochMilli()
         val utcNow = ZonedDateTime.of(2026, 9, 29, 13, 0, 0, 0, ZoneId.of("UTC")).toInstant().toEpochMilli()
-        assertEquals("15:13", resetClock(resetsAt, utcNow, ZoneId.of("UTC"), Locale.ENGLISH, is24Hour = true))
-        assertEquals("Wed 0:13", resetClock(resetsAt, utcNow, seoul, Locale.ENGLISH, is24Hour = true))
+        assertEquals("15:13", resetClockText(resetsAt, utcNow, ZoneId.of("UTC"), is24Hour = true))
+        assertEquals("Wed 00:13", resetClockText(resetsAt, utcNow, seoul, is24Hour = true))
     }
 
     @Test
     fun resetClockFollowsTheTwelveHourSetting() {
-        // The locale's own short time: its digits and day period, whatever the JDK's spacing.
-        val text = resetClock(at(29, 23, 30), now, seoul, Locale.US, is24Hour = false)
-        assertTrue(text, text.startsWith("11:30") && text.endsWith("PM"))
-        val ko = resetClock(at(2, 14, 30, month = 10), now, seoul, Locale.KOREAN, is24Hour = false)
-        assertEquals("금 오후 2:30", ko)
+        assertEquals("11:30 PM", clock(at(29, 23, 30), is24Hour = false))
+        assertEquals("Fri 2:30 PM", clock(at(2, 14, 30, month = 10), is24Hour = false))
+        assertEquals("Wed 12:13 AM", clock(at(30, 0, 13), is24Hour = false))
+        assertEquals("10/8 9:05 AM", clock(at(8, 9, 5, month = 10), is24Hour = false))
+        // Compact, for the limit card when the full form does not fit.
+        assertEquals("Fri 2:30p", clock(at(2, 14, 30, month = 10), is24Hour = false, compact = true))
+        assertEquals("Wed 12:13a", clock(at(30, 0, 13), is24Hour = false, compact = true))
+        assertEquals("12:00p", resetClockText(at(30, 12, 0), at(30, 9, 0), seoul, is24Hour = false, compact = true))
+        // Compact changes nothing in 24 hours.
+        assertEquals("Fri 14:30", clock(at(2, 14, 30, month = 10), compact = true))
+    }
+
+    @Test
+    fun resetClockIsTheSameInEveryLanguage() {
+        val times = listOf(at(29, 23, 30), at(30, 0, 13), at(2, 14, 30, month = 10), at(8, 14, 30, month = 10))
+        val formats = { times.flatMap { t -> listOf(clock(t), clock(t, is24Hour = false), clock(t, is24Hour = false, compact = true)) } }
+        val default = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.US)
+            val us = formats()
+            Locale.setDefault(Locale.KOREAN)
+            assertEquals(us, formats())
+            Locale.setDefault(Locale.KOREA)
+            assertEquals(us, formats())
+        } finally {
+            Locale.setDefault(default)
+        }
+    }
+
+    // Newer JDKs put a narrow no-break space before AM/PM.
+    private fun words(resetsAt: Long, locale: Locale, today: String, is24Hour: Boolean = true) =
+        resetClockWords(resetsAt, now, seoul, locale, is24Hour, today).replace(' ', ' ')
+
+    @Test
+    fun resetClockWordsAreInTheWatchLanguage() {
+        assertEquals("today 23:30", words(at(29, 23, 30), Locale.US, "today %1\$s"))
+        assertEquals("오늘 23:30", words(at(29, 23, 30), Locale.KOREAN, "오늘 %1\$s"))
+        assertEquals("Friday 14:30", words(at(2, 14, 30, month = 10), Locale.US, "today %1\$s"))
+        assertEquals("금요일 14:30", words(at(2, 14, 30, month = 10), Locale.KOREAN, "오늘 %1\$s"))
+        assertEquals("Friday 2:30 PM", words(at(2, 14, 30, month = 10), Locale.US, "today %1\$s", is24Hour = false))
+        assertEquals("금요일 오후 2:30", words(at(2, 14, 30, month = 10), Locale.KOREAN, "오늘 %1\$s", is24Hour = false))
+        // From seven days the date, in full.
+        assertEquals("October 8, 2026 14:30", words(at(8, 14, 30, month = 10), Locale.US, "today %1\$s"))
+        assertEquals("2026년 10월 8일 14:30", words(at(8, 14, 30, month = 10), Locale.KOREAN, "오늘 %1\$s"))
     }
 
     @Test

@@ -1,25 +1,36 @@
 package dev.wristline.watch.ui
 
+import android.text.format.DateFormat
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.constrainHeight
@@ -56,6 +67,7 @@ import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
 import dev.wristline.watch.data.isoToMillis
+import java.time.ZoneId
 import kotlin.math.roundToInt
 
 /** The icon buttons at the top of the list. */
@@ -65,14 +77,23 @@ private val ACTION_GAP = 8.dp
 /** The provider badge beside labelSmall text (the limit card, a session card's second line). */
 private val SMALL_BADGE = 14.dp
 
-/** The limit card's glyphs (reset, sessions; the Usage screen's reset too), the gap after one, and the gaps between groups and lines. */
+/** The limit card's glyphs (reset, sessions; the Usage screen's too), the gap after one, and the gaps between groups and lines. */
 internal val LIMIT_GLYPH = 12.dp
 internal val LIMIT_GLYPH_GAP = 3.dp
-private val LIMIT_GROUP_GAP = 8.dp
+private val LIMIT_GROUP_GAP = 6.dp
 private val LIMIT_LINE_GAP = 2.dp
 
-/** A limit line's groups: the badge and percentage, the reset countdown, the session count. */
-private const val LIMIT_CELLS = 3
+/** The account mark on a [SMALL_BADGE] badge (see [BadgeWithMark]), and the ring around it in the card's color. */
+private val MARK = 8.dp
+private val MARK_RING = 1.dp
+
+/**
+ * A limit line's cells: the badge and percentage, the reset clock in full and compact (one of the
+ * two is placed, see [LimitTable]), the session count.
+ */
+private const val LIMIT_CELLS = 4
+private const val CELL_CLOCK = 1
+private const val CELL_CLOCK_COMPACT = 2
 
 internal const val MINUTES_PER_DAY = 1_440
 
@@ -196,7 +217,8 @@ internal fun SessionListContent(
                             .pressScale(depth)
                             .heightIn(min = 1.dp),
                         transformation = SurfaceTransformation(spec),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        // 6dp at the sides: at 226dp the widest line (100%, Wed 11:59p, 12) fits with room to spare.
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
                         interactionSource = interaction,
                     ) {
                         LimitTable(limits, now, Modifier.align(Alignment.CenterHorizontally))
@@ -232,36 +254,47 @@ internal const val NEAR_LIMIT_PERCENT = 80
 /** A limit window's percentage from here up is shown in red (see [limitColor]). */
 internal const val AT_LIMIT_PERCENT = 95
 
-/** A provider's line on the limit card (see [limitLines]). */
+/** A line on the limit card: a provider's account, or a provider with sessions but no usage (see [limitLines]). */
 internal data class LimitLine(
     val provider: String,
     /** The used percentage of its [shortWindow], rounded; null without usage. */
     val percent: Int?,
     /** When that window resets, in epoch milliseconds; null when unknown. */
     val resetsAt: Long?,
-    /** The provider's sessions in the list, which has live ones only. */
+    /** Its sessions in the list, which has live ones only. */
     val sessions: Int,
+    /** The account's label when its provider has more than one line (see [accountMark]); else null. */
+    val account: String? = null,
 )
 
 /**
- * The limit card's lines: one per provider with usage or sessions, in provider order. Of a
- * provider's accounts the one closest to its short window's limit gives the numbers (the Usage
- * screen has the rest), compared among the windows of the provider's shortest length only; the
- * session count is the provider's total. Entries without a [shortWindow] count as no usage.
+ * The limit card's lines: one per usage entry with windows (the bridge sends the accounts logged in
+ * now only), in [usageOrder], and one for a provider with sessions but no usage. A line's numbers
+ * are its entry's [shortWindow]; without one it reads as without usage. It counts the provider's
+ * sessions of its account; the first line of a provider also counts those without an account or of
+ * an account without a line. When a provider has more than one line, each names its account.
  */
 internal fun limitLines(usage: List<Usage>, sessions: List<Session>): List<LimitLine> {
-    val windows = usage
-        .mapNotNull { u -> shortWindow(u)?.let { u.provider to it } }
-        .groupBy({ it.first }, { it.second })
-        .mapValues { (_, windows) ->
-            val shortest = windows.minOf(::windowLength)
-            windows.filter { windowLength(it) == shortest }.maxBy { it.usedPercent }
+    val entries = usageOrder(usage.filter { it.windows.isNotEmpty() }).groupBy { it.provider }
+    val live = sessions.groupBy { it.provider }
+    return (entries.keys + live.keys).sorted().flatMap { provider ->
+        val own = live[provider].orEmpty()
+        val accounts = entries[provider] ?: return@flatMap listOf(LimitLine(provider, null, null, own.size))
+        val counts = own.groupingBy { session ->
+            accounts.indexOfFirst { it.account != null && it.account.id == session.account?.id }.coerceAtLeast(0)
+        }.eachCount()
+        accounts.mapIndexed { i, entry ->
+            val window = shortWindow(entry)
+            val account = entry.account?.label?.takeIf { accounts.size > 1 }
+            LimitLine(provider, window?.usedPercent?.roundToInt(), isoToMillis(window?.resetsAt), counts[i] ?: 0, account)
         }
-    val counts = sessions.groupingBy { it.provider }.eachCount()
-    return (windows.keys + counts.keys).sorted().map { provider ->
-        val window = windows[provider]
-        LimitLine(provider, window?.usedPercent?.roundToInt(), isoToMillis(window?.resetsAt), counts[provider] ?: 0)
     }
+}
+
+/** The mark of an account on its provider's badge: its label's first character, as given. */
+internal fun accountMark(label: String): String {
+    val trimmed = label.trim()
+    return if (trimmed.isEmpty()) "" else trimmed.substring(0, trimmed.offsetByCodePoints(0, 1))
 }
 
 /**
@@ -294,19 +327,9 @@ internal fun resetPassed(resetsAt: Long?, now: Long): Boolean = resetsAt != null
 internal fun minutesLeft(resetsAt: Long, now: Long): Long = ((resetsAt - now) / 60_000).coerceAtLeast(0)
 
 /**
- * The countdown to a reset in digits, the same in every language: `2:13` under a day, else whole
- * days in [dayPattern] (`%1$dd`, `%1$d일`).
- */
-internal fun remainingText(minutes: Long, dayPattern: String): String =
-    if (minutes >= MINUTES_PER_DAY) {
-        dayPattern.format(minutes / MINUTES_PER_DAY)
-    } else {
-        "${minutes / 60}:${(minutes % 60).toString().padStart(2, '0')}"
-    }
-
-/**
  * The limit card's [lines] as a table: each group starts at the same place on every line, the
- * widest of a column setting its width; a column no line uses (no reset times) takes no room.
+ * widest of a column setting its width; a column no line uses (no reset times) takes no room. The
+ * reset clocks are the full ones unless those make the table wider than the card, then the compact.
  */
 @Composable
 private fun LimitTable(lines: List<LimitLine>, now: () -> Long, modifier: Modifier = Modifier) {
@@ -314,41 +337,64 @@ private fun LimitTable(lines: List<LimitLine>, now: () -> Long, modifier: Modifi
         val rows = measurables.map { it.measure(Constraints()) }.chunked(LIMIT_CELLS)
         val groupGap = LIMIT_GROUP_GAP.roundToPx()
         val lineGap = LIMIT_LINE_GAP.roundToPx()
-        val widths = List(LIMIT_CELLS) { column -> rows.maxOf { it[column].width } }
-        val starts = widths.runningFold(0) { x, width -> if (width > 0) x + width + groupGap else x }
-        val heights = rows.map { row -> row.maxOf { it.height } }
-        val width = widths.indices.maxOf { starts[it] + widths[it] }
+        fun widths(columns: List<Int>) = columns.map { column -> rows.maxOf { it[column].width } }
+        fun starts(widths: List<Int>) = widths.runningFold(0) { x, width -> if (width > 0) x + width + groupGap else x }
+        fun width(widths: List<Int>) = starts(widths).let { starts -> widths.indices.maxOf { starts[it] + widths[it] } }
+        val full = listOf(0, CELL_CLOCK, LIMIT_CELLS - 1)
+        val columns = if (width(widths(full)) <= constraints.maxWidth) full else listOf(0, CELL_CLOCK_COMPACT, LIMIT_CELLS - 1)
+        val widths = widths(columns)
+        val starts = starts(widths)
+        val heights = rows.map { row -> columns.maxOf { row[it].height } }
         val height = heights.sum() + lineGap * (rows.size - 1)
-        layout(constraints.constrainWidth(width), constraints.constrainHeight(height)) {
+        layout(constraints.constrainWidth(width(widths)), constraints.constrainHeight(height)) {
             var y = 0
             rows.forEachIndexed { i, row ->
-                row.forEachIndexed { column, cell -> cell.placeRelative(starts[column], y + (heights[i] - cell.height) / 2) }
+                columns.forEachIndexed { column, cell -> row[cell].placeRelative(starts[column], y + (heights[i] - row[cell].height) / 2) }
                 y += heights[i] + lineGap
             }
         }
     }
 }
 
+/** A line's reset clock: [full] and [compact] on screen ([resetClockText]), [words] for TalkBack ([resetClockWords]). */
+private data class ResetClock(val full: String, val compact: String, val words: String)
+
 /**
- * A line's [LIMIT_CELLS] groups, icons and numbers only: `[C] 42%`, `⧗ 2:13`, `▣ 3`. Without usage
- * (or past the reset time, see [currentLine]) the percentage is a dash and, as without a reset
- * time, the countdown group is empty. Read out as one sentence. Reads [now] itself: the minute tick
- * recomposes the lines, not the list.
+ * A line's [LIMIT_CELLS] cells, icons and numbers only: `[C] 42%`, `◷ 16:40` (`◷ Fri 4:40 PM`, or
+ * compact `◷ Fri 4:40p`), `▣ 3`, the badge marked with the account when its provider has more lines.
+ * Without usage (or past the reset time, see [currentLine]) the percentage is a dash and, as without
+ * a reset time, the clock cells are empty. Read out as one sentence. Reads [now] only to see the
+ * reset pass and the clock text change (at midnight): the minute tick recomposes nothing else.
  */
 @Composable
 private fun LimitCells(limit: LimitLine, now: () -> Long) {
     val colors = MaterialTheme.colorScheme
     val style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
-    val at = now()
-    val line = currentLine(limit, at)
-    val left = line.resetsAt?.let { minutesLeft(it, at) }
-    val description = limitDescription(line, left)
+    val line by remember(limit, now) { derivedStateOf { currentLine(limit, now()) } }
+    val resetsAt = line.resetsAt
+    val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
+    val locale = LocalConfiguration.current.locales[0]
+    val today = stringResource(R.string.limit_today)
+    val clock by remember(resetsAt, now, is24Hour, locale, today) {
+        derivedStateOf {
+            resetsAt?.let {
+                val at = now()
+                val zone = ZoneId.systemDefault()
+                ResetClock(
+                    resetClockText(it, at, zone, is24Hour),
+                    resetClockText(it, at, zone, is24Hour, compact = true),
+                    resetClockWords(it, at, zone, locale, is24Hour, today),
+                )
+            }
+        }
+    }
+    val description = limitDescription(line, clock?.words)
     Row(
         Modifier.clearAndSetSemantics { contentDescription = description },
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ProviderBadge(line.provider, size = SMALL_BADGE)
+        BadgeWithMark(line.provider, line.account?.let(::accountMark))
         val percent = line.percent
         if (percent != null) {
             Text("$percent%", color = limitColor(percent), style = style, maxLines = 1)
@@ -356,10 +402,12 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
             Text("—", color = colors.onSurfaceVariant, style = style, maxLines = 1)
         }
     }
-    Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
-        if (left != null) {
-            Icon(painterResource(R.drawable.ic_hourglass), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
-            Text(remainingText(left, stringResource(R.string.limit_days)), color = colors.onSurface, style = style, maxLines = 1)
+    for (text in listOf(clock?.full, clock?.compact)) {
+        Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
+            if (text != null) {
+                Icon(painterResource(R.drawable.ic_clock), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
+                Text(text, color = colors.onSurface, style = style, maxLines = 1)
+            }
         }
     }
     Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
@@ -368,20 +416,50 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
     }
 }
 
-/** `Claude Code: 42% used, resets in 2 hours 13 minutes, 3 active sessions`, [left] in minutes. */
+/**
+ * A [SMALL_BADGE] provider badge with [mark] (see [accountMark]), if any, on its bottom-right
+ * corner: black on a white disc, set off from the badge by a ring in the card's color. The mark
+ * hangs a little past the badge without taking room.
+ */
 @Composable
-private fun limitDescription(line: LimitLine, left: Long?): String {
-    val name = providerLabel(line.provider)
+private fun BadgeWithMark(provider: String, mark: String?) {
+    Box {
+        ProviderBadge(provider, size = SMALL_BADGE)
+        if (mark != null) {
+            // Sized in dp, as the badge's letter: in sp a large font scale would overflow the disc.
+            val letterStyle = with(LocalDensity.current) {
+                MaterialTheme.typography.labelSmall.copy(fontSize = (MARK * 0.8f).toSp(), lineHeight = MARK.toSp(), fontWeight = FontWeight.Bold)
+            }
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 2.dp, y = 2.dp)
+                    .size(MARK + MARK_RING * 2)
+                    .background(MaterialTheme.colorScheme.surfaceContainer, CircleShape)
+                    .padding(MARK_RING)
+                    .background(Color.White, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(mark, color = Color.Black, style = letterStyle, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** `Codex Pro: 11% used, resets Friday 14:30, 4 active sessions`; the reset as [clock] words. */
+@Composable
+private fun limitDescription(line: LimitLine, clock: String?): String {
+    val name = providerLabel(line.provider) + (line.account?.let { " $it" } ?: "")
     val parts = buildList {
         add(line.percent?.let { stringResource(R.string.limit_used, name, it) } ?: stringResource(R.string.limit_unknown, name))
-        if (left != null) add(stringResource(R.string.limit_resets_in, durationWords(left)))
+        if (clock != null) add(stringResource(R.string.limit_resets_at, clock))
         add(pluralStringResource(R.plurals.limit_sessions, line.sessions, line.sessions))
     }
     return parts.joinToString(", ")
 }
 
 /**
- * [minutes] in words, as the Usage screen shows it ([remainingFullText]): `3 days 4 hours`, `3 days`
+ * [minutes] in words, as the Usage screen shows it ([remainingIn]): `3 days 4 hours`, `3 days`
  * from a day, else `2 hours 13 minutes`, `2 hours`, `13 minutes`.
  */
 @Composable

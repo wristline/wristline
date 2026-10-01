@@ -76,28 +76,54 @@ private val usage = listOf(
     Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 93.0, "2026-09-29T16:12:00Z", 300))),
 )
 
-// The list's limit card: two Claude sessions and one Codex session; Claude's 5-hour window resets
-// in 2:13, Codex's primary (here weekly) in 3 days.
-private val listSessions = sessions.take(3)
-private val listUsage = listOf(
-    usage[0].copy(windows = listOf(UsageWindow("5h", 42.0, "2026-09-29T15:13:00Z", 300), usage[0].windows[1])),
-    Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 93.0, "2026-10-02T16:12:00Z", 10_080))),
-)
-
-// The widest lines: 100% on both, 23:59 and 30 days to the resets, 12 sessions each.
-private val fullSessions = List(24) { i ->
-    val provider = if (i < 12) ProviderId.CLAUDE_CODE else ProviderId.CODEX
-    Session("$provider:full$i", provider, "Session ${i + 1}", "/home/dev/repo$i", SessionStatus.IDLE, "2026-09-29T12:00:00Z")
-}
-private val fullUsage = listOf(
-    Usage(ProviderId.CLAUDE_CODE, "2026-09-29T12:56:00Z", listOf(UsageWindow("5h", 100.0, "2026-09-30T12:59:30Z", 300))),
-    Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 100.0, "2026-10-29T14:00:00Z", 43_200))),
-)
-
 // Two Claude accounts (one only estimated) and one Codex account: labels appear on the Usage screen.
 private val me = Account("acc-me", "me@gmail.com")
 private val school = Account("acc-school", "school", estimated = true)
 private val codexSchool = Account("chatgpt-school", "school.account@university.ac.kr")
+
+// Two Codex accounts, each a home's login: the default home's (labelled 기본) and a Pro plan's.
+private val codexBasic = Account("chatgpt-basic", "기본")
+private val codexPro = Account("chatgpt-pro", "Pro")
+
+// The list's limit card, a line per account: Claude's 5-hour window resets today at 16:40; Codex
+// 기본's primary (weekly) on Monday at 9:00; Codex Pro's 5-hour window today at 15:10 (its weekly
+// one in 6 days). The bridge sent Pro first; 기본 still leads. Sessions: two Claude, one Codex of
+// Pro and one Codex without an account (counted on 기본's line); their times now, 2m, 1h, 2d.
+private val listSessions = listOf(
+    sessions[0],
+    sessions[1].copy(account = codexPro, lastActivity = "2026-09-29T12:59:40Z"),
+    sessions[2],
+    Session("codex:5", ProviderId.CODEX, "Fix the flaky checkout test", "/home/dev/shop", SessionStatus.IDLE, "2026-09-27T09:00:00Z"),
+)
+private val listUsage = listOf(
+    Usage(
+        ProviderId.CLAUDE_CODE, "2026-09-29T12:56:00Z",
+        listOf(UsageWindow("5h", 42.0, "2026-09-29T16:40:00Z", 300, "5h"), UsageWindow("7d", 12.0, "2026-10-03T09:00:00Z", 10_080, "7d")),
+        me,
+    ),
+    Usage(
+        ProviderId.CODEX, "2026-09-29T12:57:00Z",
+        listOf(UsageWindow("primary", 3.0, "2026-09-29T15:10:00Z", 300), UsageWindow("secondary", 20.0, "2026-10-05T13:00:00Z", 10_080)),
+        codexPro,
+    ),
+    Usage(ProviderId.CODEX, "2026-09-29T12:59:30Z", listOf(UsageWindow("primary", 11.0, "2026-10-05T09:00:00Z", 10_080)), codexBasic),
+)
+
+// The widest lines: 100% on all three, resetting on Wednesday at 23:59, 12 sessions each.
+private val fullSessions = List(36) { i ->
+    val provider = if (i < 12) ProviderId.CLAUDE_CODE else ProviderId.CODEX
+    val account = when {
+        i < 12 -> null
+        i < 24 -> codexBasic
+        else -> codexPro
+    }
+    Session("$provider:full$i", provider, "Session ${i + 1}", "/home/dev/repo$i", SessionStatus.IDLE, "2026-09-29T12:00:00Z", account = account)
+}
+private val fullUsage = listOf(
+    Usage(ProviderId.CLAUDE_CODE, "2026-09-29T12:56:00Z", listOf(UsageWindow("5h", 100.0, "2026-09-30T23:59:00Z", 300))),
+    Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 100.0, "2026-09-30T23:59:00Z", 300)), codexBasic),
+    Usage(ProviderId.CODEX, "2026-09-29T12:57:00Z", listOf(UsageWindow("primary", 100.0, "2026-09-30T23:59:00Z", 300)), codexPro),
+)
 
 private val accountUsage = listOf(
     usage[0].copy(account = me),
@@ -109,24 +135,12 @@ private val accountUsage = listOf(
     usage[1].copy(account = codexSchool),
 )
 
-// The Usage screen's rows: Claude's 5-hour window resets in 2h 13m and its weekly one in 3d 4h, its
-// Opus window has no reset time; Codex's primary (here weekly) resets in 5 days, its secondary reset
-// two minutes ago.
+// The Usage screen's rows: the list's accounts in full. Claude's Opus window has no reset time; Codex
+// 기본's 30-day secondary reset two minutes ago.
 private val detailUsage = listOf(
-    Usage(
-        ProviderId.CLAUDE_CODE, "2026-09-29T12:56:00Z",
-        listOf(
-            UsageWindow("5h", 42.0, "2026-09-29T15:13:00Z", 300),
-            UsageWindow("7d", 18.0, "2026-10-02T17:00:00Z", 10_080),
-            UsageWindow("7d_opus", 30.0, label = "7d Opus"),
-        ),
-        me,
-    ),
-    Usage(
-        ProviderId.CODEX, "2026-09-29T12:57:00Z",
-        listOf(UsageWindow("primary", 93.0, "2026-10-04T13:20:00Z", 10_080), UsageWindow("secondary", 100.0, "2026-09-29T12:58:00Z", 43_200)),
-        codexSchool,
-    ),
+    listUsage[0].copy(windows = listUsage[0].windows + UsageWindow("7d_opus", 30.0, label = "7d Opus")),
+    listUsage[1],
+    listUsage[2].copy(windows = listUsage[2].windows + UsageWindow("secondary", 100.0, "2026-09-29T12:58:00Z", 43_200)),
 )
 
 private val items = SessionItems(
@@ -191,8 +205,8 @@ private fun CodePreview() = Frame { CodeContent(busy = false, error = null, onSu
 private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "not_found", onSubmit = {}) }
 
 // The icon row (Settings, Ask, recent questions) heads the list; the request banner sits right
-// under it, then the limit card, a line per provider where Codex's 93% is yellow (near its
-// limit), and the two-line session cards.
+// under it, then the limit card, a line per account (Codex's two marked 기 and P) with the clock
+// time of each reset, and the two-line session cards.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListPreview() = Frame {
@@ -212,7 +226,7 @@ private fun SessionListKoPreview() = Frame {
     )
 }
 
-// The widest limit lines still fit on one line each, in red.
+// The widest limit lines still fit on one line each, in red; in 12 hours the clock is compact.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionListLimitsFullPreview() = Frame {
