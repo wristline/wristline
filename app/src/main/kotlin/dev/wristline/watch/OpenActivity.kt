@@ -1,5 +1,6 @@
 package dev.wristline.watch
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
@@ -11,6 +12,9 @@ import android.os.Bundle
  * is not always-on and shows nothing: it opens [MainActivity] and finishes.
  */
 class OpenActivity : Activity() {
+    // WearRecents: NEW_TASK with the launcher's intent resumes the one existing task, as a
+    // launcher tap does; no second Recents entry comes of it.
+    @SuppressLint("WearRecents")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // NEW_TASK: MainActivity resumes its own task (matched by component, as from the launcher)
