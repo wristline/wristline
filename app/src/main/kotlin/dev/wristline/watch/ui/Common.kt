@@ -119,13 +119,13 @@ internal fun pressTarget(interaction: Interaction, enabled: Boolean): Float? = w
     else -> null
 }
 
-/** A card's scale at press [depth]: 1 at 0, [PRESSED_SCALE] at 1, past either as the spring overshoots. */
+/** A card's scale at press [depth]: 1 at 0, [PRESSED_SCALE] at 1, slightly past either as the spring overshoots. */
 internal fun pressedScale(depth: Float): Float = 1f - (1f - PRESSED_SCALE) * depth
 
 /**
  * How far a card is pressed, as [interactionSource] reports it: to 1 while pressed and back to 0
- * when let go, on the theme's fast spatial spring (a little bounce as it settles; see
- * [wristlineMotion]). Never pressed with reduced motion, nor, from the next press, when not
+ * when let go, on the theme's fast spatial spring (its overshoot is too small to see as a
+ * bounce; see [wristlineMotion]). Never pressed with reduced motion, nor, from the next press, when not
  * [enabled]. For [pressScale].
  */
 @Composable
@@ -314,7 +314,8 @@ fun PercentRing(
     // over a plain Float would never report a later percent.
     val progress by rememberFillIn(fraction, fillDelayMs, onFillStarted)
     val color by animateColorAsState(limitColor(percent.roundToInt()), MaterialTheme.motionScheme.defaultEffectsSpec())
-    val colors = ProgressIndicatorDefaults.colors(indicatorColor = color)
+    // The library's track (surfaceContainer) all but disappears on the black.
+    val colors = ProgressIndicatorDefaults.colors(indicatorColor = color, trackColor = GaugeTrack)
     CircularProgressIndicator(progress = { progress }, modifier = modifier, colors = colors, strokeWidth = strokeWidth)
 }
 
@@ -515,7 +516,8 @@ fun TransformingLazyColumnItemScope.ConnBanner(
             Text(stringResource(R.string.conn_connecting), style = MaterialTheme.typography.labelSmall)
         }
         Conn.Offline -> CaptionText(stringResource(R.string.conn_offline), plain, color = colors.error)
-        Conn.Demo -> CaptionText(stringResource(R.string.conn_demo), plain, color = colors.tertiary)
+        // Not the attention yellow: nothing needs the user.
+        Conn.Demo -> CaptionText(stringResource(R.string.conn_demo), plain, color = colors.primary)
         Conn.Online, Conn.NotPaired -> Unit
     }
 }

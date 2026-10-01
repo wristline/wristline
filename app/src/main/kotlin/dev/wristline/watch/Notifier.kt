@@ -37,10 +37,18 @@ internal fun clipText(text: String, max: Int): String {
 }
 
 /**
+ * Request titles (the tool) whose text sums the tool's input up rather than showing all of it: a
+ * file's path but not the change (Claude Code's file tools, Codex's "Edit"), a subagent's
+ * description but not its prompt, a search's pattern but not where it looks.
+ */
+private val SUMMARIZED_TOOLS = setOf("Edit", "Write", "MultiEdit", "NotebookEdit", "Task", "Agent", "Grep", "Glob")
+
+/**
  * The decisions a request's notification offers as actions, in order: Allow only when the
- * notification shows the whole command on one line (what is approved must be what was read), and
- * when the bridge did not clip it either ("…" at the end); Deny whenever the question has it.
- * Never Always: a lasting rule wants the full screen. None for questions, which need choices.
+ * notification shows the whole command on one line (what is approved must be what was read), when
+ * the bridge did not clip it either ("…" at the end), and when the text is the tool's whole input
+ * (not one of [SUMMARIZED_TOOLS]); Deny whenever the question has it. Never Always: a lasting rule
+ * wants the full screen. None for questions, which need choices.
  */
 internal fun notificationDecisions(request: PendingRequest): List<String> {
     if (request.kind != RequestKind.PERMISSION) return emptyList()
@@ -48,7 +56,8 @@ internal fun notificationDecisions(request: PendingRequest): List<String> {
     if (question.multi) return emptyList()
     val ids = question.options.map { it.id }
     val text = question.text
-    val whole = text.isNotBlank() && text.length <= NOTIFY_TEXT_MAX && !text.endsWith('…') && text.lines().size == 1
+    val whole = request.title !in SUMMARIZED_TOOLS && text.isNotBlank() && text.length <= NOTIFY_TEXT_MAX &&
+        !text.endsWith('…') && text.lines().size == 1
     return listOfNotNull(Decision.ALLOW.takeIf { whole && it in ids }, Decision.DENY.takeIf { it in ids })
 }
 
@@ -110,24 +119,36 @@ object Notifier {
 
     /**
      * The request's question (clipped to [NOTIFY_TEXT_MAX]) under its title, the session as the
-     * sub text, and the [notificationDecisions] as actions ([NotificationActionReceiver]). [error]
-     * is an action's error code: posted again, the notification says it was not sent. Re-posting
-     * does not alert again (alert once).
+     * sub text, and, when [answerable], the [notificationDecisions] as actions
+     * ([NotificationActionReceiver]). [note] is a line above the question about an action's answer
+     * (sending, not sent, already handled); a notification with one is posted silently. With
+     * [timeoutMs] it goes away by itself.
      */
-    internal fun request(context: Context, request: PendingRequest, sessionTitle: String, error: String? = null): Boolean {
+    internal fun request(
+        context: Context,
+        request: PendingRequest,
+        sessionTitle: String,
+        note: String? = null,
+        answerable: Boolean = true,
+        timeoutMs: Long? = null,
+    ): Boolean {
         val question = request.permissionQuestion()?.text.orEmpty()
         val body = clipText(question, NOTIFY_TEXT_MAX).ifBlank { sessionTitle }
-        val failed = error?.let {
-            val message = errorRes(it)?.let(context::getString) ?: context.getString(R.string.error_generic, it)
-            context.getString(R.string.notify_answer_failed, message)
-        }
         return post(
             context, TAG_REQUEST, request.id, CHANNEL_REQUESTS, MainActivity.EXTRA_REQUEST_ID,
             title = request.title.ifBlank { context.getString(R.string.status_needs_input) },
-            text = listOfNotNull(failed, body).joinToString("\n"),
+            text = listOfNotNull(note, body).joinToString("\n"),
             subText = sessionTitle.takeIf { question.isNotBlank() },
-            actions = notificationDecisions(request).map { decisionAction(context, request, it, sessionTitle) },
+            silent = note != null,
+            timeoutMs = timeoutMs,
+            actions = if (answerable) notificationDecisions(request).map { decisionAction(context, request, it, sessionTitle) } else emptyList(),
         )
+    }
+
+    /** The [request] note for an answer the bridge refused with [code], or did not get ("unreachable"). */
+    fun answerFailed(context: Context, code: String): String {
+        val message = errorRes(code)?.let(context::getString) ?: context.getString(R.string.error_generic, code)
+        return context.getString(R.string.notify_answer_failed, message)
     }
 
     /**
@@ -235,6 +256,8 @@ object Notifier {
         text: String,
         alertOnce: Boolean = true,
         subText: String? = null,
+        silent: Boolean = false,
+        timeoutMs: Long? = null,
         actions: List<NotificationCompat.Action> = emptyList(),
     ): Boolean {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
@@ -253,6 +276,8 @@ object Notifier {
             )
             .setAutoCancel(true)
             .setOnlyAlertOnce(alertOnce)
+            .setSilent(silent)
+            .apply { timeoutMs?.let(::setTimeoutAfter) }
             .apply { actions.forEach(::addAction) }
             .build()
         NotificationManagerCompat.from(context).notify(tag, id, notification)

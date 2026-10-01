@@ -381,6 +381,8 @@ internal fun SessionDetailContent(
                         onClick = onEarlier,
                         enabled = !state.loading,
                         modifier = Modifier.transformedHeight(this, spec).animateItemCalmly(this),
+                        // Secondary, so gray: the blue fill is the mic's.
+                        colors = ButtonDefaults.filledTonalButtonColors(),
                         transformation = SurfaceTransformation(spec),
                         label = { if (state.loading) SmallSpinner() else Text(stringResource(R.string.detail_earlier)) },
                     )
@@ -639,11 +641,8 @@ private fun EdgeGauge(
             .clearAndSetSemantics {},
         startAngle = GAUGE_START,
         endAngle = GAUGE_START + GAUGE_SWEEP,
-        // A track plainly visible on the black, well short of the fill. The ends are round.
-        colors = ProgressIndicatorDefaults.colors(
-            indicatorColor = color,
-            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
-        ),
+        // The ends are round.
+        colors = ProgressIndicatorDefaults.colors(indicatorColor = color, trackColor = GaugeTrack),
         strokeWidth = GAUGE_STROKE,
     )
     // Not mirrored, so it reads left to right on both sides: on the left it starts past the upper

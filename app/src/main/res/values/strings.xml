@@ -174,6 +174,8 @@
     <string name="channel_monitor">Background connection</string>
     <string name="notify_done">Finished</string>
     <string name="notify_answer_failed">Not sent. %1$s</string>
+    <string name="notify_answer_sending">Sending…</string>
+    <string name="notify_answer_unconfirmed">Couldn\'t confirm. Open to check.</string>
     <string name="monitor_title">Monitoring sessions</string>
     <string name="ongoing_running">%1$d running</string>
     <string name="ongoing_waiting">%1$d waiting</string>

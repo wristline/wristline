@@ -1162,10 +1162,16 @@ object Bridge {
 
     private class HttpResult(val code: Int, val body: String, val authenticate: String?)
 
-    /** Null when the bridge could not be reached, or not within [timeoutMs] when that is not 0. */
-    private suspend fun send(request: Request, timeoutMs: Long = 0): HttpResult? = suspendCancellableCoroutine { cont ->
+    /**
+     * Null when the bridge could not be reached, or not within [timeoutMs] when that is not 0. The
+     * timeout is the coroutine's, not the call's: cancelling a call does not end a host name lookup
+     * stuck in DNS, and its failure would only come once the lookup returns.
+     */
+    private suspend fun send(request: Request, timeoutMs: Long = 0): HttpResult? =
+        if (timeoutMs > 0) withTimeoutOrNull(timeoutMs) { execute(request) } else execute(request)
+
+    private suspend fun execute(request: Request): HttpResult? = suspendCancellableCoroutine { cont ->
         val call = client.newCall(request)
-        if (timeoutMs > 0) call.timeout().timeout(timeoutMs, TimeUnit.MILLISECONDS)
         cont.invokeOnCancellation { call.cancel() }
         call.enqueue(
             object : Callback {

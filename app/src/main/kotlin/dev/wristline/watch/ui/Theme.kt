@@ -15,8 +15,12 @@ object Status {
     val Running = Color(0xFF30D158)
     val Attention = Color(0xFFFFD60A)
     val Idle = Color(0xFF8E8E93)
-    val Ended = Color(0xFF48484A)
+    // Apart from Idle, yet still seen on a card (2.8:1; 3.5:1 on the black).
+    val Ended = Color(0xFF636366)
 }
+
+/** A gauge's empty part: plainly visible on the black and on a card, well short of any fill. */
+internal val GaugeTrack = Color.White.copy(alpha = 0.25f)
 
 /**
  * Pure black with neutral graphite surfaces, white and gray text, and the brand's sky blue as the
@@ -68,12 +72,16 @@ val WristlineColors = ColorScheme(
  */
 internal val CalmMotion = MotionScheme.standard()
 
-/** Springs that overshoot a little as they settle: for what a finger moves (see [wristlineMotion]). */
+/**
+ * Quick springs for what a finger moves (see [wristlineMotion]). They overshoot by a few percent
+ * of the travel, which on a card's short press travel stays under half a dp: it reads as a plain
+ * press, without a visible bounce.
+ */
 private val TouchMotion = MotionScheme.expressive()
 
 /**
- * The theme's motion, which the library's components and [rememberPressDepth] follow: a little
- * bounce where a finger acts, none with [reduceMotion].
+ * The theme's motion, which the library's components and [rememberPressDepth] follow: quicker
+ * springs where a finger acts, the calm ones with [reduceMotion].
  */
 internal fun wristlineMotion(reduceMotion: Boolean): MotionScheme = if (reduceMotion) CalmMotion else TouchMotion
 

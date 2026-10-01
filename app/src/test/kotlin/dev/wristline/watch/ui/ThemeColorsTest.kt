@@ -1,8 +1,10 @@
 package dev.wristline.watch.ui
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import dev.wristline.watch.data.SessionStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ThemeColorsTest {
@@ -34,6 +36,13 @@ class ThemeColorsTest {
         assertEquals(Status.Ended, statusColor(SessionStatus.ENDED))
         // A status this version does not know reads as ended, as its description does.
         assertEquals(Status.Ended, statusColor("paused"))
+    }
+
+    @Test
+    fun endedDotStaysVisibleOnACardYetUnderIdle() {
+        fun contrast(a: Color, b: Color) = (maxOf(a.luminance(), b.luminance()) + 0.05f) / (minOf(a.luminance(), b.luminance()) + 0.05f)
+        assertTrue(contrast(Status.Ended, WristlineColors.surfaceContainer) > 2.5f)
+        assertTrue(Status.Ended.luminance() < Status.Idle.luminance())
     }
 
     @Test

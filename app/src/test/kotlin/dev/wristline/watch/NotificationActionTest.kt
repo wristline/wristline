@@ -9,8 +9,6 @@ import dev.wristline.watch.data.Question
 import dev.wristline.watch.data.RequestKind
 import dev.wristline.watch.data.Sent
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotificationActionTest {
@@ -44,6 +42,15 @@ class NotificationActionTest {
     }
 
     @Test
+    fun allowNeedsTheToolsWholeInput() {
+        // A file tool's text is the path, not the change; a subagent's is its description.
+        for (tool in listOf("Edit", "Write", "MultiEdit", "NotebookEdit", "Task", "Agent", "Grep", "Glob")) {
+            assertEquals(tool, listOf(Decision.DENY), notificationDecisions(permission("src/main.kt").copy(title = tool)))
+        }
+        assertEquals(listOf(Decision.ALLOW, Decision.DENY), notificationDecisions(permission("ls").copy(title = "Shell")))
+    }
+
+    @Test
     fun onlyTheOptionsTheRequestHas() {
         assertEquals(listOf(Decision.DENY), notificationDecisions(permission("ls", options = listOf(Decision.DENY, Decision.DEFER))))
         assertEquals(listOf(Decision.ALLOW), notificationDecisions(permission("ls", options = listOf(Decision.ALLOW))))
@@ -69,15 +76,24 @@ class NotificationActionTest {
 
     @Test
     fun outcomeOfAnAnswer() {
-        assertEquals(ActionOutcome(Haptic.CONFIRM, reposted = false), actionOutcome(Decision.ALLOW, Sent.Ok))
-        assertEquals(ActionOutcome(Haptic.REJECT, reposted = false), actionOutcome(Decision.DENY, Sent.Ok))
-        // Answered elsewhere: the notification is gone, nothing to retry.
-        assertEquals(ActionOutcome(Haptic.ERROR, reposted = false), actionOutcome(Decision.ALLOW, Sent.Refused("already_resolved")))
-        for (sent in listOf(Sent.Unreachable, Sent.Refused("unauthorized"), Sent.Refused("http_500"))) {
-            val outcome = actionOutcome(Decision.DENY, sent)
-            assertEquals(Haptic.ERROR, outcome.haptic)
-            assertTrue(sent.toString(), outcome.reposted)
+        assertEquals(ActionOutcome(Haptic.CONFIRM, AfterAnswer.Gone), actionOutcome(Decision.ALLOW, Sent.Ok, settled = false))
+        assertEquals(ActionOutcome(Haptic.REJECT, AfterAnswer.Gone), actionOutcome(Decision.DENY, Sent.Ok, settled = true))
+        // Answered elsewhere (or expired): a notice, nothing to retry.
+        assertEquals(
+            ActionOutcome(Haptic.ERROR, AfterAnswer.Notice("already_resolved")),
+            actionOutcome(Decision.ALLOW, Sent.Refused("already_resolved"), settled = false),
+        )
+        // The bridge may have applied it: not "not sent", and the actions come back to try again.
+        assertEquals(ActionOutcome(Haptic.ERROR, AfterAnswer.Retry(UNCONFIRMED)), actionOutcome(Decision.DENY, Sent.Unreachable, settled = false))
+        for (code in listOf("unauthorized", "http_500")) {
+            assertEquals(ActionOutcome(Haptic.ERROR, AfterAnswer.Retry(code)), actionOutcome(Decision.DENY, Sent.Refused(code), settled = false))
         }
-        assertFalse(actionOutcome(Decision.ALLOW, Sent.Ok).reposted)
+    }
+
+    @Test
+    fun aSettledRequestIsNeverOfferedAgain() {
+        // Resolved meanwhile, perhaps by this very answer with its response lost.
+        assertEquals(AfterAnswer.Notice(UNCONFIRMED), actionOutcome(Decision.ALLOW, Sent.Unreachable, settled = true).after)
+        assertEquals(AfterAnswer.Notice("already_resolved"), actionOutcome(Decision.ALLOW, Sent.Refused("http_500"), settled = true).after)
     }
 }

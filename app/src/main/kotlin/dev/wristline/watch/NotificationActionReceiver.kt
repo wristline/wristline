@@ -6,12 +6,15 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import dev.wristline.watch.data.Bridge
+import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.Decision
 import dev.wristline.watch.data.Haptic
 import dev.wristline.watch.data.Haptics
 import dev.wristline.watch.data.PendingRequest
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.WireJson
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,18 +26,42 @@ import kotlinx.coroutines.launch
  */
 private const val ANSWER_TIMEOUT_MS = 8_000L
 
-/** What follows an action's answer: [haptic], and whether the notification is [reposted] with the error. */
-internal data class ActionOutcome(val haptic: Haptic, val reposted: Boolean)
+/** How long a notice about an answer stays ([AfterAnswer.Notice]). */
+private const val NOTICE_MS = 10_000L
+
+/** Note code for an answer whose fate is not known: it may have reached the bridge after all. */
+internal const val UNCONFIRMED = "unconfirmed"
+
+/** What the notification shows once an action's answer is through. */
+internal sealed interface AfterAnswer {
+    /** Sent: the bridge client cancelled it. */
+    data object Gone : AfterAnswer
+
+    /** The request is settled: a short notice without actions says [code] (no retry would work). */
+    data class Notice(val code: String) : AfterAnswer
+
+    /** Posted again with [code] and the actions, so the user can try again or open the app. */
+    data class Retry(val code: String) : AfterAnswer
+}
+
+/** What follows an action's answer: [haptic], and what the notification shows [after]. */
+internal data class ActionOutcome(val haptic: Haptic, val after: AfterAnswer)
 
 /**
- * Sent: the notification is gone (the bridge client cancelled it) and the haptic tells which way.
- * Already handled elsewhere: it is gone too, so only the error haptic. Anything else: posted again
- * with the error, so the user can try again or open the app.
+ * Sent: the haptic tells which way. Otherwise the error haptic, and: already handled (the bridge's
+ * 409, also for an expired id) or [settled] (the bridge client knows the request is gone) is a
+ * notice, as retrying could only fail; anything else is a retry. An unreachable bridge may have
+ * applied the answer all the same (a late response), so that says [UNCONFIRMED], not "not sent".
  */
-internal fun actionOutcome(decision: String, sent: Sent): ActionOutcome = when {
-    sent == Sent.Ok -> ActionOutcome(if (decision == Decision.DENY) Haptic.REJECT else Haptic.CONFIRM, reposted = false)
-    sent == Sent.Refused("already_resolved") -> ActionOutcome(Haptic.ERROR, reposted = false)
-    else -> ActionOutcome(Haptic.ERROR, reposted = true)
+internal fun actionOutcome(decision: String, sent: Sent, settled: Boolean): ActionOutcome {
+    if (sent == Sent.Ok) return ActionOutcome(if (decision == Decision.DENY) Haptic.REJECT else Haptic.CONFIRM, AfterAnswer.Gone)
+    val code = (sent as? Sent.Refused)?.code ?: UNCONFIRMED
+    val after = when {
+        code == "already_resolved" -> AfterAnswer.Notice(code)
+        settled -> AfterAnswer.Notice(if (code == UNCONFIRMED) code else "already_resolved")
+        else -> AfterAnswer.Retry(code)
+    }
+    return ActionOutcome(Haptic.ERROR, after)
 }
 
 /**
@@ -55,6 +82,10 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val decision = intent.getStringExtra(EXTRA_DECISION)?.takeIf { it == Decision.ALLOW || it == Decision.DENY } ?: return
         val sessionTitle = intent.getStringExtra(EXTRA_SESSION_TITLE).orEmpty()
         val app = context.applicationContext
+        // One answer per request at a time: a second tap that got in before the actions went is dropped.
+        if (!answering.add(request.id)) return
+        // The actions go at once, so one decision is sent once; a retry brings them back.
+        Notifier.request(app, request, sessionTitle, note = app.getString(R.string.notify_answer_sending), answerable = false)
         Bridge.init(app)
         val pending = goAsync()
         scope.launch {
@@ -64,18 +95,35 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 } else {
                     Sent.Refused("unauthorized")
                 }
-                Log.i(TAG, "action $decision id=${request.id} sent=$sent")
-                val outcome = actionOutcome(decision, sent)
-                if (outcome.reposted) {
-                    val code = (sent as? Sent.Refused)?.code ?: "unreachable"
-                    Notifier.request(app, request, sessionTitle, error = code)
+                // Answered on the PC meanwhile, or by this answer with its response lost.
+                val settled = Bridge.conn.value == Conn.Online && Bridge.requests.value.none { it.id == request.id }
+                Log.i(TAG, "action $decision id=${request.id} sent=$sent settled=$settled")
+                val outcome = actionOutcome(decision, sent, settled)
+                when (val after = outcome.after) {
+                    AfterAnswer.Gone -> Unit
+                    is AfterAnswer.Notice ->
+                        Notifier.request(app, request, sessionTitle, note = note(app, after.code), answerable = false, timeoutMs = NOTICE_MS)
+                    is AfterAnswer.Retry -> Notifier.request(app, request, sessionTitle, note = note(app, after.code))
                 }
                 // Notification usage: a process in the background may not play touch haptics.
                 Haptics.event(app, outcome.haptic)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // E.g. a malformed stored address. Uncaught, it would end the process; the actions come back.
+                Log.w(TAG, "action $decision id=${request.id} failed", e)
+                runCatching { Notifier.request(app, request, sessionTitle, note = Notifier.answerFailed(app, "exception")) }
             } finally {
+                answering.remove(request.id)
                 pending.finish()
             }
         }
+    }
+
+    private fun note(context: Context, code: String): String = when (code) {
+        UNCONFIRMED -> context.getString(R.string.notify_answer_unconfirmed)
+        "already_resolved" -> context.getString(R.string.error_already_resolved)
+        else -> Notifier.answerFailed(context, code)
     }
 
     companion object {
@@ -87,6 +135,9 @@ class NotificationActionReceiver : BroadcastReceiver() {
         private const val EXTRA_SESSION_TITLE = "sessionTitle"
 
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+        /** Ids of the requests an answer is on its way for. */
+        private val answering: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
         /** The broadcast [decision] sends for [request]'s [question]. */
         fun intent(context: Context, request: PendingRequest, question: String, decision: String, sessionTitle: String): Intent =
