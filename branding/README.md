@@ -57,6 +57,8 @@ Copies elsewhere (update them when the mark changes):
 
 - `app/src/main/res/drawable/ic_launcher_foreground.xml`: the launcher icon foreground, a
   VectorDrawable version of the mark scaled into the 66dp adaptive-icon safe zone.
+- `app/src/main/res/drawable/ic_notification.xml`: the notification, Now Bar and ongoing-activity
+  icon, the mono mark in white at its own 512-unit coordinates.
 - `docs/assets/wristline-mark.svg`: for the GitHub Pages site, which only serves `docs/`.
 - `docs/brand/` in [wristline-bridge](https://github.com/wristline/wristline-bridge): the lockup
   SVGs for its README.

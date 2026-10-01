@@ -1,28 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Notification and ongoing-activity icon: the launcher foreground's shapes, cropped to their
-     bounds so they fill the small icon instead of sitting inside the adaptive-icon safe zone. -->
+<!-- Notification, Now Bar and ongoing-activity icon: the Wristline mark (branding/wristline-mark-mono.svg)
+     in white, at its own 512-unit coordinates, so its 40-unit margin is the small icon's 2dp padding. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="68"
-    android:viewportHeight="68">
-    <group
-        android:translateX="-20"
-        android:translateY="-20">
-        <path
-            android:pathData="M54,34a20,20 0,1 1,0 40a20,20 0,1 1,0 -40z"
-            android:strokeWidth="4"
-            android:strokeColor="#FFFFFFFF" />
-        <path
-            android:pathData="M24,54H34M74,54H84"
-            android:strokeWidth="4"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeLineCap="round" />
-        <path
-            android:pathData="M46,47L53,54L46,61M56,61H63"
-            android:strokeWidth="4"
-            android:strokeColor="#FFFFFFFF"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
-    </group>
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- Case outline, then the dial circle as a hole (even-odd). -->
+    <path
+        android:pathData="M180,40H332C424,40 472,88 472,180V332C472,424 424,472 332,472H180C88,472 40,424 40,332V180C40,88 88,40 180,40ZM256,70A186,186 0,1 0,256 442A186,186 0,1 0,256 70Z"
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd" />
+    <path
+        android:pathData="M172,190L238,256L172,322M276,322H340"
+        android:strokeWidth="46"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
 </vector>
