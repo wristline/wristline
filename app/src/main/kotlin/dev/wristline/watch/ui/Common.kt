@@ -42,8 +42,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -76,6 +78,8 @@ import androidx.wear.input.RemoteInputIntentHelper
 import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
+import dev.wristline.watch.data.Haptic
+import dev.wristline.watch.data.Haptics
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.isoToMillis
@@ -483,6 +487,31 @@ internal fun rememberSpeechInput(prompt: String, onText: (String) -> Unit): () -
             } catch (_: SecurityException) {
                 false
             }
+        }
+    }
+}
+
+/**
+ * The system's haptic for what the user just did on screen, where one means the same: tuned per
+ * watch and felt the same as in other apps (haptics principles). None for [Haptic.ERROR]: the
+ * system's Reject is the deny, so a failure keeps the app's own three taps.
+ */
+internal fun systemHaptic(haptic: Haptic): HapticFeedbackType? = when (haptic) {
+    Haptic.CONFIRM -> HapticFeedbackType.Confirm
+    Haptic.REJECT -> HapticFeedbackType.Reject
+    Haptic.SEGMENT -> HapticFeedbackType.SegmentTick
+    else -> null
+}
+
+/** Plays a [Haptic] for what the user just did on screen: the [systemHaptic] where there is one, else [Haptics.touch]. */
+@Composable
+internal fun rememberTouchHaptics(): (Haptic) -> Unit {
+    val feedback = LocalHapticFeedback.current
+    val context = LocalContext.current
+    return remember(feedback, context) {
+        { haptic ->
+            val system = systemHaptic(haptic)
+            if (system != null) feedback.performHapticFeedback(system) else Haptics.touch(context, haptic)
         }
     }
 }

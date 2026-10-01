@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -65,7 +64,6 @@ import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.Decision
 import dev.wristline.watch.data.Haptic
-import dev.wristline.watch.data.Haptics
 import dev.wristline.watch.data.Option
 import dev.wristline.watch.data.PERMISSION_QUESTION
 import dev.wristline.watch.data.PendingRequest
@@ -125,7 +123,7 @@ internal fun RequestScreen(requestId: String, onDone: () -> Unit) {
     // Allowed or denied here: confirmed in a dialog, which then closes the screen.
     var confirmed by remember { mutableStateOf<Answered?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
+    val touch = rememberTouchHaptics()
 
     // Gone from an up-to-date list without our answer: answered in the terminal, timed out, or 409.
     val handled = request == null && !answered && !sending && (conn is Conn.Online || conn is Conn.Demo)
@@ -153,13 +151,13 @@ internal fun RequestScreen(requestId: String, onDone: () -> Unit) {
                             Sent.Ok -> {
                                 answered = true
                                 val how = answeredAs(request, answers)
-                                answeredHaptic(how)?.let { Haptics.touch(context, it) }
+                                answeredHaptic(how)?.let(touch)
                                 if (how == Answered.OTHER) onDone() else confirmed = how
                             }
                             Sent.Unreachable -> error = "unreachable"
                             is Sent.Refused -> error = result.code
                         }
-                        if (result != Sent.Ok) Haptics.touch(context, Haptic.ERROR)
+                        if (result != Sent.Ok) touch(Haptic.ERROR)
                         sending = false
                     }
                 },

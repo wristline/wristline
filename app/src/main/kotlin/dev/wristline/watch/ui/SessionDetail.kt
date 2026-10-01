@@ -93,7 +93,6 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.ContextUsage
-import dev.wristline.watch.data.Haptics
 import dev.wristline.watch.data.Item
 import dev.wristline.watch.data.ItemKind
 import dev.wristline.watch.data.ProviderId
@@ -206,6 +205,7 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
     var outcome by remember { mutableStateOf<Sent?>(null) }
     val label = stringResource(R.string.detail_prompt_label)
     val context = LocalContext.current
+    val touch = rememberTouchHaptics()
     val tryType = rememberTextInputLauncher(label) {
         draft = it
         typed = true
@@ -253,7 +253,7 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
                         val sent = Bridge.prompt(sessionId, draft)
                         outcome = sent
                         sending = false
-                        Haptics.touch(context, sentHaptic(sent))
+                        touch(sentHaptic(sent))
                     }
                 },
             )
