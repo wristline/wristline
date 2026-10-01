@@ -168,6 +168,7 @@
     <string name="settings_device_name">워치 이름</string>
     <string name="settings_tool_calls">도구 호출 표시</string>
     <string name="settings_tool_calls_detail">명령 실행, 파일 수정과 시스템 메시지도 보여 줍니다</string>
+    <string name="settings_watch_colors">시계 테마 색 따르기</string>
     <string name="settings_ask_provider">물어보기 제공자</string>
     <string name="settings_monitoring">백그라운드 알림</string>
     <string name="settings_monitoring_detail">앱을 닫아도 연결을 유지해 배터리를 더 씁니다</string>

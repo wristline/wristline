@@ -412,9 +412,9 @@ private fun UsageAccountsKoPreview() = Frame { UsageContent(accountUsage) { now 
 private fun SettingsPreview() = Frame {
     SettingsContent(
         demo = false, address = "https://example.tail0000.ts.net", paired = true, deviceName = "Galaxy Watch Ultra",
-        showToolCalls = false, askProvider = ProviderId.CLAUDE_CODE, monitoring = false, canMonitor = true, notificationsOff = true,
+        showToolCalls = false, watchColors = false, askProvider = ProviderId.CLAUDE_CODE, monitoring = false, canMonitor = true, notificationsOff = true,
         busy = false, tokenNeedsAddress = false,
-        onAddress = {}, onDeviceName = {}, onShowToolCalls = {}, onAskProvider = {}, onMonitoring = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
+        onAddress = {}, onDeviceName = {}, onShowToolCalls = {}, onWatchColors = {}, onAskProvider = {}, onMonitoring = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
         onDisconnect = {}, onExitDemo = {},
     )
 }

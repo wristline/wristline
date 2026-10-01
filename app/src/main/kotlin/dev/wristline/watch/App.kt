@@ -5,10 +5,12 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
@@ -60,7 +62,8 @@ object Route {
  */
 @Composable
 fun App(openRoute: String?, onOpened: () -> Unit) {
-    WristlineTheme {
+    val watchColors by Bridge.prefs.watchColorsState.collectAsStateWithLifecycle()
+    WristlineTheme(followWatchColors = watchColors) {
         AppScaffold {
             val nav = rememberSwipeDismissableNavController()
             val start = remember { if (Bridge.prefs.isPaired) Route.SESSIONS else Route.ONBOARDING }

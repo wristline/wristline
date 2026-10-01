@@ -46,8 +46,16 @@ class ThemeColorsTest {
     }
 
     @Test
-    fun waitingOnTheUserIsTheThemesAttentionColor() {
-        // The request banner and [Respond] use tertiary: the same yellow as a waiting session's dot.
-        assertEquals(Status.Attention, WristlineColors.tertiary)
+    fun watchColorsOnlyWhenChosenAndOffered() {
+        val watch = WristlineColors.copy(primary = Color(0xFF7FD17F))
+        assertEquals(WristlineColors, themeColors(followWatch = false) { watch })
+        assertEquals(watch, themeColors(followWatch = true) { watch })
+        // The watch has none to offer (older Wear OS, or dynamic theming off).
+        assertEquals(WristlineColors, themeColors(followWatch = true) { null })
+    }
+
+    @Test
+    fun theWatchColorsAreNotAskedForWhenOff() {
+        themeColors(followWatch = false) { error("read the watch colors") }
     }
 }

@@ -62,6 +62,9 @@ internal fun SettingsScreen(
     val conn by Bridge.conn.collectAsStateWithLifecycle()
     var deviceName by remember { mutableStateOf(prefs.deviceName) }
     var showToolCalls by remember { mutableStateOf(prefs.showToolCalls) }
+    val watchColors by prefs.watchColorsState.collectAsStateWithLifecycle()
+    // Offered only where the watch has dynamic colors: elsewhere the switch would change nothing.
+    val hasWatchColors = remember(context) { watchColorScheme(context) != null }
     var askProvider by remember { mutableStateOf(prefs.askProvider) }
     // The service turns the setting off itself when the pairing is gone.
     val monitoring by prefs.monitoringState.collectAsStateWithLifecycle()
@@ -97,6 +100,7 @@ internal fun SettingsScreen(
         paired = prefs.isPaired,
         deviceName = deviceName,
         showToolCalls = showToolCalls,
+        watchColors = watchColors.takeIf { hasWatchColors },
         askProvider = askProvider,
         monitoring = monitoring,
         canMonitor = prefs.isPaired && conn !is Conn.Unauthorized,
@@ -109,6 +113,7 @@ internal fun SettingsScreen(
             showToolCalls = it
             prefs.showToolCalls = it
         },
+        onWatchColors = { prefs.watchColors = it },
         onAskProvider = {
             askProvider = otherProvider(askProvider)
             prefs.askProvider = askProvider
@@ -158,6 +163,8 @@ internal fun SettingsContent(
     paired: Boolean,
     deviceName: String,
     showToolCalls: Boolean,
+    /** Null where the watch has no dynamic colors: the row is left out. */
+    watchColors: Boolean?,
     askProvider: String,
     monitoring: Boolean,
     canMonitor: Boolean,
@@ -167,6 +174,7 @@ internal fun SettingsContent(
     onAddress: () -> Unit,
     onDeviceName: () -> Unit,
     onShowToolCalls: (Boolean) -> Unit,
+    onWatchColors: (Boolean) -> Unit,
     onAskProvider: () -> Unit,
     onMonitoring: (Boolean) -> Unit,
     onNotificationSettings: () -> Unit,
@@ -238,6 +246,17 @@ internal fun SettingsContent(
                     label = { Text(stringResource(R.string.settings_tool_calls)) },
                     secondaryLabel = { Text(stringResource(R.string.settings_tool_calls_detail), maxLines = 2) },
                 )
+            }
+            if (watchColors != null) {
+                item(key = "watchColors") {
+                    SwitchButton(
+                        checked = watchColors,
+                        onCheckedChange = onWatchColors,
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                        transformation = SurfaceTransformation(spec),
+                        label = { Text(stringResource(R.string.settings_watch_colors), maxLines = 2) },
+                    )
+                }
             }
             item(key = "askProvider") {
                 // Two values only: a tap toggles rather than opening a chooser.

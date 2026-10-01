@@ -455,7 +455,8 @@ internal fun SessionDetailContent(
             CompactButton(
                 onClick = onAction,
                 modifier = actions,
-                colors = ButtonDefaults.buttonColors(containerColor = colors.tertiary, contentColor = colors.onTertiary),
+                // Fixed yellow, not the theme's tertiary: watch colors could make it any hue.
+                colors = ButtonDefaults.buttonColors(containerColor = Status.Attention, contentColor = Color.Black),
                 label = { Text(stringResource(R.string.detail_respond)) },
             )
         } else if (session != null) {

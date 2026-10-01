@@ -179,6 +179,7 @@
     <string name="settings_device_name">Watch name</string>
     <string name="settings_tool_calls">Show tool calls</string>
     <string name="settings_tool_calls_detail">Also list commands, file edits and system notices</string>
+    <string name="settings_watch_colors">Use watch theme colors</string>
     <string name="settings_ask_provider">Quick Ask provider</string>
     <string name="settings_monitoring">Background alerts</string>
     <string name="settings_monitoring_detail">Stays connected when closed; uses more battery</string>

@@ -41,6 +41,17 @@ class Prefs(context: Context) {
             sp.edit().putBoolean(KEY_MONITORING, value).apply()
         }
 
+    private val watchColorsFlow = MutableStateFlow(sp.getBoolean(KEY_WATCH_COLORS, false))
+
+    /** The theme follows the watch's dynamic colors where it has them; off by default (graphite and blue). */
+    val watchColorsState: StateFlow<Boolean> = watchColorsFlow.asStateFlow()
+    var watchColors: Boolean
+        get() = watchColorsFlow.value
+        set(value) {
+            watchColorsFlow.value = value
+            sp.edit().putBoolean(KEY_WATCH_COLORS, value).apply()
+        }
+
     /** Transcripts include tool calls and notices; off by default, when they show only the conversation. */
     var showToolCalls: Boolean
         get() = sp.getBoolean(KEY_SHOW_TOOL_CALLS, false)
@@ -69,6 +80,7 @@ class Prefs(context: Context) {
     fun clear() {
         sp.edit().clear().apply()
         monitoringFlow.value = false
+        watchColorsFlow.value = false
     }
 
     private companion object {
@@ -80,5 +92,6 @@ class Prefs(context: Context) {
         const val KEY_DEMO = "demo"
         const val KEY_SHOW_TOOL_CALLS = "showToolCalls"
         const val KEY_ASK_PROVIDER = "askProvider"
+        const val KEY_WATCH_COLORS = "watchColors"
     }
 }

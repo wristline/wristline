@@ -1,11 +1,15 @@
 package dev.wristline.watch.ui
 
+import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.wear.compose.foundation.LocalReduceMotion
 import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.MotionScheme
+import androidx.wear.compose.material3.dynamicColorScheme
 
 /**
  * Colors whose meaning is fixed on every screen, whatever the theme's accent: a session's state
@@ -41,7 +45,8 @@ val WristlineColors = ColorScheme(
     secondaryContainer = Color(0xFF3A3A3C),
     onSecondary = Color.Black,
     onSecondaryContainer = Color.White,
-    // "Look here": the request banner and [Respond].
+    // Yellow like [Status.Attention], which the request banner and [Respond] use directly: with
+    // watch colors on, tertiary can be any hue.
     tertiary = Status.Attention,
     tertiaryDim = Color(0xFFD6B300),
     tertiaryContainer = Color(0xFF3D3300),
@@ -85,8 +90,23 @@ private val TouchMotion = MotionScheme.expressive()
  */
 internal fun wristlineMotion(reduceMotion: Boolean): MotionScheme = if (reduceMotion) CalmMotion else TouchMotion
 
-/** The app's theme: [WristlineColors] and [wristlineMotion] with the library's type and shapes. */
+/**
+ * The app's colors: [WristlineColors], or with [followWatch] the watch's dynamic colors when it
+ * offers them (null: an older watch, or dynamic theming off).
+ */
+internal fun themeColors(followWatch: Boolean, dynamic: () -> ColorScheme?): ColorScheme =
+    if (followWatch) dynamic() ?: WristlineColors else WristlineColors
+
+/** The watch's dynamic colors, or null when it has none to offer. */
+internal fun watchColorScheme(context: Context): ColorScheme? = dynamicColorScheme(context)
+
+/**
+ * The app's theme: [themeColors] and [wristlineMotion] with the library's type and shapes.
+ * [followWatchColors] is the "Use watch theme colors" setting.
+ */
 @Composable
-fun WristlineTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = WristlineColors, motionScheme = wristlineMotion(LocalReduceMotion.current), content = content)
+fun WristlineTheme(followWatchColors: Boolean = false, content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val colors = remember(followWatchColors, context) { themeColors(followWatchColors) { watchColorScheme(context) } }
+    MaterialTheme(colorScheme = colors, motionScheme = wristlineMotion(LocalReduceMotion.current), content = content)
 }
