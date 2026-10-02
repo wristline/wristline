@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Usage credits ran out: a coin with its rim, round like the reset clock it stands in for (drawn for 12dp: 2.5 strokes, tinted by the icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M12,2.75a9.25,9.25 0,1 1,0 18.5a9.25,9.25 0,1 1,0 -18.5z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFFFF" />
+    <path
+        android:pathData="M12,8a4,4 0,1 1,0 8a4,4 0,1 1,0 -8z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFFFF" />
+</vector>

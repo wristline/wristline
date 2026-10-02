@@ -823,7 +823,7 @@ object Bridge {
             }
             // Posted like a done alert (the open session shows the error card), felt like a request.
             AlertKind.LIMIT -> attention(looking, event.sessionId, done = true, haptic = Haptic.ATTENTION) {
-                Notifier.limit(appContext, event.sessionId, event.text, event.resetsAt, session(event.sessionId))
+                Notifier.limit(appContext, event, session(event.sessionId), _usage.value)
             }
             else -> return
         }

@@ -75,6 +75,12 @@ object AlertKind {
     const val LIMIT = "limit"
 }
 
+/** What ran out in a usage limit ([Item.limitKind]): a plan's window, or the account's usage credits. */
+object LimitKind {
+    const val WINDOW = "window"
+    const val CREDITS = "credits"
+}
+
 object AskStatus {
     const val RUNNING = "running"
     const val DONE = "done"
@@ -135,6 +141,10 @@ data class Item(
     val plan: Boolean = false,
     /** On an [error] `assistant` item that is a usage limit: when it resets (ISO 8601), when known. */
     val resetsAt: String? = null,
+    /** [resetsAt] is inferred from the agent's last rate-limit report, not read from the limit. */
+    val resetsEstimated: Boolean = false,
+    /** [LimitKind] of a usage-limit item; null for any other item (and from bridges before it). */
+    val limitKind: String? = null,
 )
 
 @Immutable
@@ -304,7 +314,7 @@ sealed interface ServerEvent {
     /**
      * [alert] is `needs_input` | `done` | `limit` (others are ignored). [title], when present, heads a
      * done notification; a limit's is the session title, and [resetsAt] (ISO 8601) is when the limit
-     * resets, when known. [id]
+     * resets, when known, [resetsEstimated] and [limitKind] as on its [Item]. [id]
      * and [at] (ISO 8601) come with bridges that replay alerts in the snapshot: the id tells a
      * replayed alert from one already handled, the time keeps old ones from being replayed.
      */
@@ -317,6 +327,8 @@ sealed interface ServerEvent {
         val id: String? = null,
         val at: String? = null,
         val resetsAt: String? = null,
+        val resetsEstimated: Boolean = false,
+        val limitKind: String? = null,
     ) : ServerEvent
 
     /** Sent only to the device that asked. [text] is the answer, present when [status] is done. */

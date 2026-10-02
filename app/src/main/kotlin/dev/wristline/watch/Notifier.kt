@@ -16,13 +16,15 @@ import dev.wristline.watch.data.PERMISSION_QUESTION
 import dev.wristline.watch.data.PendingRequest
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.RequestKind
+import dev.wristline.watch.data.ServerEvent
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
-import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.look
+import dev.wristline.watch.ui.LimitEnd
 import dev.wristline.watch.ui.basename
 import dev.wristline.watch.ui.errorRes
+import dev.wristline.watch.ui.limitEnd
 import dev.wristline.watch.ui.markedProviders
 import dev.wristline.watch.ui.permissionQuestion
 import dev.wristline.watch.ui.resetClockText
@@ -225,28 +227,35 @@ object Notifier {
         )
 
     /**
-     * The agent hit a usage limit: titled in English as the agent says it, the session and the reset
-     * clock ([limitText]) below, the agent's own message when expanded; which account, when its
-     * provider has more than one, as the sub text ([accountLine]).
+     * The agent hit a usage limit: titled in English as the agent says it, the session and when the
+     * limit ends ([limitText], [limitEndText]) below, the agent's own message when expanded; which
+     * account, when its provider has more than one, as the sub text ([accountLine]). [usage] tells
+     * when it ends when the alert does not ([limitEnd]).
      */
-    fun limit(context: Context, sessionId: String, text: String?, resetsAt: String?, session: Session?): Boolean {
-        val clock = isoToMillis(resetsAt)?.let {
-            resetClockText(it, System.currentTimeMillis(), ZoneId.systemDefault(), DateFormat.is24HourFormat(context))
-        }
-        val line = limitText(sessionTitle(context, session), clock)
+    fun limit(context: Context, alert: ServerEvent.Alert, session: Session?, usage: List<Usage>): Boolean {
+        val now = System.currentTimeMillis()
+        val end = limitEnd(alert.limitKind, alert.resetsAt, alert.resetsEstimated, session, usage, now)
+        val endText = end?.let { limitEndText(it, now, ZoneId.systemDefault(), DateFormat.is24HourFormat(context)) }
+        val line = limitText(sessionTitle(context, session), endText)
         return post(
-            context, TAG_LIMIT, sessionId, CHANNEL_REQUESTS, MainActivity.EXTRA_SESSION_ID,
+            context, TAG_LIMIT, alert.sessionId, CHANNEL_REQUESTS, MainActivity.EXTRA_SESSION_ID,
             title = context.getString(R.string.notify_limit),
             text = line,
-            bigText = text?.takeIf { it.isNotBlank() }?.let { "$line\n$it" },
+            bigText = alert.text?.takeIf { it.isNotBlank() }?.let { "$line\n$it" },
             alertOnce = false,
             subText = accountLine(context, session),
         )
     }
 
-    /** `Fix CI · ◷ 7:40 PM`: the session, then the reset clock when known. */
-    internal fun limitText(sessionTitle: String, resetClock: String?): String =
-        if (resetClock == null) sessionTitle else "$sessionTitle · ◷ $resetClock"
+    /** `Fix CI · ◷ 7:40 PM`: the session, then when the limit ends ([limitEndText]) when known. */
+    internal fun limitText(sessionTitle: String, end: String?): String =
+        if (end == null) sessionTitle else "$sessionTitle · $end"
+
+    /** When a limit ends, in English as its card shows it: `◷ 7:40 PM`, `◷ ~7:40 PM` (estimated) or `¤ credits` ([resetClockText]). */
+    internal fun limitEndText(end: LimitEnd, now: Long, zone: ZoneId, is24Hour: Boolean): String = when (end) {
+        is LimitEnd.At -> "◷ " + (if (end.estimated) "~" else "") + resetClockText(end.millis, now, zone, is24Hour)
+        LimitEnd.Credits -> "¤ credits"
+    }
 
     fun cancelRequest(context: Context, requestId: String) {
         NotificationManagerCompat.from(context).cancel(TAG_REQUEST, notificationId(requestId))

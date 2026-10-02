@@ -97,6 +97,7 @@ import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.ContextUsage
 import dev.wristline.watch.data.Item
 import dev.wristline.watch.data.ItemKind
+import dev.wristline.watch.data.LimitKind
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.Session
@@ -237,6 +238,7 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
         gone = session == null && (conn is Conn.Online || conn is Conn.Demo),
         limit = limit,
         state = items,
+        usage = usage,
         hasRequest = request != null,
         sending = sending,
         outcome = outcome,
@@ -285,6 +287,8 @@ internal fun SessionDetailContent(
     gone: Boolean,
     limit: UsageWindow?,
     state: SessionItems,
+    /** The usage entries, for when an error card's limit ends ([limitEnd]). */
+    usage: List<Usage> = emptyList(),
     hasRequest: Boolean,
     sending: Boolean,
     outcome: Sent?,
@@ -407,6 +411,7 @@ internal fun SessionDetailContent(
             items(items.asReversed(), key = { it.seq }, contentType = { it.kind }) { item ->
                 ItemRow(
                     item = item,
+                    limitEnd = if (item.error) remember(item, session, usage) { limitEnd(item.limitKind, item.resetsAt, item.resetsEstimated, session, usage, System.currentTimeMillis()) } else null,
                     expanded = expanded[item.seq] == true,
                     onToggle = { expanded[item.seq] = expanded[item.seq] != true },
                     spec = spec,
@@ -534,6 +539,34 @@ internal fun sessionLimit(session: Session, usage: List<Usage>): UsageWindow? {
     } else {
         entry.windows.firstOrNull { it.id == "primary" } ?: entry.windows.firstOrNull()
     }
+}
+
+/** When a usage limit ends, as its card and notification show it ([limitEnd]). */
+internal sealed interface LimitEnd {
+    /** At [millis]; [estimated] (shown with `~`) when inferred from a window near full rather than known. */
+    data class At(val millis: Long, val estimated: Boolean) : LimitEnd
+
+    /** The account's usage credits ran out, and no window is full: no reset time. */
+    data object Credits : LimitEnd
+}
+
+/**
+ * When the usage limit of an error item or `limit` alert ends: its [resetsAt] when the bridge sent
+ * one ([estimated] as the bridge marks it). Else, for a usage limit ([limitKind] set), from the
+ * windows of [session]'s usage entry in [usage] (as [sessionLimit] picks the entry) that reset after
+ * [now]: the latest reset of those at 100% (the one that blocks; Codex reports a used-up weekly
+ * window as credits running out too); else [LimitEnd.Credits] for a credits limit; else the reset of
+ * the fullest window from [AT_LIMIT_PERCENT], estimated; else null rather than a misleading time.
+ */
+internal fun limitEnd(limitKind: String?, resetsAt: String?, estimated: Boolean, session: Session?, usage: List<Usage>, now: Long): LimitEnd? {
+    isoToMillis(resetsAt)?.let { return LimitEnd.At(it, estimated) }
+    if (limitKind == null) return null
+    val entries = usage.filter { it.provider == session?.provider }
+    val entry = entries.firstOrNull { it.account?.id == session?.account?.id } ?: entries.singleOrNull()
+    val windows = entry?.windows.orEmpty().mapNotNull { w -> isoToMillis(w.resetsAt)?.takeIf { it > now }?.let { w.usedPercent to it } }
+    windows.filter { it.first >= 100 }.maxOfOrNull { it.second }?.let { return LimitEnd.At(it, estimated = false) }
+    if (limitKind == LimitKind.CREDITS) return LimitEnd.Credits
+    return windows.filter { it.first >= AT_LIMIT_PERCENT }.maxByOrNull { it.first }?.let { LimitEnd.At(it.second, estimated = true) }
 }
 
 /** Context use in percent, or null when unknown. */
@@ -741,30 +774,45 @@ private fun ItemTime(ts: String, color: Color = MaterialTheme.colorScheme.onSurf
 }
 
 /**
- * `◷ 7:40 PM`: when the usage limit an error item reports resets ([resetClockText], as of the item's
- * composition), read out as `resets today 7:40 PM`; nothing when [resetsAt] does not parse.
+ * When the usage limit an error item reports ends ([limitEnd]): `◷ 7:40 PM` ([resetClockText], as of
+ * the item's composition), read out as `resets today 7:40 PM`; `◷ ~7:40 PM` for an estimate, read
+ * out as `resets around today 7:40 PM (estimated)`; a coin and `credits` when credits ran out, read
+ * out as `credits exhausted`.
  */
 @Composable
-private fun ItemResetClock(resetsAt: String) {
-    val at = remember(resetsAt) { isoToMillis(resetsAt) } ?: return
+private fun ItemLimitEnd(end: LimitEnd) {
     val colors = MaterialTheme.colorScheme
-    val now = System.currentTimeMillis()
-    val zone = ZoneId.systemDefault()
-    val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
-    val words = resetClockWords(at, now, zone, LocalConfiguration.current.locales[0], is24Hour, stringResource(R.string.limit_today))
-    val spoken = stringResource(R.string.limit_resets_at, words)
+    val style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
+    val spoken: String
+    val glyph: Int
+    val text: String
+    when (end) {
+        is LimitEnd.At -> {
+            val now = System.currentTimeMillis()
+            val zone = ZoneId.systemDefault()
+            val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
+            val words = resetClockWords(end.millis, now, zone, LocalConfiguration.current.locales[0], is24Hour, stringResource(R.string.limit_today))
+            spoken = stringResource(if (end.estimated) R.string.limit_resets_around else R.string.limit_resets_at, words)
+            glyph = R.drawable.ic_clock
+            text = resetClockText(end.millis, now, zone, is24Hour)
+        }
+        LimitEnd.Credits -> {
+            spoken = stringResource(R.string.limit_credits)
+            glyph = R.drawable.ic_credits
+            text = "credits"
+        }
+    }
     Row(
         Modifier.clearAndSetSemantics { contentDescription = spoken },
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(painterResource(R.drawable.ic_clock), null, Modifier.size(PLAN_GLYPH), tint = colors.onSurfaceVariant)
-        Text(
-            resetClockText(at, now, zone, is24Hour),
-            style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
-            color = colors.onSurface,
-            maxLines = 1,
-        )
+        Icon(painterResource(glyph), null, Modifier.size(PLAN_GLYPH), tint = colors.onSurfaceVariant)
+        Row {
+            // An estimate: a small, dim `~` before the time.
+            if (end is LimitEnd.At && end.estimated) Text("~", style = style, color = colors.onSurfaceVariant, maxLines = 1)
+            Text(text, style = style, color = colors.onSurface, maxLines = 1)
+        }
     }
 }
 
@@ -778,6 +826,7 @@ private fun collapsedText(text: String): String {
 @Composable
 private fun TransformingLazyColumnItemScope.ItemRow(
     item: Item,
+    limitEnd: LimitEnd?,
     expanded: Boolean,
     onToggle: () -> Unit,
     spec: TransformationSpec,
@@ -822,7 +871,7 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                     }
                 } else if (item.error) {
                     // An error the agent wrote into the conversation (e.g. a usage limit): a warning
-                    // glyph and a red time, then the limit's reset clock when known; TalkBack reads "Error".
+                    // glyph and a red time, then when the limit ends, when known; TalkBack reads "Error".
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             painterResource(R.drawable.ic_warning),
@@ -831,7 +880,7 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                             tint = colors.error,
                         )
                         ItemTime(item.ts, colors.error)
-                        item.resetsAt?.let { ItemResetClock(it) }
+                        limitEnd?.let { ItemLimitEnd(it) }
                     }
                 } else {
                     ItemTime(item.ts)

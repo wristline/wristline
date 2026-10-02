@@ -81,6 +81,8 @@
     <string name="limit_used">%1$s: %2$d%% used</string>
     <string name="limit_unknown">%1$s: usage unknown</string>
     <string name="limit_resets_at">resets %1$s</string>
+    <string name="limit_resets_around">resets around %1$s (estimated)</string>
+    <string name="limit_credits">credits exhausted</string>
     <string name="limit_today">today %1$s</string>
     <string name="limit_left">%1$s left</string>
     <plurals name="limit_sessions">

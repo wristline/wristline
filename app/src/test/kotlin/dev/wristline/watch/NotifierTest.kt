@@ -9,6 +9,9 @@ import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.edit
 import dev.wristline.watch.data.seen
+import dev.wristline.watch.ui.LimitEnd
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -73,8 +76,14 @@ class NotifierTest {
     }
 
     @Test
-    fun limitTextIsTheSessionThenTheResetClock() {
-        assertEquals("Fix CI · ◷ 7:40 PM", Notifier.limitText("Fix CI", "7:40 PM"))
+    fun limitTextIsTheSessionThenWhenTheLimitEnds() {
+        val zone = ZoneId.of("Asia/Seoul")
+        val now = ZonedDateTime.of(2026, 9, 29, 12, 0, 0, 0, zone).toInstant().toEpochMilli()
+        val evening = ZonedDateTime.of(2026, 9, 29, 19, 40, 0, 0, zone).toInstant().toEpochMilli()
+        assertEquals("◷ 7:40 PM", Notifier.limitEndText(LimitEnd.At(evening, estimated = false), now, zone, is24Hour = false))
+        assertEquals("◷ ~7:40 PM", Notifier.limitEndText(LimitEnd.At(evening, estimated = true), now, zone, is24Hour = false))
+        assertEquals("¤ credits", Notifier.limitEndText(LimitEnd.Credits, now, zone, is24Hour = false))
+        assertEquals("Fix CI · ◷ 7:40 PM", Notifier.limitText("Fix CI", "◷ 7:40 PM"))
         assertEquals("Fix CI", Notifier.limitText("Fix CI", null))
     }
 

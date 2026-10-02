@@ -108,10 +108,18 @@ class ProtocolTest {
         assertEquals(ItemKind.ASSISTANT, item.kind)
         assertTrue(item.error)
         assertEquals("2026-09-29T10:40:00.000Z", item.resetsAt)
+        assertEquals(LimitKind.WINDOW, item.limitKind)
+        assertFalse(item.resetsEstimated)
         val alert = parseServerEvent(File(dir, "event-alert-limit.json").readText()) as ServerEvent.Alert
         assertEquals(AlertKind.LIMIT, alert.alert)
         assertEquals("2026-09-29T10:40:00.000Z", alert.resetsAt)
+        assertEquals(LimitKind.WINDOW, alert.limitKind)
         assertNull((parseServerEvent(File(dir, "event-alert.json").readText()) as ServerEvent.Alert).resetsAt)
+        // Usage credits ran out: no reset time.
+        val credits = (parseServerEvent(File(dir, "event-item-limit-credits.json").readText()) as ServerEvent.ItemChanged).item
+        assertEquals(LimitKind.CREDITS, credits.limitKind)
+        assertNull(credits.resetsAt)
+        assertNull((parseServerEvent(File(dir, "event-item.json").readText()) as ServerEvent.ItemChanged).item.limitKind)
     }
 
     @Test

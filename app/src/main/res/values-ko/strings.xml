@@ -76,6 +76,8 @@
     <string name="limit_used">%1$s: %2$d%% 사용</string>
     <string name="limit_unknown">%1$s: 사용량 정보 없음</string>
     <string name="limit_resets_at">%1$s 초기화</string>
+    <string name="limit_resets_around">약 %1$s 초기화 예상</string>
+    <string name="limit_credits">크레딧 소진</string>
     <string name="limit_today">오늘 %1$s</string>
     <string name="limit_left">%1$s 남음</string>
     <plurals name="limit_sessions">
