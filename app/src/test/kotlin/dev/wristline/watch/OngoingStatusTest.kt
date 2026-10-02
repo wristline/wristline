@@ -41,9 +41,9 @@ class OngoingStatusTest {
     }
 
     @Test
-    fun leavesOutZeroCounts() {
-        assertEquals("▶ 2", text(sessions.filterNot { it.id == "c" }, emptyList()))
-        assertEquals("✋ 3", text(listOf(session("d", SessionStatus.IDLE)), listOf(request("r1", "x"), request("r2", "y"), request("r3", "z"))))
+    fun showsBothCountsWhenEitherIsNonZero() {
+        assertEquals("▶ 2 · ✋ 0", text(sessions.filterNot { it.id == "c" }, emptyList()))
+        assertEquals("▶ 0 · ✋ 3", text(listOf(session("d", SessionStatus.IDLE)), listOf(request("r1", "x"), request("r2", "y"), request("r3", "z"))))
         assertEquals("대기 3", description(listOf(session("d", SessionStatus.IDLE)), listOf(request("r1", "x"), request("r2", "y"), request("r3", "z"))))
     }
 
