@@ -94,6 +94,8 @@ data class Account(
     val label: String,
     /** Claude Code only: attributed from the home's login timeline rather than known exactly. */
     val estimated: Boolean = false,
+    /** The current login of the provider's primary home (the one plain `claude`/`codex` use); false from an older bridge. */
+    val primary: Boolean = false,
 )
 
 @Immutable

@@ -182,15 +182,16 @@ class ProtocolTest {
             WireJson.parseToJsonElement(
                 """{"sessions":[
                    {"id":"claude-code:1","provider":"claude-code","status":"running","lastActivity":"2026-09-29T00:00:00Z",
-                    "account":{"id":"acc-a","label":"me@gmail.com","plan":"max"}},
+                    "account":{"id":"acc-a","label":"me@gmail.com","plan":"max","primary":true}},
                    {"id":"claude-code:2","provider":"claude-code","status":"idle","lastActivity":"2026-09-29T00:00:00Z",
                     "account":{"id":"acc-b","label":"school","estimated":true}},
                    {"id":"codex:3","provider":"codex","status":"idle","lastActivity":"2026-09-29T00:00:00Z"}]}""",
             ) as JsonObject,
         ).sessions
-        assertEquals(Account("acc-a", "me@gmail.com"), list[0].account)
+        assertEquals(Account("acc-a", "me@gmail.com", primary = true), list[0].account)
         assertFalse(list[0].account!!.estimated)
         assertEquals(Account("acc-b", "school", estimated = true), list[1].account)
+        assertFalse(list[1].account!!.primary)
         assertNull(list[2].account)
 
         val usage = decode<UsageList>(
