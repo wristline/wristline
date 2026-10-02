@@ -237,11 +237,6 @@ class MonitorService : Service() {
                         } else {
                             builder.addExtras(nowBarExtras(next))
                             NotificationManagerCompat.from(this@MonitorService).notify(NOTIFICATION_ID, builder.build())
-                            // Now on top of them: post the Live Updates again, once, to keep them above it.
-                            for (update in liveUpdates.reposts()) {
-                                val session = Bridge.sessions.value.firstOrNull { it.id == update.sessionId }
-                                if (!Notifier.liveUpdate(this@MonitorService, update, session)) liveUpdates.forget(update.sessionId)
-                            }
                         }
                     }
                     // At most one update per interval; conflate() keeps only the newest text meanwhile.

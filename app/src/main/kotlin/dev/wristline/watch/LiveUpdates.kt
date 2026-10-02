@@ -145,12 +145,6 @@ internal class LiveUpdates {
         return (due + minutes).filter { it > now }.minOrNull()
     }
 
-    /**
-     * What to post again, unchanged, after the monitoring card was re-posted: every Live Update
-     * shown, since Samsung puts the most recently posted card on top. Empty when none is shown.
-     */
-    fun reposts(): List<LiveUpdate> = shown.values.toList()
-
     /** The user swiped [sessionId]'s Live Update for [turn] away: it is not posted again for that turn. */
     fun dismiss(sessionId: String, turn: String) {
         dismissed[sessionId] = turn
