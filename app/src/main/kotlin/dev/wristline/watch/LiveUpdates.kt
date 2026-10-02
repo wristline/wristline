@@ -62,7 +62,7 @@ internal fun liveCurrent(update: LiveUpdate): String? = update.progress?.current
 
 /**
  * The status chip's text, also the first line of the Now Bar's expanded card: `✋` while waiting,
- * else `12m` since the turn started, with a task list too (the icon's ring and the title show the
+ * else `12m` since the turn started, with a task list too (the icon's fill and the title show the
  * count); `▶` without a start. The icon beside it says whose it is, so a number goes without a
  * glyph and keeps the narrow chip's width.
  */
@@ -144,6 +144,12 @@ internal class LiveUpdates {
         }
         return (due + minutes).filter { it > now }.minOrNull()
     }
+
+    /**
+     * What to post again, unchanged, after the monitoring card was re-posted: every Live Update
+     * shown, since Samsung puts the most recently posted card on top. Empty when none is shown.
+     */
+    fun reposts(): List<LiveUpdate> = shown.values.toList()
 
     /** The user swiped [sessionId]'s Live Update for [turn] away: it is not posted again for that turn. */
     fun dismiss(sessionId: String, turn: String) {

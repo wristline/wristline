@@ -130,6 +130,25 @@ class LiveUpdatesTest {
     }
 
     @Test
+    fun aMonitorRepostPostsTheShownLiveUpdatesAgain() {
+        val live = LiveUpdates()
+        // None shown: nothing to post after the monitoring card.
+        assertEquals(emptyList<LiveUpdate>(), live.reposts())
+        val t = start + LIVE_UPDATE_AFTER_MS
+        val two = listOf(session(), session(id = "claude-code:2"))
+        live.plan(two, t)
+        assertEquals(listOf(update(), update(id = "claude-code:2")), live.reposts())
+        // Unchanged by being asked: the next monitor re-post gets the same list, the next plan posts nothing.
+        assertEquals(listOf(update(), update(id = "claude-code:2")), live.reposts())
+        assertEquals(emptyList<LiveChange>(), live.plan(two, t + 2_000))
+        // A dismissed one is left out; all cancelled, none.
+        live.dismiss("claude-code:2", turn)
+        assertEquals(listOf(update()), live.reposts())
+        live.plan(emptyList(), t + 4_000)
+        assertEquals(emptyList<LiveUpdate>(), live.reposts())
+    }
+
+    @Test
     fun forgottenUpdateIsPostedAgain() {
         val live = LiveUpdates()
         val t = start + LIVE_UPDATE_AFTER_MS

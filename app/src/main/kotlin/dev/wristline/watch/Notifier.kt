@@ -293,7 +293,7 @@ object Notifier {
     fun canPostLiveUpdates(context: Context): Boolean =
         liveUpdatesSupported() && NotificationManagerCompat.from(context).canPostPromotedNotifications()
 
-    /** The Live Updates' small icons ([OngoingIcon], no badge), by the ring's rounded percent (-1: no ring), each drawn once. */
+    /** The Live Updates' small icons ([OngoingIcon], no badge), by the fill's rounded percent (-1: no fill), each drawn once. */
     private val liveIcons = HashMap<Int, Bitmap>()
 
     /**
@@ -303,7 +303,7 @@ object Notifier {
      * account line as the text, and a [NotificationCompat.ProgressStyle] bar: one segment per task
      * of its task list, else indeterminate with the time since the turn started as a chronometer
      * (both for the notification shade). The small icon is the Now Bar card's own ([OngoingIcon]),
-     * with a ring of the done fraction when there is a count: the Now Bar draws it untinted on a
+     * filled to the done fraction when there is a count: the Now Bar draws it untinted on a
      * disc of [LIVE_COLOR]. Swiping it away tells
      * [LiveUpdateDismissReceiver]. Posts nothing where it would not be promoted ([canPostLiveUpdates]).
      */

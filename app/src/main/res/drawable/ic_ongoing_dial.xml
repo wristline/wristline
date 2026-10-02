@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The dial and prompt of ic_ongoing alone, the same paths and scale: OngoingIcon draws them again
+     over a Live Update's progress fill, so the fill shows only on the white squircle around them. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <group
+        android:pivotX="256"
+        android:pivotY="256"
+        android:scaleX="1.18"
+        android:scaleY="1.18">
+        <path
+            android:pathData="M256,70A186,186 0,1 0,256 442A186,186 0,1 0,256 70Z"
+            android:fillColor="#FF16324F" />
+        <path
+            android:pathData="M172,190L238,256L172,322M276,322H340"
+            android:strokeWidth="46"
+            android:strokeColor="#FFFFFFFF"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

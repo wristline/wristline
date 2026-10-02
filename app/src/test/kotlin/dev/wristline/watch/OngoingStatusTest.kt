@@ -136,19 +136,17 @@ class OngoingStatusTest {
     }
 
     @Test
-    fun ringSitsAtTheEdgeAroundASmallerSquircle() {
-        val ring = ongoingRing(96)
-        assertEquals(96 * 0.08f, ring.stroke, 0.01f)
-        // The outer edge at the icon's edge.
-        assertEquals(48f, ring.radius + ring.stroke / 2, 0.01f)
-        // The squircle's corners (1.1766 half-widths out) clear the ring's inner edge.
-        val half = 48 - ring.inset
-        assertTrue(ring.inset > 0 && half * 1.1766f < ring.radius - ring.stroke / 2)
-        assertTrue(half * 1.1766f > ring.radius - ring.stroke / 2 - 3)
-        // The arc: clockwise from 12 o'clock, clamped.
-        assertEquals(0f, ongoingRingSweep(0f), 0f)
-        assertEquals(144f, ongoingRingSweep(0.4f), 0.01f)
-        assertEquals(360f, ongoingRingSweep(1.5f), 0f)
-        assertEquals(0f, ongoingRingSweep(-1f), 0f)
+    fun fillRisesFromTheSquirclesBottomToItsProgress() {
+        assertNull(ongoingFill(96, 0f))
+        assertNull(ongoingFill(96, -1f))
+        val full = ongoingFill(96, 1f)!!
+        // The squircle spans the icon edge to edge, but for its 1.12-unit margin of 512.
+        assertEquals(96 - 96 * 1.12f / 512, full.bottom, 0.01f)
+        assertEquals(96 * 1.12f / 512, full.top, 0.01f)
+        val half = ongoingFill(96, 0.5f)!!
+        assertEquals(full.bottom, half.bottom, 0f)
+        assertEquals((full.bottom - full.top) / 2, half.bottom - half.top, 0.01f)
+        assertEquals(48f, half.top, 0.01f)
+        assertEquals(full, ongoingFill(96, 1.5f))
     }
 }
