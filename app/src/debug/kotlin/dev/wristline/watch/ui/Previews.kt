@@ -451,14 +451,14 @@ private fun AccountsPreview() = Frame { AccountsContent(listUsage, listSessions,
 @Composable
 private fun AccountsKoPreview() = Frame { AccountsContent(listUsage, listSessions, customAccounts, onAccount = {}, onMove = { _, _, _ -> }) }
 
-// Pro's detail: its blue star at the cards' size and enlarged; W dimmed among the letters (Work's).
+// Pro's detail: its blue star at the cards' size and enlarged, pinned over the picker, open on the emoji tab.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
-private fun AccountPreview() = Frame { AccountContent(customAccounts, "codex:chatgpt-pro", onMark = {}, onColor = {}, onNickname = {}, onReset = {}) }
+private fun AccountPreview() = Frame { AccountContent(customAccounts, "codex:chatgpt-pro", onMark = {}, onColor = {}, onRename = {}, onReset = {}) }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
 @Composable
-private fun AccountKoPreview() = Frame { AccountContent(customAccounts, "codex:chatgpt-pro", onMark = {}, onColor = {}, onNickname = {}, onReset = {}) }
+private fun AccountKoPreview() = Frame { AccountContent(customAccounts, "codex:chatgpt-pro", onMark = {}, onColor = {}, onRename = {}, onReset = {}) }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable

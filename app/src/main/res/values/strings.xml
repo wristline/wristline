@@ -206,10 +206,13 @@
     <string name="accounts_move_up">Move %1$s up</string>
     <string name="accounts_move_down">Move %1$s down</string>
     <string name="account_preview">Preview</string>
-    <string name="account_mark">Mark</string>
+    <string name="account_rename">Rename</string>
+    <string name="account_auto">Auto</string>
+    <string name="account_tab_emoji">Emoji</string>
+    <string name="account_tab_letters">Letters</string>
+    <string name="account_tab_digits">Digits</string>
     <string name="account_mark_auto">Auto (%1$s)</string>
     <string name="account_mark_used">%1$s, used by %2$s</string>
-    <string name="account_color">Color</string>
     <string name="account_color_white">White</string>
     <string name="account_color_sky">Sky blue</string>
     <string name="account_color_green">Green</string>

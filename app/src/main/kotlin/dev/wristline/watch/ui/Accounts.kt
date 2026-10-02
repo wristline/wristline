@@ -2,24 +2,40 @@ package dev.wristline.watch.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -28,6 +44,8 @@ import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
 import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
 import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.CompactButton
 import androidx.wear.compose.material3.FilledTonalButton
 import androidx.wear.compose.material3.FilledTonalIconButton
 import androidx.wear.compose.material3.Icon
@@ -36,7 +54,6 @@ import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.ListHeaderDefaults
 import androidx.wear.compose.material3.ListSubHeader
 import androidx.wear.compose.material3.MaterialTheme
-import androidx.wear.compose.material3.RadioButton
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
@@ -95,20 +112,40 @@ private fun colorName(color: MarkColor): String = stringResource(
     },
 )
 
-/** The marks the picker offers after Auto, in rows of [PICKER_COLUMNS]: letters A–Z, digits 1–9, then [MARK_EMOJI]. */
+/** The marks the picker offers: [MARK_EMOJI], then letters A–Z, then digits 1–9. */
 internal val PICKER_MARKS: List<Mark> =
-    ('A'..'Z').map { Mark(MarkType.LETTER, it.toString()) } +
-        ('1'..'9').map { Mark(MarkType.DIGIT, it.toString()) } +
-        MARK_EMOJI.map { Mark(MarkType.EMOJI, it) }
+    MARK_EMOJI.map { Mark(MarkType.EMOJI, it) } +
+        ('A'..'Z').map { Mark(MarkType.LETTER, it.toString()) } +
+        ('1'..'9').map { Mark(MarkType.DIGIT, it.toString()) }
 
-private const val PICKER_COLUMNS = 3
+/**
+ * The picker's tabs, emoji first: each offers the [PICKER_MARKS] of its [type] in rows of
+ * [columns]; letters four across (Auto first), as many 48dp targets as the round screen's middle holds.
+ */
+internal enum class MarkTab(val type: String, val label: String, val columns: Int) {
+    EMOJI(MarkType.EMOJI, "\uD83D\uDE42", 3),
+    LETTERS(MarkType.LETTER, "ABC", 4),
+    DIGITS(MarkType.DIGIT, "123", 3),
+    ;
 
-/** A picker button: the minimum touch target, so three fit across the round screen's middle with room. */
+    val marks: List<Mark> get() = PICKER_MARKS.filter { it.type == type }
+}
+
+/** The tab the picker opens on: the picked mark's, else emoji. */
+internal fun tabOf(mark: Mark?): MarkTab = MarkTab.entries.firstOrNull { it.type == mark?.type } ?: MarkTab.EMOJI
+
+/** A picker button: the minimum touch target. */
 private val PICK_SIZE = 48.dp
 private val PICK_GAP = 8.dp
 
+/** Between four picker buttons in a row: what is left of the round screen's middle. */
+private val PICK_GAP_TIGHT = 2.dp
+
+/** A picker tab: room for `ABC` in three that fit across the round screen low in the list. */
+private val TAB_WIDTH = 56.dp
+
 /** The badge's enlarged copy beside the actual size in the account's preview. */
-private const val PREVIEW_SCALE = 4f
+private const val PREVIEW_SCALE = 3f
 
 /**
  * The accounts the Accounts screen lists: per provider with more than one ([markedProviders]), in
@@ -212,7 +249,7 @@ internal fun AccountScreen(key: String) {
     val accounts by Bridge.prefs.accounts.collectAsStateWithLifecycle()
     val book = rememberAccountBook(accounts, usage, sessions)
     val update = { change: (AccountBook) -> AccountBook -> Bridge.prefs.updateAccounts(change) }
-    val editNickname = rememberTextInput(stringResource(R.string.account_nickname)) { name ->
+    val rename = rememberTextInput(stringResource(R.string.account_nickname)) { name ->
         update { it.edit(key) { style -> style.copy(nickname = name) } }
     }
     AccountContent(
@@ -220,16 +257,17 @@ internal fun AccountScreen(key: String) {
         key,
         onMark = { mark -> update { it.edit(key) { style -> style.copy(mark = mark) } } },
         onColor = { color -> update { it.edit(key) { style -> style.copy(color = color) } } },
-        onNickname = editNickname,
+        onRename = rename,
         onReset = { update { it.reset(key) } },
     )
 }
 
 /**
- * One account: its badge at the size the cards show it and enlarged; its mark (Auto, the label's
- * pick, or one of [PICKER_MARKS], the ones its provider's other accounts show dimmed), its color
- * ([MarkColor]), its nickname (in place of the label everywhere), and Reset to auto. A choice
- * applies at once, as the Wear settings screens do.
+ * One account. Pinned at the top, its badge at the size the cards show it and enlarged, so every
+ * choice shows there at once. Under it, scrolling: its name (the nickname, in place of the label
+ * everywhere; a tap renames it), its provider and `Default`; its mark in tabs ([MarkTab]: Auto
+ * among the letters; the ones its provider's other accounts show dimmed); its color ([MarkColor]);
+ * Reset to auto. A choice applies at once, as the Wear settings screens do.
  */
 @Composable
 internal fun AccountContent(
@@ -237,7 +275,7 @@ internal fun AccountContent(
     key: String,
     onMark: (Mark?) -> Unit,
     onColor: (String?) -> Unit,
-    onNickname: () -> Unit,
+    onRename: () -> Unit,
     onReset: () -> Unit,
 ) {
     val listState = rememberTransformingLazyColumnState()
@@ -248,105 +286,166 @@ internal fun AccountContent(
         style?.let { own -> book.accounts.filter { (k, s) -> k != key && s.provider == own.provider }.values.associate { it.glyph to it.name } }.orEmpty()
     }
     val used = remember(book, key) { style?.let { book.shownByOthers(it.provider, key) }.orEmpty() }
+    var tab by rememberSaveable { mutableStateOf(tabOf(style?.mark)) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
-        TransformingLazyColumn(
-            state = listState,
-            contentPadding = contentPadding,
-            flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState),
-            rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
-        ) {
-            item(key = "title") { Header(style?.name ?: stringResource(R.string.settings_accounts), spec) }
-            if (style == null) return@TransformingLazyColumn
-            val look = style.look()
-            item(key = "preview") {
-                val spoken = stringResource(R.string.account_preview) + ", " + providerLabel(style.provider) + " " + style.name
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .edgeTransform(this, spec)
-                        .padding(vertical = 8.dp)
-                        .clearAndSetSemantics { contentDescription = spoken },
-                    horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BadgeWithMark(style.provider, look, decorative = true)
-                    BadgeWithMark(style.provider, look, scale = PREVIEW_SCALE, decorative = true)
+        val direction = LocalLayoutDirection.current
+        Column(Modifier.fillMaxSize()) {
+            // Outside the list, so it stays while the picker scrolls; the list clipped, so nothing
+            // scrolls over it (or takes its touches).
+            if (style != null) AccountPreview(style, Modifier.padding(top = contentPadding.calculateTopPadding()))
+            TransformingLazyColumn(
+                state = listState,
+                modifier = Modifier.weight(1f).clipToBounds(),
+                contentPadding = PaddingValues(
+                    start = contentPadding.calculateStartPadding(direction),
+                    top = if (style == null) contentPadding.calculateTopPadding() else 0.dp,
+                    end = contentPadding.calculateEndPadding(direction),
+                    bottom = contentPadding.calculateBottomPadding(),
+                ),
+                flingBehavior = TransformingLazyColumnDefaults.snapFlingBehavior(listState),
+                rotaryScrollableBehavior = RotaryScrollableDefaults.snapBehavior(listState),
+            ) {
+                if (style == null) {
+                    item(key = "title") { Header(stringResource(R.string.settings_accounts), spec) }
+                    return@TransformingLazyColumn
                 }
-            }
-            item(key = "markHeader") { SubHeader(stringResource(R.string.account_mark), spec) }
-            item(key = "auto") {
-                RadioButton(
-                    selected = style.mark == null,
-                    onSelect = { onMark(null) },
-                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-                    transformation = SurfaceTransformation(spec),
-                    label = { Text(stringResource(R.string.account_mark_auto, style.auto)) },
-                )
-            }
-            PICKER_MARKS.chunked(PICKER_COLUMNS).forEachIndexed { row, marks ->
-                item(key = "marks/$row") {
-                    PickRow(this, spec) {
-                        for (mark in marks) {
-                            val taken = mark.value in used
-                            val description = if (taken) stringResource(R.string.account_mark_used, mark.value, others[mark.value].orEmpty()) else null
-                            TextToggleButton(
-                                checked = style.mark?.value == mark.value,
-                                onCheckedChange = { on -> onMark(mark.takeIf { on }) },
-                                enabled = !taken,
-                                modifier = Modifier
-                                    .touchTargetAwareSize(PICK_SIZE)
-                                    .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier),
-                            ) { Text(mark.value, style = MaterialTheme.typography.titleMedium) }
+                item(key = "name") {
+                    val rename = stringResource(R.string.account_rename)
+                    CompactButton(
+                        onClick = onRename,
+                        modifier = Modifier.transformedHeight(this, spec).semantics { onClick(label = rename) { onRename(); true } },
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        transformation = SurfaceTransformation(spec),
+                        icon = { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(ButtonDefaults.ExtraSmallIconSize)) },
+                        label = { Text(style.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
+                item(key = "provider") {
+                    val provider = providerLabel(style.provider)
+                    // Said with the preview: a line this short would be skipped (minListItemHeight), and is kept short for room.
+                    CaptionText(
+                        if (style.primary) "$provider · ${stringResource(R.string.accounts_primary)}" else provider,
+                        Modifier.edgeTransform(this, spec).clearAndSetSemantics {},
+                    )
+                }
+                item(key = "tabs") {
+                    PickRow(this, spec, Modifier.selectableGroup(), gap = PICK_GAP_TIGHT * 2) {
+                        for (option in MarkTab.entries) {
+                            val selected = tab == option
+                            val name = stringResource(option.description)
+                            CompactButton(
+                                onClick = { tab = option },
+                                modifier = Modifier.width(TAB_WIDTH).semantics {
+                                    this.selected = selected
+                                    contentDescription = name
+                                },
+                                colors = if (selected) ButtonDefaults.buttonColors() else ButtonDefaults.filledTonalButtonColors(),
+                                label = { Text(option.label, Modifier.fillMaxWidth(), textAlign = TextAlign.Center, maxLines = 1) },
+                            )
                         }
                     }
                 }
-            }
-            item(key = "colorHeader") { SubHeader(stringResource(R.string.account_color), spec) }
-            MarkColor.entries.chunked(PICKER_COLUMNS).forEachIndexed { row, colors ->
-                item(key = "colors/$row") {
-                    PickRow(this, spec) {
-                        for (color in colors) {
-                            val checked = markColor(style.color) == color
-                            val name = colorName(color)
-                            TextToggleButton(
-                                checked = checked,
-                                onCheckedChange = { onColor(color.id) },
-                                modifier = Modifier.touchTargetAwareSize(PICK_SIZE).semantics { contentDescription = name },
-                                colors = TextToggleButtonDefaults.colors(
-                                    checkedContainerColor = color.disc,
-                                    checkedContentColor = color.glyph,
-                                    uncheckedContainerColor = color.disc,
-                                    uncheckedContentColor = color.glyph,
-                                ),
-                                border = if (checked) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
-                            ) { Text(style.glyph, style = MaterialTheme.typography.titleMedium) }
+                // Auto first among the letters: the glyph the watch picked, with a caption.
+                val picks: List<Mark?> = if (tab == MarkTab.LETTERS) listOf(null) + tab.marks else tab.marks
+                picks.chunked(tab.columns).forEachIndexed { row, marks ->
+                    item(key = "marks/${tab.name}/$row") {
+                        PickRow(this, spec, gap = if (tab.columns > 3) PICK_GAP_TIGHT else PICK_GAP) {
+                            for (mark in marks) {
+                                if (mark == null) {
+                                    AutoButton(style.auto, checked = style.mark == null) { onMark(null) }
+                                    continue
+                                }
+                                val taken = mark.value in used
+                                val description = if (taken) stringResource(R.string.account_mark_used, mark.value, others[mark.value].orEmpty()) else null
+                                TextToggleButton(
+                                    checked = style.mark?.value == mark.value,
+                                    onCheckedChange = { on -> onMark(mark.takeIf { on }) },
+                                    enabled = !taken,
+                                    modifier = Modifier
+                                        .touchTargetAwareSize(PICK_SIZE)
+                                        .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier),
+                                ) { Text(mark.value, style = MaterialTheme.typography.titleMedium) }
+                            }
                         }
                     }
                 }
+                MarkColor.entries.chunked(3).forEachIndexed { row, colors ->
+                    item(key = "colors/$row") {
+                        PickRow(this, spec) {
+                            for (color in colors) {
+                                val checked = markColor(style.color) == color
+                                val name = colorName(color)
+                                TextToggleButton(
+                                    checked = checked,
+                                    onCheckedChange = { onColor(color.id) },
+                                    modifier = Modifier.touchTargetAwareSize(PICK_SIZE).semantics { contentDescription = name },
+                                    colors = TextToggleButtonDefaults.colors(
+                                        checkedContainerColor = color.disc,
+                                        checkedContentColor = color.glyph,
+                                        uncheckedContainerColor = color.disc,
+                                        uncheckedContentColor = color.glyph,
+                                    ),
+                                    border = if (checked) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
+                                ) { Text(style.glyph, style = MaterialTheme.typography.titleMedium) }
+                            }
+                        }
+                    }
+                }
+                item(key = "reset") {
+                    Button(
+                        onClick = onReset,
+                        enabled = style.mark != null || style.color != null || style.nickname != null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, spec)
+                            .minimumVerticalContentPadding(top = 0.dp, bottom = TextDefaults.minimumBottomListContentPadding),
+                        transformation = SurfaceTransformation(spec),
+                        label = { Text(stringResource(R.string.account_reset)) },
+                    )
+                }
             }
-            item(key = "nickname") {
-                FilledTonalButton(
-                    onClick = onNickname,
-                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-                    transformation = SurfaceTransformation(spec),
-                    label = { Text(stringResource(R.string.account_nickname)) },
-                    secondaryLabel = {
-                        Text(style.nickname ?: stringResource(R.string.settings_not_set), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    },
-                )
-            }
-            item(key = "reset") {
-                Button(
-                    onClick = onReset,
-                    enabled = style.mark != null || style.color != null || style.nickname != null,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .transformedHeight(this, spec)
-                        .minimumVerticalContentPadding(top = 0.dp, bottom = TextDefaults.minimumBottomListContentPadding),
-                    transformation = SurfaceTransformation(spec),
-                    label = { Text(stringResource(R.string.account_reset)) },
-                )
-            }
+        }
+    }
+}
+
+private val MarkTab.description: Int
+    get() = when (this) {
+        MarkTab.EMOJI -> R.string.account_tab_emoji
+        MarkTab.LETTERS -> R.string.account_tab_letters
+        MarkTab.DIGITS -> R.string.account_tab_digits
+    }
+
+/** The account's badge at the size the cards show it and enlarged; read out as `Preview, Codex Work, Default`. */
+@Composable
+private fun AccountPreview(style: AccountStyle, modifier: Modifier = Modifier) {
+    val spoken = stringResource(R.string.account_preview) + ", " + providerLabel(style.provider) + " " + style.name +
+        (if (style.primary) ", " + stringResource(R.string.accounts_primary) else "")
+    val look = style.look()
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(bottom = 4.dp)
+            .clearAndSetSemantics { contentDescription = spoken },
+        horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        BadgeWithMark(style.provider, look, decorative = true)
+        BadgeWithMark(style.provider, look, scale = PREVIEW_SCALE, decorative = true)
+    }
+}
+
+/** The letters' first pick: [auto], the glyph the watch picked, over `Auto`; read out as `Auto (W)`. */
+@Composable
+private fun AutoButton(auto: String, checked: Boolean, onSelect: () -> Unit) {
+    val description = stringResource(R.string.account_mark_auto, auto)
+    TextToggleButton(
+        checked = checked,
+        onCheckedChange = { onSelect() },
+        modifier = Modifier.touchTargetAwareSize(PICK_SIZE).semantics { contentDescription = description },
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(auto, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+            Text(stringResource(R.string.account_auto), style = MaterialTheme.typography.labelSmall, maxLines = 1)
         }
     }
 }
@@ -362,14 +461,6 @@ private fun TransformingLazyColumnItemScope.Header(text: String, spec: Transform
     ) { Text(text, maxLines = 2, overflow = TextOverflow.Ellipsis) }
 }
 
-@Composable
-private fun TransformingLazyColumnItemScope.SubHeader(text: String, spec: TransformationSpec) {
-    ListSubHeader(
-        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
-        transformation = SurfaceTransformation(spec),
-    ) { Text(text) }
-}
-
 /** The list's last item: room under the last row, off the round edge. */
 @Composable
 private fun TransformingLazyColumnItemScope.EndSpace(spec: TransformationSpec) {
@@ -382,11 +473,13 @@ private fun TransformingLazyColumnItemScope.EndSpace(spec: TransformationSpec) {
 private fun PickRow(
     scope: TransformingLazyColumnItemScope,
     spec: TransformationSpec,
+    modifier: Modifier = Modifier,
+    gap: Dp = PICK_GAP,
     content: @Composable RowScope.() -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().edgeTransform(scope, spec),
-        horizontalArrangement = Arrangement.spacedBy(PICK_GAP, Alignment.CenterHorizontally),
+        modifier.fillMaxWidth().edgeTransform(scope, spec),
+        horizontalArrangement = Arrangement.spacedBy(gap, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
         content = content,
     )

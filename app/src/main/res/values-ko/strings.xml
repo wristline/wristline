@@ -188,10 +188,13 @@
     <string name="accounts_move_up">%1$s 위로 이동</string>
     <string name="accounts_move_down">%1$s 아래로 이동</string>
     <string name="account_preview">미리보기</string>
-    <string name="account_mark">표시</string>
+    <string name="account_rename">이름 바꾸기</string>
+    <string name="account_auto">자동</string>
+    <string name="account_tab_emoji">이모지</string>
+    <string name="account_tab_letters">문자</string>
+    <string name="account_tab_digits">숫자</string>
     <string name="account_mark_auto">자동 (%1$s)</string>
     <string name="account_mark_used">%1$s, %2$s 사용 중</string>
-    <string name="account_color">색</string>
     <string name="account_color_white">흰색</string>
     <string name="account_color_sky">하늘색</string>
     <string name="account_color_green">초록</string>

@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import dev.wristline.watch.data.Account
 import dev.wristline.watch.data.AccountBook
+import dev.wristline.watch.data.Mark
 import dev.wristline.watch.data.MarkType
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
@@ -37,10 +38,24 @@ class AccountsTest {
     }
 
     @Test
-    fun thePickerOffersLettersDigitsAndEmojiOnce() {
-        assertEquals(26 + 9 + 6, PICKER_MARKS.size)
+    fun thePickerOffersEmojiLettersAndDigitsOnce() {
+        assertEquals(6 + 26 + 9, PICKER_MARKS.size)
         assertEquals(PICKER_MARKS.size, PICKER_MARKS.map { it.value }.distinct().size)
-        assertEquals(listOf(MarkType.LETTER, MarkType.DIGIT, MarkType.EMOJI), PICKER_MARKS.map { it.type }.distinct())
+        assertEquals(listOf(MarkType.EMOJI, MarkType.LETTER, MarkType.DIGIT), PICKER_MARKS.map { it.type }.distinct())
+        // Each tab offers its own, emoji first; together all of them.
+        assertEquals(listOf(MarkTab.EMOJI, MarkTab.LETTERS, MarkTab.DIGITS), MarkTab.entries)
+        assertEquals(PICKER_MARKS, MarkTab.entries.flatMap { it.marks })
+        assertEquals(listOf(6, 26, 9), MarkTab.entries.map { it.marks.size })
+    }
+
+    @Test
+    fun thePickerOpensOnThePickedMarksTab() {
+        assertEquals(MarkTab.EMOJI, tabOf(null))
+        assertEquals(MarkTab.EMOJI, tabOf(Mark(MarkType.EMOJI, "\u2B50")))
+        assertEquals(MarkTab.LETTERS, tabOf(Mark(MarkType.LETTER, "W")))
+        assertEquals(MarkTab.DIGITS, tabOf(Mark(MarkType.DIGIT, "2")))
+        // A type this version does not know: emoji.
+        assertEquals(MarkTab.EMOJI, tabOf(Mark("shape", "x")))
     }
 
     @Test
