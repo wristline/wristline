@@ -91,10 +91,13 @@ object AskStatus {
 @Serializable
 data class ContextUsage(val used: Long, val window: Long)
 
-/** The agent's task list: [done] of [total] tasks. */
+/**
+ * The agent's task list: [done] of [total] tasks; [current] is the title of the task in progress
+ * (at most 80 characters), absent when none is or from older bridges.
+ */
 @Immutable
 @Serializable
-data class TaskProgress(val done: Int, val total: Int)
+data class TaskProgress(val done: Int, val total: Int, val current: String? = null)
 
 /** Absent on a session or usage entry means a single or unknown account. */
 @Immutable

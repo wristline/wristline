@@ -18,15 +18,15 @@ internal const val LIVE_UPDATE_INTERVAL_MS = 2_000L
 /** The longest status chip text ([liveUpdateChip]); the Now Bar chip has room for about this much. */
 internal const val LIVE_CHIP_MAX = 7
 
-/** The most minutes [LiveUpdate.minutes] counts, so its chip `▶ 9999m` stays within [LIVE_CHIP_MAX]. */
+/** The most minutes [LiveUpdate.minutes] counts, so its chip `9999m` stays within [LIVE_CHIP_MAX]. */
 private const val LIVE_MINUTES_MAX = 9_999
 
 /**
  * What one session's Live Update shows. [turn] is the session's turnStartedAt as sent (empty when
  * the bridge sent none), [startedAt] the same in millis, for the chronometer; [waiting] while the
- * session needs input. [minutes] is the whole minutes since the turn started, for the chip, while
- * it runs without a task list (null otherwise, or without a start): the Now Bar draws no
- * chronometer counting up, so a new minute is a change to post ([LiveUpdates.nextDueAt]).
+ * session needs input. [minutes] is the whole minutes since the turn started, for the chip and the
+ * text, while it runs (null while waiting, or without a start): the Now Bar draws no chronometer
+ * counting up, so a new minute is a change to post ([LiveUpdates.nextDueAt]).
  */
 internal data class LiveUpdate(
     val sessionId: String,
@@ -56,24 +56,39 @@ internal fun liveUpdateDue(session: Session, now: Long): Boolean {
 internal fun liveProgress(update: LiveUpdate): TaskProgress? =
     update.progress?.takeIf { it.total > 0 }?.let { it.copy(done = it.done.coerceIn(0, it.total)) }
 
+/** The title of [update]'s task in progress, when the bridge sent one. */
+internal fun liveCurrent(update: LiveUpdate): String? = update.progress?.current?.trim()?.takeIf { it.isNotEmpty() }
+
 /**
  * The status chip's text, also the first line of the Now Bar's expanded card: `✋` while waiting,
- * `▶ 3/7` with a task list, else `▶ 12m` since the turn started (`▶` without a start). Never longer
- * than [LIVE_CHIP_MAX]: a task count too long for it goes without the `▶`, or is left out.
+ * `3/7` with a task list, else `12m` since the turn started; `▶` when there is no number (no start,
+ * or a task count longer than [LIVE_CHIP_MAX]). The icon beside it says whose it is, so a number
+ * goes without a glyph and keeps the narrow chip's width.
  */
 internal fun liveUpdateChip(update: LiveUpdate): String {
     if (update.waiting) return "✋"
     liveProgress(update)?.let { progress ->
-        val count = "${progress.done}/${progress.total}"
-        return listOf("▶ $count", count).firstOrNull { it.length <= LIVE_CHIP_MAX } ?: "▶"
+        return "${progress.done}/${progress.total}".takeIf { it.length <= LIVE_CHIP_MAX } ?: "▶"
     }
-    return update.minutes?.let { "▶ ${it}m" } ?: "▶"
+    return update.minutes?.let { "${it}m" } ?: "▶"
 }
 
-/** The text under the title: `✋ waiting`, `▶ 3/7` or `▶ running`. */
-internal fun liveUpdateText(update: LiveUpdate): String = when {
-    update.waiting -> "✋ waiting"
-    else -> "▶ " + (liveProgress(update)?.let { "${it.done}/${it.total}" } ?: "running")
+/**
+ * The content title, the Now Bar expanded card's second line: the session's [title] first, then the
+ * task in progress (`Fix CI · Run the tests`); the system ellipsizes what does not fit.
+ */
+internal fun liveUpdateTitle(title: String, update: LiveUpdate): String =
+    liveCurrent(update)?.let { "$title · $it" } ?: title
+
+/**
+ * The text under the title, for the shade: `3/7 done · Run the tests · 12m` with a task list (the
+ * task and the minutes when known), `running · 12m` without one, `✋ waiting` while waiting.
+ */
+internal fun liveUpdateText(update: LiveUpdate): String {
+    if (update.waiting) return "✋ waiting"
+    val progress = liveProgress(update)
+    val status = progress?.let { "${it.done}/${it.total} done" } ?: "running"
+    return listOfNotNull(status, progress?.let { liveCurrent(update) }, update.minutes?.let { "${it}m" }).joinToString(" · ")
 }
 
 /**
@@ -105,9 +120,8 @@ internal class LiveUpdates {
                 val keep = before != null && before.turn == turn
                 if (dismissed[session.id] == turn || !(keep || liveUpdateDue(session, now))) return null
                 val startedAt = isoToMillis(session.turnStartedAt)
-                val update = LiveUpdate(session.id, turn, startedAt, session.title, session.progress, waiting = false)
-                if (liveProgress(update) != null || startedAt == null) return update
-                update.copy(minutes = ((now - startedAt) / MINUTE_MS).coerceIn(0, LIVE_MINUTES_MAX.toLong()).toInt())
+                val minutes = startedAt?.let { ((now - it) / MINUTE_MS).coerceIn(0, LIVE_MINUTES_MAX.toLong()).toInt() }
+                LiveUpdate(session.id, turn, startedAt, session.title, session.progress, waiting = false, minutes = minutes)
             }
             // turnStartedAt is sent only while running: the waiting turn is the one shown.
             SessionStatus.NEEDS_INPUT -> before?.copy(title = session.title, progress = session.progress ?: before.progress, waiting = true, minutes = null)

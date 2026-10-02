@@ -32,4 +32,13 @@ class CardProgressTest {
         assertEquals("7/7", cardProgressText(cardProgress(session(SessionStatus.RUNNING, TaskProgress(9, 7)))!!))
         assertEquals("0/7", cardProgressText(cardProgress(session(SessionStatus.RUNNING, TaskProgress(-1, 7)))!!))
     }
+
+    @Test
+    fun detailLineIsTheCountThenTheTaskInProgress() {
+        assertEquals("3/7 · Run the tests", detailProgressText(TaskProgress(3, 7, current = "Run the tests")))
+        assertEquals("3/7", detailProgressText(TaskProgress(3, 7)))
+        assertEquals("3/7", detailProgressText(TaskProgress(3, 7, current = " ")))
+        // Clamped as on the card, the task kept.
+        assertEquals("7/7 · Ship", detailProgressText(cardProgress(session(SessionStatus.RUNNING, TaskProgress(9, 7, current = "Ship")))!!))
+    }
 }

@@ -51,6 +51,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -101,6 +102,7 @@ import dev.wristline.watch.data.LimitKind
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.Session
+import dev.wristline.watch.data.TaskProgress
 import dev.wristline.watch.data.SessionItems
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
@@ -692,7 +694,9 @@ private fun EdgeGauge(
 
 /**
  * The session's title over its provider badge and status dot, the list's colors, no words: the
- * gauges show the numbers as arcs. Read out as one, the status in words and the numbers too.
+ * gauges show the numbers as arcs. While a running agent has a task list, the count and the task
+ * in progress go under the title, small and muted ([detailProgressText]). Read out as one, the
+ * status in words and the numbers too.
  */
 @Composable
 private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, modifier: Modifier) {
@@ -702,10 +706,13 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
     }
     val title = sessionTitle(session)
     val status = statusDescription(session.status)
+    val progress = cardProgress(session)
     val spoken = listOfNotNull(
         title,
         providerLabel(session.provider),
         status,
+        progress?.let { pluralStringResource(R.plurals.tasks_done, it.total, it.done, it.total) },
+        progress?.let { detailCurrent(it) },
         contextPercent(session.context)?.let { stringResource(R.string.detail_context_description, it.roundToInt()) },
         limit?.let { "${windowLabel(it)} ${it.usedPercent.roundToInt()}%" },
     ).joinToString(", ")
@@ -721,6 +728,17 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
+        progress?.let {
+            Text(
+                detailProgressText(it),
+                modifier = Modifier.padding(horizontal = 24.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         Row(
             Modifier.padding(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -731,6 +749,13 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
         }
     }
 }
+
+/** The title of [progress]'s task in progress, when the bridge sent one. */
+internal fun detailCurrent(progress: TaskProgress): String? = progress.current?.trim()?.takeIf { it.isNotEmpty() }
+
+/** The detail header's task list line, in every locale: `3/7 · Run the tests`, or `3/7` with no task in progress. */
+internal fun detailProgressText(progress: TaskProgress): String =
+    listOfNotNull(cardProgressText(progress), detailCurrent(progress)).joinToString(" · ")
 
 /**
  * An item's time, after its date when it is not from [today]: on screen (no [locale]) in English

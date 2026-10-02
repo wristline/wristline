@@ -117,6 +117,8 @@ object Notifier {
 
     /** The app's primary (the theme's), for the small icon here and in the Now Bar: gray without it. */
     val COLOR: Int = 0xFF4FA8FF.toInt()
+    /** The Live Updates' colour: the Now Bar draws their small icon on a disc of it, white to blend with the icon's white squircle. */
+    private val LIVE_COLOR: Int = 0xFFFFFFFF.toInt()
     private val VIBRATION = longArrayOf(0, 250, 150, 250)
     private val SHORT_VIBRATION = longArrayOf(0, 200)
 
@@ -290,11 +292,12 @@ object Notifier {
 
     /**
      * A long turn's Live Update, promoted to the watch face's status chip: the chip text
-     * ([liveUpdateChip]) and the session title, the two lines the Now Bar's expanded card shows;
-     * the status and account line as the text, and a [NotificationCompat.ProgressStyle] bar: one
-     * segment per task of its task list, else indeterminate with the time since the turn started as
-     * a chronometer (both for the notification shade). The small icon is the Now Bar card's own
-     * ([OngoingIcon]): the Now Bar draws it untinted on a disc of [COLOR]. Swiping it away tells
+     * ([liveUpdateChip]) and the title ([liveUpdateTitle]: the session's, then the task in
+     * progress), the two lines the Now Bar's expanded card shows; the status ([liveUpdateText]) and
+     * account line as the text, and a [NotificationCompat.ProgressStyle] bar: one segment per task
+     * of its task list, else indeterminate with the time since the turn started as a chronometer
+     * (both for the notification shade). The small icon is the Now Bar card's own ([OngoingIcon]):
+     * the Now Bar draws it untinted on a disc of [LIVE_COLOR]. Swiping it away tells
      * [LiveUpdateDismissReceiver]. Posts nothing where it would not be promoted ([canPostLiveUpdates]).
      */
     internal fun liveUpdate(context: Context, update: LiveUpdate, session: Session?): Boolean {
@@ -318,16 +321,20 @@ object Notifier {
         val text = listOfNotNull(status, accountLine(context, session)).joinToString(" · ")
         val spoken = when {
             update.waiting -> context.getString(R.string.status_needs_input)
-            progress != null -> context.resources.getQuantityString(R.plurals.tasks_done, progress.total, progress.done, progress.total)
-            else -> context.getString(R.string.status_running)
+            else -> listOfNotNull(
+                progress?.let { context.resources.getQuantityString(R.plurals.tasks_done, it.total, it.done, it.total) }
+                    ?: context.getString(R.string.status_running),
+                progress?.let { liveCurrent(update) },
+                update.minutes?.let { context.resources.getQuantityString(R.plurals.duration_minutes, it, it) },
+            ).joinToString(", ")
         }
         val icon = liveIcon ?: OngoingIcon.bitmap(context).also { liveIcon = it }
         val notification = NotificationCompat.Builder(context, CHANNEL_LIVE)
             .setSmallIcon(IconCompat.createWithBitmap(icon))
-            .setColor(COLOR)
+            .setColor(LIVE_COLOR)
             // A colorized notification is never promoted.
             .setColorized(false)
-            .setContentTitle(sessionTitle(context, session))
+            .setContentTitle(liveUpdateTitle(sessionTitle(context, session), update))
             .setContentText(SpannableString(text).apply { setSpan(TtsSpan.TextBuilder(spoken).build(), 0, status.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) })
             .setStyle(style)
             .setShortCriticalText(liveUpdateChip(update))
