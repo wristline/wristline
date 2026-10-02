@@ -51,17 +51,19 @@ internal fun ongoingCounts(sessions: List<Session>, requests: List<PendingReques
     waiting = (sessions.filter { it.status == SessionStatus.NEEDS_INPUT }.map { it.id } + requests.map { it.sessionId }).toSet().size,
 )
 
-/** The monitoring status when nothing runs or waits: a glyph alone, no number. */
+/**
+ * The monitoring status when nothing waits: a glyph alone. The Now Bar chip keeps its full width
+ * with no text at all too (empty or left out), showing only a blank after the icon.
+ */
 internal const val ONGOING_IDLE = "◦"
 
 /**
- * Text of the monitoring ongoing activity, icons and numbers in every locale: `▶ 2 · ✋ 0`, both
- * counts whenever either is non-zero (the Now Bar chip has a fixed width once it has any text and
- * left-aligns it, so a left-out term would only leave empty space), [ONGOING_IDLE] when both are
- * zero (the chip then shrinks to its icon).
+ * Text of the monitoring ongoing activity, an icon and a number in every locale: `✋ 1`, the
+ * sessions waiting for the user; [ONGOING_IDLE] when none does. Running sessions are left out (the
+ * description still reads them out).
  */
 internal fun ongoingStatusText(counts: OngoingCounts): String =
-    if (counts.running == 0 && counts.waiting == 0) ONGOING_IDLE else "▶ ${counts.running} · ✋ ${counts.waiting}"
+    if (counts.waiting > 0) "✋ ${counts.waiting}" else ONGOING_IDLE
 
 /** The same read out, e.g. "실행 2, 대기 1" ([running] and [waiting] spell out a count); both, at zero, when both are. */
 internal fun ongoingStatusDescription(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): String =
