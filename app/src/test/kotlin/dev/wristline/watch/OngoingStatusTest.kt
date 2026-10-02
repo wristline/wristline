@@ -6,6 +6,7 @@ import dev.wristline.watch.data.RequestKind
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class OngoingStatusTest {
@@ -53,5 +54,12 @@ class OngoingStatusTest {
         assertEquals(ONGOING_IDLE, text(emptyList(), emptyList()))
         assertEquals(ONGOING_IDLE, text(listOf(session("d", SessionStatus.IDLE), session("e", SessionStatus.ENDED)), emptyList()))
         assertEquals("실행 0, 대기 0", description(emptyList(), emptyList()))
+    }
+
+    @Test
+    fun badgeShowsTheWaitingCountUpToNine() {
+        assertNull(ongoingBadgeText(0))
+        for (n in 1..9) assertEquals("$n", ongoingBadgeText(n))
+        assertEquals("9+", ongoingBadgeText(10))
     }
 }

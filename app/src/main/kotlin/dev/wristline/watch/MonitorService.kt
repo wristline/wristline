@@ -10,6 +10,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -65,6 +69,13 @@ internal const val ONGOING_IDLE = "◦"
 internal fun ongoingStatusText(counts: OngoingCounts): String =
     if (counts.waiting > 0) "✋ ${counts.waiting}" else ONGOING_IDLE
 
+/** The number on the Now Bar icon's badge: [waiting] up to 9, then "9+"; null (no badge) at zero. */
+internal fun ongoingBadgeText(waiting: Int): String? = when {
+    waiting <= 0 -> null
+    waiting <= 9 -> waiting.toString()
+    else -> "9+"
+}
+
 /** The same read out, e.g. "실행 2, 대기 1" ([running] and [waiting] spell out a count); both, at zero, when both are. */
 internal fun ongoingStatusDescription(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): String =
     ongoingParts(counts, running, waiting).ifEmpty { listOf(running(0), waiting(0)) }.joinToString(", ")
@@ -95,6 +106,10 @@ private fun ongoingParts(counts: OngoingCounts, running: (Int) -> String, waitin
 class MonitorService : Service() {
     private val scope = MainScope()
     private var running = false
+
+    /** The Now Bar icon and the waiting count drawn on it, re-rendered only when the count changes. */
+    private var nowBarIcon: Icon? = null
+    private var nowBarIconCount = -1
 
     /** False while the off-body sensor says the watch is not worn; the hold follows it. */
     private val worn = MutableStateFlow(true)
@@ -129,6 +144,7 @@ class MonitorService : Service() {
         // Through OpenActivity, not MainActivity: see there why the touch target must not be always-on.
         val open = PendingIntent.getActivity(this, 0, Intent(this, OpenActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         val first = statusText(Bridge.conn.value, Bridge.sessions.value, Bridge.requests.value)
+        val firstWaiting = badgeCount(Bridge.conn.value, Bridge.sessions.value, Bridge.requests.value, worn = true)
         var shown = first.first
         val builder = NotificationCompat.Builder(this, Notifier.CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_notification)
@@ -141,7 +157,7 @@ class MonitorService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
         val ongoing = if (hasSamsungNowBar()) {
-            builder.addExtras(nowBarExtras(shown))
+            builder.addExtras(nowBarExtras(shown, firstWaiting))
             null
         } else {
             OngoingActivity.Builder(applicationContext, NOTIFICATION_ID, builder)
@@ -172,11 +188,12 @@ class MonitorService : Service() {
 
         scope.launch {
             combine(Bridge.conn, Bridge.sessions, Bridge.requests, worn) { conn, sessions, requests, worn ->
-                if (worn) statusText(conn, sessions, requests) else getString(R.string.ongoing_off_body).let { it to it }
+                val status = if (worn) statusText(conn, sessions, requests) else getString(R.string.ongoing_off_body).let { it to it }
+                status to badgeCount(conn, sessions, requests, worn)
             }
                 .distinctUntilChanged()
                 .conflate()
-                .collect { next ->
+                .collect { (next, waiting) ->
                     val text = next.first
                     if (text == shown) return@collect
                     shown = text
@@ -186,7 +203,7 @@ class MonitorService : Service() {
                         if (ongoing != null) {
                             ongoing.update(applicationContext, status(text))
                         } else {
-                            builder.addExtras(nowBarExtras(text))
+                            builder.addExtras(nowBarExtras(text, waiting))
                             NotificationManagerCompat.from(this@MonitorService).notify(NOTIFICATION_ID, builder.build())
                         }
                     }
@@ -226,6 +243,10 @@ class MonitorService : Service() {
             else -> getString(R.string.conn_connecting).let { it to it }
         }
 
+    /** The waiting count for the Now Bar icon's badge: none while not online or not worn, as the text shows none. */
+    private fun badgeCount(conn: Conn, sessions: List<Session>, requests: List<PendingRequest>, worn: Boolean): Int =
+        if (worn && conn is Conn.Online) ongoingCounts(sessions, requests).waiting else 0
+
     /** The status text, read out by TalkBack as its description rather than glyph by glyph. */
     private fun spoken(status: Pair<String, String>): CharSequence {
         val (text, description) = status
@@ -255,10 +276,11 @@ class MonitorService : Service() {
      * Samsung: Wear OS services pass `extras["customDisplayBundle"]` through and the system UI reads
      * the keys below, the way Samsung's media card is made. Such a card gets no backdrop behind its
      * icon unless it names one ("cardIconBgLeft"), so the full-color [R.drawable.ic_ongoing] shows
-     * bare and fills the icon slot.
+     * bare and fills the icon slot. The icon carries the [waiting] count as a badge
+     * ([nowBarIcon]), so the card still shows it with the Now Bar set to icons only.
      */
-    private fun nowBarExtras(text: String): Bundle {
-        val icon = Icon.createWithResource(this, R.drawable.ic_ongoing)
+    private fun nowBarExtras(text: String, waiting: Int): Bundle {
+        val icon = nowBarIcon(waiting)
         val card = Bundle().apply {
             putInt("type", 1)
             putParcelable("cardIconLeft", icon)
@@ -275,11 +297,49 @@ class MonitorService : Service() {
         return Bundle().apply { putBundle("customDisplayBundle", display) }
     }
 
+    /**
+     * [R.drawable.ic_ongoing] as a bitmap with, while [waiting] > 0, a badge at its top right: an
+     * attention-yellow disc (Status.Attention) about 40% of the icon, outlined dark so it reads on
+     * the white squircle, holding the count ([ongoingBadgeText]) in black bold.
+     */
+    private fun nowBarIcon(waiting: Int): Icon {
+        nowBarIcon?.takeIf { nowBarIconCount == waiting }?.let { return it }
+        val size = NOW_BAR_ICON_PX
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        ContextCompat.getDrawable(this, R.drawable.ic_ongoing)!!.apply { setBounds(0, 0, size, size) }.draw(canvas)
+        ongoingBadgeText(waiting)?.let { label ->
+            val radius = size * 0.2f
+            val cx = size - radius
+            val cy = radius
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+            paint.color = BADGE_OUTLINE
+            canvas.drawCircle(cx, cy, radius, paint)
+            paint.color = BADGE_FILL
+            canvas.drawCircle(cx, cy, radius - BADGE_OUTLINE_PX, paint)
+            paint.color = BADGE_TEXT
+            paint.typeface = Typeface.DEFAULT_BOLD
+            paint.textAlign = Paint.Align.CENTER
+            paint.textSize = radius * if (label.length == 1) 1.5f else 1.15f
+            val metrics = paint.fontMetrics
+            canvas.drawText(label, cx, cy - (metrics.ascent + metrics.descent) / 2, paint)
+        }
+        return Icon.createWithBitmap(bitmap).also {
+            nowBarIcon = it
+            nowBarIconCount = waiting
+        }
+    }
+
     companion object {
         private const val TAG = "Wristline"
         private const val NOTIFICATION_ID = 1
         private const val STATUS_INTERVAL_MS = 2_000L
         private const val SAMSUNG_SYSUI = "com.samsung.android.wearable.sysui"
+        private const val NOW_BAR_ICON_PX = 96
+        private const val BADGE_OUTLINE_PX = 2f
+        private const val BADGE_FILL = 0xFFFFD60A.toInt() // Status.Attention
+        private const val BADGE_OUTLINE = 0xFF000000.toInt()
+        private const val BADGE_TEXT = 0xFF000000.toInt()
 
         /**
          * Runs the service while monitoring is on, the watch is paired and notifications are
