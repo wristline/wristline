@@ -28,6 +28,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -481,6 +483,12 @@ object Bridge {
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
         prefs = Prefs(appContext)
+        // Every account shown gets its mark, remembered (see AccountBook.seen).
+        scope.launch {
+            combine(_usage, _sessions, ::accountsOf).distinctUntilChanged().collect { visible ->
+                prefs.updateAccounts { it.seen(visible, System.currentTimeMillis()) }
+            }
+        }
         if (prefs.isPaired) {
             _conn.value = Conn.Connecting
         } else if (prefs.demo) {

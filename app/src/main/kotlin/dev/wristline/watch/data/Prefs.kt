@@ -62,6 +62,31 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_ASK_PROVIDER, null) ?: ProviderId.CLAUDE_CODE
         set(value) = sp.edit().putString(KEY_ASK_PROVIDER, value).apply()
 
+    private val accountsFlow = MutableStateFlow(readAccounts())
+
+    /** The accounts seen and how each looks (see [AccountBook]); one JSON value, written when it changes. */
+    val accounts: StateFlow<AccountBook> = accountsFlow.asStateFlow()
+
+    /** From any thread: the Bridge's updates and the Accounts screen's edits are written in the order they apply. */
+    @Synchronized
+    fun updateAccounts(change: (AccountBook) -> AccountBook) {
+        val before = accountsFlow.value
+        val after = change(before)
+        if (after == before) return
+        accountsFlow.value = after
+        sp.edit().putString(KEY_ACCOUNTS, WireJson.encodeToString(AccountBook.serializer(), after)).apply()
+    }
+
+    private fun readAccounts(): AccountBook {
+        val json = sp.getString(KEY_ACCOUNTS, null) ?: return AccountBook()
+        return try {
+            WireJson.decodeFromString(AccountBook.serializer(), json)
+        } catch (_: IllegalArgumentException) {
+            // SerializationException is one: a value this version cannot read starts over.
+            AccountBook()
+        }
+    }
+
     /** Demo mode is on; like a pairing it survives the process (see Bridge.init). */
     var demo: Boolean
         get() = sp.getBoolean(KEY_DEMO, false)
@@ -81,6 +106,7 @@ class Prefs(context: Context) {
         sp.edit().clear().apply()
         monitoringFlow.value = false
         watchColorsFlow.value = false
+        accountsFlow.value = AccountBook()
     }
 
     private companion object {
@@ -93,5 +119,6 @@ class Prefs(context: Context) {
         const val KEY_SHOW_TOOL_CALLS = "showToolCalls"
         const val KEY_ASK_PROVIDER = "askProvider"
         const val KEY_WATCH_COLORS = "watchColors"
+        const val KEY_ACCOUNTS = "accounts"
     }
 }
