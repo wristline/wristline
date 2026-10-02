@@ -15,6 +15,9 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Bundle
 import android.os.IBinder
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.TtsSpan
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -37,23 +40,28 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+/** Running sessions, and sessions waiting for the user: needs_input or with an open request, each once. */
+internal data class OngoingCounts(val running: Int, val waiting: Int)
+
+internal fun ongoingCounts(sessions: List<Session>, requests: List<PendingRequest>): OngoingCounts = OngoingCounts(
+    running = sessions.count { it.status == SessionStatus.RUNNING },
+    waiting = (sessions.filter { it.status == SessionStatus.NEEDS_INPUT }.map { it.id } + requests.map { it.sessionId }).toSet().size,
+)
+
 /**
- * Text of the monitoring ongoing activity, e.g. "2 running · 1 waiting": running sessions and
- * waiting requests, leaving out a count of zero; [idle] when both are zero.
+ * Text of the monitoring ongoing activity, icons and numbers in every locale: `▶ 2 · ✋ 1`, a
+ * count of zero left out, `▶ 0` when both are.
  */
-internal fun ongoingStatusText(
-    sessions: List<Session>,
-    requests: List<PendingRequest>,
-    running: (Int) -> String,
-    waiting: (Int) -> String,
-    idle: String,
-): String {
-    val runningCount = sessions.count { it.status == SessionStatus.RUNNING }
-    val parts = buildList {
-        if (runningCount > 0) add(running(runningCount))
-        if (requests.isNotEmpty()) add(waiting(requests.size))
-    }
-    return if (parts.isEmpty()) idle else parts.joinToString(" · ")
+internal fun ongoingStatusText(counts: OngoingCounts): String =
+    ongoingParts(counts, { "▶ $it" }, { "✋ $it" }).joinToString(" · ")
+
+/** The same read out, e.g. "실행 2, 대기 1": [running] and [waiting] spell out a count. */
+internal fun ongoingStatusDescription(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): String =
+    ongoingParts(counts, running, waiting).joinToString(", ")
+
+private fun ongoingParts(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): List<String> = buildList {
+    if (counts.running > 0 || counts.waiting == 0) add(running(counts.running))
+    if (counts.waiting > 0) add(waiting(counts.waiting))
 }
 
 /**
@@ -102,14 +110,15 @@ class MonitorService : Service() {
         }
         // Through OpenActivity, not MainActivity: see there why the touch target must not be always-on.
         val open = PendingIntent.getActivity(this, 0, Intent(this, OpenActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        var shown = statusText(Bridge.conn.value, Bridge.sessions.value, Bridge.requests.value)
+        val first = statusText(Bridge.conn.value, Bridge.sessions.value, Bridge.requests.value)
+        var shown = first.first
         val builder = NotificationCompat.Builder(this, Notifier.CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_notification)
             // OngoingActivity (wear-ongoing 1.1.0) has no color of its own; the Now Bar takes this one.
             .setColor(Notifier.COLOR)
             .setColorized(false)
             .setContentTitle(getString(R.string.monitor_title))
-            .setContentText(shown)
+            .setContentText(spoken(first))
             .setContentIntent(open)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
@@ -144,14 +153,15 @@ class MonitorService : Service() {
 
         scope.launch {
             combine(Bridge.conn, Bridge.sessions, Bridge.requests, worn) { conn, sessions, requests, worn ->
-                if (worn) statusText(conn, sessions, requests) else getString(R.string.ongoing_off_body)
+                if (worn) statusText(conn, sessions, requests) else getString(R.string.ongoing_off_body).let { it to it }
             }
                 .distinctUntilChanged()
                 .conflate()
-                .collect { text ->
+                .collect { next ->
+                    val text = next.first
                     if (text == shown) return@collect
                     shown = text
-                    builder.setContentText(text)
+                    builder.setContentText(spoken(next))
                     // Without the permission the notification is hidden anyway.
                     if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                         if (ongoing != null) {
@@ -182,18 +192,28 @@ class MonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun statusText(conn: Conn, sessions: List<Session>, requests: List<PendingRequest>): String =
+    /** The status text and how TalkBack reads it. */
+    private fun statusText(conn: Conn, sessions: List<Session>, requests: List<PendingRequest>): Pair<String, String> =
         when (conn) {
-            Conn.Online -> ongoingStatusText(
-                sessions,
-                requests,
-                running = { getString(R.string.ongoing_running, it) },
-                waiting = { getString(R.string.ongoing_waiting, it) },
-                idle = getString(R.string.ongoing_idle),
-            )
-            is Conn.Incompatible -> getString(R.string.conn_incompatible)
-            else -> getString(R.string.conn_connecting)
+            Conn.Online -> ongoingCounts(sessions, requests).let { counts ->
+                ongoingStatusText(counts) to ongoingStatusDescription(
+                    counts,
+                    running = { getString(R.string.ongoing_running, it) },
+                    waiting = { getString(R.string.ongoing_waiting, it) },
+                )
+            }
+            is Conn.Incompatible -> getString(R.string.conn_incompatible).let { it to it }
+            else -> getString(R.string.conn_connecting).let { it to it }
         }
+
+    /** The status text, read out by TalkBack as its description rather than glyph by glyph. */
+    private fun spoken(status: Pair<String, String>): CharSequence {
+        val (text, description) = status
+        if (text == description) return text
+        return SpannableString(text).apply {
+            setSpan(TtsSpan.TextBuilder(description).build(), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+    }
 
     private fun status(text: String): Status = Status.Builder().addTemplate(text).build()
 

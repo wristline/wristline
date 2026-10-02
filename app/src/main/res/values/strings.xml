@@ -237,6 +237,5 @@
     <string name="monitor_title">Monitoring sessions</string>
     <string name="ongoing_running">%1$d running</string>
     <string name="ongoing_waiting">%1$d waiting</string>
-    <string name="ongoing_idle">Nothing running</string>
     <string name="ongoing_off_body">Not worn</string>
 </resources>
