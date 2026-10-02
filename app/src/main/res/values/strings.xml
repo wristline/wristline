@@ -199,6 +199,25 @@
     <string name="settings_exit_demo">Exit demo</string>
     <string name="settings_version">Version %1$s</string>
     <string name="settings_privacy">Privacy policy</string>
+    <string name="settings_accounts">Accounts</string>
+
+    <!-- Accounts: how each account is marked and named on the watch -->
+    <string name="accounts_primary">Default</string>
+    <string name="accounts_move_up">Move %1$s up</string>
+    <string name="accounts_move_down">Move %1$s down</string>
+    <string name="account_preview">Preview</string>
+    <string name="account_mark">Mark</string>
+    <string name="account_mark_auto">Auto (%1$s)</string>
+    <string name="account_mark_used">%1$s, used by %2$s</string>
+    <string name="account_color">Color</string>
+    <string name="account_color_white">White</string>
+    <string name="account_color_sky">Sky blue</string>
+    <string name="account_color_green">Green</string>
+    <string name="account_color_orange">Orange</string>
+    <string name="account_color_purple">Purple</string>
+    <string name="account_color_blue">Blue</string>
+    <string name="account_nickname">Nickname</string>
+    <string name="account_reset">Reset to auto</string>
 
     <!-- Notifications and background monitoring -->
     <string name="channel_requests">Requests</string>

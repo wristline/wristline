@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun SettingsScreen(
     onAddress: () -> Unit,
+    onAccounts: () -> Unit,
     onRepair: () -> Unit,
     onPaired: () -> Unit,
     onSignedOut: () -> Unit,
@@ -60,6 +61,10 @@ internal fun SettingsScreen(
     val context = LocalContext.current
     val prefs = Bridge.prefs
     val conn by Bridge.conn.collectAsStateWithLifecycle()
+    val usage by Bridge.usage.collectAsStateWithLifecycle()
+    val sessions by Bridge.sessions.collectAsStateWithLifecycle()
+    // Only where accounts need telling apart: a provider with more than one, as the cards mark them.
+    val hasAccounts = remember(usage, sessions) { markedProviders(usage, sessions).isNotEmpty() }
     var deviceName by remember { mutableStateOf(prefs.deviceName) }
     var showToolCalls by remember { mutableStateOf(prefs.showToolCalls) }
     val watchColors by prefs.watchColorsState.collectAsStateWithLifecycle()
@@ -99,6 +104,7 @@ internal fun SettingsScreen(
         address = prefs.baseUrl,
         paired = prefs.isPaired,
         deviceName = deviceName,
+        accounts = hasAccounts,
         showToolCalls = showToolCalls,
         watchColors = watchColors.takeIf { hasWatchColors },
         askProvider = askProvider,
@@ -109,6 +115,7 @@ internal fun SettingsScreen(
         tokenNeedsAddress = tokenNeedsAddress,
         onAddress = onAddress,
         onDeviceName = editName,
+        onAccounts = onAccounts,
         onShowToolCalls = {
             showToolCalls = it
             prefs.showToolCalls = it
@@ -162,6 +169,8 @@ internal fun SettingsContent(
     address: String,
     paired: Boolean,
     deviceName: String,
+    /** The Accounts row is shown: some provider has more than one account. */
+    accounts: Boolean,
     showToolCalls: Boolean,
     /** Null where the watch has no dynamic colors: the row is left out. */
     watchColors: Boolean?,
@@ -173,6 +182,7 @@ internal fun SettingsContent(
     tokenNeedsAddress: Boolean,
     onAddress: () -> Unit,
     onDeviceName: () -> Unit,
+    onAccounts: () -> Unit,
     onShowToolCalls: (Boolean) -> Unit,
     onWatchColors: (Boolean) -> Unit,
     onAskProvider: () -> Unit,
@@ -236,6 +246,16 @@ internal fun SettingsContent(
                     label = { Text(stringResource(R.string.settings_device_name)) },
                     secondaryLabel = { Text(deviceName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 )
+            }
+            if (accounts) {
+                item(key = "accounts") {
+                    FilledTonalButton(
+                        onClick = onAccounts,
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                        transformation = SurfaceTransformation(spec),
+                        label = { Text(stringResource(R.string.settings_accounts)) },
+                    )
+                }
             }
             item(key = "toolCalls") {
                 SwitchButton(

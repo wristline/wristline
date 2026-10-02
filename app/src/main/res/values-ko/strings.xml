@@ -181,6 +181,25 @@
     <string name="settings_exit_demo">데모 종료</string>
     <string name="settings_version">버전 %1$s</string>
     <string name="settings_privacy">개인정보처리방침</string>
+    <string name="settings_accounts">계정</string>
+
+    <!-- Accounts: how each account is marked and named on the watch -->
+    <string name="accounts_primary">기본</string>
+    <string name="accounts_move_up">%1$s 위로 이동</string>
+    <string name="accounts_move_down">%1$s 아래로 이동</string>
+    <string name="account_preview">미리보기</string>
+    <string name="account_mark">표시</string>
+    <string name="account_mark_auto">자동 (%1$s)</string>
+    <string name="account_mark_used">%1$s, %2$s 사용 중</string>
+    <string name="account_color">색</string>
+    <string name="account_color_white">흰색</string>
+    <string name="account_color_sky">하늘색</string>
+    <string name="account_color_green">초록</string>
+    <string name="account_color_orange">주황</string>
+    <string name="account_color_purple">자주</string>
+    <string name="account_color_blue">파랑</string>
+    <string name="account_nickname">별명</string>
+    <string name="account_reset">자동으로 되돌리기</string>
 
     <!-- Notifications and background monitoring -->
     <string name="channel_requests">응답 요청</string>

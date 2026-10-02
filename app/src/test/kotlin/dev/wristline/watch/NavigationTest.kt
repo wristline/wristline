@@ -55,7 +55,7 @@ class NavigationTest {
         val json = Json { serializersModule = routeModule }
         val keys: List<NavKey> = listOf(
             Route.Welcome, Route.Notify, Route.Address, Route.Code("https://host.ts.net:8443"), Route.Sessions,
-            session, request, Route.Usage, Route.Ask("ask-1"), Route.Asks, Route.Settings,
+            session, request, Route.Usage, Route.Ask("ask-1"), Route.Asks, Route.Settings, Route.Accounts, Route.Account("codex:chatgpt-pro"),
         )
         val serializer = ListSerializer(PolymorphicSerializer(NavKey::class))
         val encoded = json.encodeToString(serializer, keys)

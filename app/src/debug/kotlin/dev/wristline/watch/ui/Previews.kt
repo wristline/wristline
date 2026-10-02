@@ -442,14 +442,32 @@ private fun UsageAccountsPreview() = Frame { UsageContent(accountUsage) { now } 
 @Composable
 private fun UsageAccountsKoPreview() = Frame { UsageContent(accountUsage) { now } }
 
+// The two Codex accounts, Work (the primary home's) first, each with its move buttons under it.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun AccountsPreview() = Frame { AccountsContent(listUsage, listSessions, customAccounts, onAccount = {}, onMove = { _, _, _ -> }) }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun AccountsKoPreview() = Frame { AccountsContent(listUsage, listSessions, customAccounts, onAccount = {}, onMove = { _, _, _ -> }) }
+
+// Pro's detail: its blue star at the cards' size and enlarged; W dimmed among the letters (Work's).
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun AccountPreview() = Frame { AccountContent(customAccounts, "codex:chatgpt-pro", onMark = {}, onColor = {}, onNickname = {}, onReset = {}) }
+
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun AccountKoPreview() = Frame { AccountContent(customAccounts, "codex:chatgpt-pro", onMark = {}, onColor = {}, onNickname = {}, onReset = {}) }
+
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SettingsPreview() = Frame {
     SettingsContent(
-        demo = false, address = "https://example.tail0000.ts.net", paired = true, deviceName = "Galaxy Watch Ultra",
+        demo = false, address = "https://example.tail0000.ts.net", paired = true, deviceName = "Galaxy Watch Ultra", accounts = true,
         showToolCalls = false, watchColors = false, askProvider = ProviderId.CLAUDE_CODE, monitoring = false, canMonitor = true, notificationsOff = true,
         busy = false, tokenNeedsAddress = false,
-        onAddress = {}, onDeviceName = {}, onShowToolCalls = {}, onWatchColors = {}, onAskProvider = {}, onMonitoring = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
+        onAddress = {}, onDeviceName = {}, onAccounts = {}, onShowToolCalls = {}, onWatchColors = {}, onAskProvider = {}, onMonitoring = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
         onDisconnect = {}, onExitDemo = {},
     )
 }

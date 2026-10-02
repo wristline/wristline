@@ -18,6 +18,8 @@ import androidx.savedstate.serialization.SavedStateConfiguration
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.navigation3.rememberSwipeDismissableSceneStrategy
 import dev.wristline.watch.data.Bridge
+import dev.wristline.watch.ui.AccountScreen
+import dev.wristline.watch.ui.AccountsScreen
 import dev.wristline.watch.ui.AddressScreen
 import dev.wristline.watch.ui.AskHistoryScreen
 import dev.wristline.watch.ui.AskScreen
@@ -73,6 +75,13 @@ sealed interface Route : NavKey {
 
     @Serializable
     data object Settings : Route
+
+    @Serializable
+    data object Accounts : Route
+
+    /** One account, by its key in the AccountBook (`provider:id`). */
+    @Serializable
+    data class Account(val key: String) : Route
 }
 
 /** Saves the back stack's [Route]s by their serial names, without reflection (R8 renames classes). */
@@ -186,11 +195,14 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
                     entry<Route.Settings> {
                         SettingsScreen(
                             onAddress = { backStack.add(Route.Address) },
+                            onAccounts = { backStack.add(Route.Accounts) },
                             onRepair = { backStack.add(Route.Code(Bridge.prefs.baseUrl)) },
                             onPaired = { backStack.showSessions() },
                             onSignedOut = { backStack.replaceWith(listOf(Route.Welcome)) },
                         )
                     }
+                    entry<Route.Accounts> { AccountsScreen(onAccount = { backStack.add(Route.Account(it)) }) }
+                    entry<Route.Account> { key -> AccountScreen(key.key) }
                 },
             )
 
