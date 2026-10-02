@@ -383,9 +383,9 @@ fun rememberFillIn(fraction: Float, delayMs: Long?, onStarted: () -> Unit = {}):
 }
 
 /**
- * The app is shown dimmed: in ambient (always-on), as the ambient API says, or with the screen off,
- * as MainActivity's screen-off receiver last heard. Nothing on screen moves on its own then (no
- * spinner turns, no countdown ticks, no gauge fills in), and read-aloud stops.
+ * The app is shown dimmed: in ambient (always-on), as MainActivity's ambient manager says. Nothing
+ * on screen moves on its own then (no spinner turns, no countdown ticks, no gauge fills in), and
+ * read-aloud stops.
  */
 internal val LocalAmbient = compositionLocalOf { false }
 
