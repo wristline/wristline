@@ -203,6 +203,17 @@ internal class PostedRequests {
  */
 enum class Holder { ACTIVITY, SERVICE }
 
+/** At most one screen-on session fetch per this long; see [screenOnRefreshDue]. */
+internal const val SCREEN_ON_REFRESH_MS = 20_000L
+
+/**
+ * Whether the screen turning on should fetch the session list: only in the [background] mode (in
+ * the foreground every change is pushed) and when the list last came whole ([fetchedAt]) at least
+ * [SCREEN_ON_REFRESH_MS] before [now].
+ */
+internal fun screenOnRefreshDue(background: Boolean, fetchedAt: Long?, now: Long): Boolean =
+    background && (fetchedAt == null || now - fetchedAt >= SCREEN_ON_REFRESH_MS)
+
 private val statusOrder = listOf(SessionStatus.NEEDS_INPUT, SessionStatus.RUNNING, SessionStatus.IDLE)
 
 /** Same order as the bridge: needs_input, running, then most recent activity. */
@@ -591,11 +602,35 @@ object Bridge {
         scope.launch {
             if (demo != null || _conn.value !is Conn.Online || refreshJob?.isActive == true) return@launch
             refreshJob = scope.launch {
-                get(SessionList.serializer(), "sessions")?.let { _sessions.value = sortSessions(it.sessions) }
+                get(SessionList.serializer(), "sessions")?.let { setFetchedSessions(it.sessions) }
                 get(UsageList.serializer(), "usage")?.let { _usage.value = it.usage }
                 loadAsks()
             }
         }
+    }
+
+    /**
+     * The screen turned on: fetches the session list once, for the Now Bar counts. A background
+     * client is not told of sessions starting or going idle, and pushing them while the screen is
+     * off (the Now Bar unseen) would only wake the radio; see [screenOnRefreshDue].
+     */
+    fun refreshOnScreenOn() {
+        scope.launch {
+            if (demo != null || _conn.value !is Conn.Online || refreshJob?.isActive == true) return@launch
+            if (!screenOnRefreshDue(background, sessionsFetchedAt, System.currentTimeMillis())) return@launch
+            Log.i(TAG, "Screen on: refreshing the session list")
+            refreshJob = scope.launch {
+                get(SessionList.serializer(), "sessions")?.let { setFetchedSessions(it.sessions) }
+            }
+        }
+    }
+
+    /** When the session list last came whole (a snapshot or a fetch); null before the first. */
+    private var sessionsFetchedAt: Long? = null
+
+    private fun setFetchedSessions(sessions: List<Session>) {
+        _sessions.value = sortSessions(sessions)
+        sessionsFetchedAt = System.currentTimeMillis()
     }
 
     /** Skips the remaining backoff (Retry button). Also leaves Incompatible, e.g. after a bridge update. */
@@ -757,7 +792,7 @@ object Bridge {
                     return
                 }
                 val known = _requests.value.mapTo(HashSet()) { it.id }
-                _sessions.value = sortSessions(event.sessions)
+                setFetchedSessions(event.sessions)
                 _requests.value = event.requests
                 postedRequests.keepOnly(event.requests)
                 _usage.value = event.usage

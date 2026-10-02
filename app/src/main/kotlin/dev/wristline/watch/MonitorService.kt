@@ -4,8 +4,10 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.drawable.Icon
@@ -22,6 +24,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
 import dev.wristline.watch.data.Bridge
@@ -73,6 +76,10 @@ private fun ongoingParts(counts: OngoingCounts, running: (Int) -> String, waitin
  * released, so the socket closes and the bridge's presence for this watch goes false; the status
  * reads "Not worn" meanwhile. Putting the watch back on reconnects.
  *
+ * The bridge does not push session changes other than needs-input ones to a background client, so
+ * the screen turning on (when the Now Bar can be seen) fetches the session list once
+ * ([Bridge.refreshOnScreenOn]) and the counts follow it.
+ *
  * Runs only while the user has it on in Settings ([dev.wristline.watch.data.Prefs.monitoring]).
  * There is no boot receiver: after a reboot, or when the system stops the service, it starts
  * again the next time Wristline is opened ([sync] from MainActivity). It stops itself, and turns
@@ -94,6 +101,10 @@ class MonitorService : Service() {
         }
 
         override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
+    }
+
+    private val screenOn = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = Bridge.refreshOnScreenOn()
     }
 
     override fun onCreate() {
@@ -150,6 +161,7 @@ class MonitorService : Service() {
         sensors.getDefaultSensor(Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT)?.let {
             sensors.registerListener(offBody, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
+        ContextCompat.registerReceiver(this, screenOn, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
 
         scope.launch {
             combine(Bridge.conn, Bridge.sessions, Bridge.requests, worn) { conn, sessions, requests, worn ->
@@ -186,6 +198,7 @@ class MonitorService : Service() {
     override fun onDestroy() {
         scope.cancel()
         getSystemService(SensorManager::class.java).unregisterListener(offBody)
+        if (running) unregisterReceiver(screenOn)
         if (running && worn.value) Bridge.release(Holder.SERVICE)
         super.onDestroy()
     }
