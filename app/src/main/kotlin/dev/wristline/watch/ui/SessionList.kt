@@ -72,6 +72,8 @@ import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.PendingRequest
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
+import dev.wristline.watch.data.SessionStatus
+import dev.wristline.watch.data.TaskProgress
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
 import dev.wristline.watch.data.accountsOf
@@ -596,7 +598,8 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             StatusDot(session.status)
             TitleWithSetup(sessionTitle(session), session.model, session.effort)
         }
-        // Line 2, muted: `12m · [C] repo`, the badge marked with the account as on the limit card.
+        // Line 2, muted: `12m · [C] repo`, the badge marked with the account as on the limit card;
+        // `12m · 3/7 · [C] repo` while a running agent has a task list.
         val muted = MaterialTheme.colorScheme.onSurfaceVariant
         Row(
             Modifier.padding(top = 2.dp),
@@ -605,11 +608,30 @@ private fun TransformingLazyColumnItemScope.SessionCard(
         ) {
             AgoText(session.lastActivity, now, color = muted, style = MaterialTheme.typography.labelSmall)
             Text("·", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            cardProgress(session)?.let { progress ->
+                val spoken = pluralStringResource(R.plurals.tasks_done, progress.total, progress.done, progress.total)
+                Text(
+                    cardProgressText(progress),
+                    Modifier.clearAndSetSemantics { contentDescription = spoken },
+                    color = muted,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                )
+                Text("·", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+            }
             BadgeWithMark(session.provider, account)
             Text(basename(session.cwd), color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
+
+/** The task list a session card shows: while running with one; done kept within 0..total. */
+internal fun cardProgress(session: Session): TaskProgress? =
+    session.progress?.takeIf { session.status == SessionStatus.RUNNING && it.total > 0 }
+        ?.let { it.copy(done = it.done.coerceIn(0, it.total)) }
+
+/** `3/7`, in every locale. */
+internal fun cardProgressText(progress: TaskProgress): String = "${progress.done}/${progress.total}"
 
 /** A session card's title space never shrinks below this for the model and effort after it. */
 private val TITLE_MIN = 80.dp
