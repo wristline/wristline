@@ -5,12 +5,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.tooling.preview.devices.WearDevices
 import dev.wristline.watch.data.Account
+import dev.wristline.watch.data.AccountBook
 import dev.wristline.watch.data.Ask
 import dev.wristline.watch.data.AskStatus
 import dev.wristline.watch.data.ContextUsage
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.Item
 import dev.wristline.watch.data.ItemKind
+import dev.wristline.watch.data.Mark
+import dev.wristline.watch.data.MarkType
 import dev.wristline.watch.data.Option
 import dev.wristline.watch.data.PendingRequest
 import dev.wristline.watch.data.ProviderId
@@ -21,6 +24,9 @@ import dev.wristline.watch.data.SessionItems
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.accountsOf
+import dev.wristline.watch.data.edit
+import dev.wristline.watch.data.seen
 import java.time.Instant
 import java.util.TimeZone
 
@@ -82,8 +88,8 @@ private val me = Account("acc-me", "me@gmail.com")
 private val school = Account("acc-school", "school", estimated = true)
 private val codexSchool = Account("chatgpt-school", "school.account@university.ac.kr")
 
-// Two Codex accounts, each a home's login: the default home's (labelled Work) and a Pro plan's.
-private val codexBasic = Account("chatgpt-basic", "Work")
+// Two Codex accounts, each a home's login: the primary home's (labelled Work) and a Pro plan's.
+private val codexBasic = Account("chatgpt-basic", "Work", primary = true)
 private val codexPro = Account("chatgpt-pro", "Pro")
 
 // The list's limit card, a line per account: Claude's 5-hour window resets today at 16:40; Codex
@@ -109,6 +115,10 @@ private val listUsage = listOf(
     ),
     Usage(ProviderId.CODEX, "2026-09-29T12:59:30Z", listOf(UsageWindow("primary", 11.0, "2026-10-05T09:00:00Z", 10_080)), codexBasic),
 )
+
+// Codex Pro given a blue star and the nickname Side on the Accounts screen; Work keeps its W.
+private val customAccounts = AccountBook().seen(accountsOf(listUsage, listSessions), now)
+    .edit("codex:chatgpt-pro") { it.copy(mark = Mark(MarkType.EMOJI, "\u2B50"), color = "blue", nickname = "Side") }
 
 // The widest lines: 100% on all three, resetting on Wednesday at 23:59, 12 sessions each.
 private val fullSessions = List(36) { i ->
@@ -216,7 +226,17 @@ private fun CodeErrorKoPreview() = Frame { CodeContent(busy = false, error = "no
 @Composable
 private fun SessionListPreview() = Frame {
     SessionListContent(
-        Conn.Online, listSessions, listOf(permission, question), listUsage, { now },
+        Conn.Online, listSessions, listOf(permission, question), listUsage, now = { now },
+        onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
+    )
+}
+
+// The limit card and the Codex cards with Pro's custom mark and colour.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun SessionListCustomMarkPreview() = Frame {
+    SessionListContent(
+        Conn.Online, listSessions, emptyList(), listUsage, customAccounts, now = { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -226,7 +246,7 @@ private fun SessionListPreview() = Frame {
 @Composable
 private fun SessionListKoPreview() = Frame {
     SessionListContent(
-        Conn.Online, listSessions, emptyList(), listUsage, { now },
+        Conn.Online, listSessions, emptyList(), listUsage, now = { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -236,7 +256,7 @@ private fun SessionListKoPreview() = Frame {
 @Composable
 private fun SessionListLimitsFullPreview() = Frame {
     SessionListContent(
-        Conn.Online, fullSessions, emptyList(), fullUsage, { now },
+        Conn.Online, fullSessions, emptyList(), fullUsage, now = { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -245,7 +265,7 @@ private fun SessionListLimitsFullPreview() = Frame {
 @Composable
 private fun SessionListLimitsFullKoPreview() = Frame {
     SessionListContent(
-        Conn.Online, fullSessions, emptyList(), fullUsage, { now },
+        Conn.Online, fullSessions, emptyList(), fullUsage, now = { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -256,7 +276,7 @@ private fun SessionListLimitsFullKoPreview() = Frame {
 @Composable
 private fun SessionListLimitsLargeFontPreview() = Frame {
     SessionListContent(
-        Conn.Online, fullSessions, emptyList(), fullUsage, { now },
+        Conn.Online, fullSessions, emptyList(), fullUsage, now = { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -266,7 +286,7 @@ private fun SessionListLimitsLargeFontPreview() = Frame {
 @Composable
 private fun SessionListLimitsFullSmallPreview() = Frame {
     SessionListContent(
-        Conn.Online, fullSessions, emptyList(), fullUsage, { now },
+        Conn.Online, fullSessions, emptyList(), fullUsage, now = { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -277,7 +297,7 @@ private fun SessionListLimitsFullSmallPreview() = Frame {
 @Composable
 private fun SessionListNoUsagePreview() = Frame {
     SessionListContent(
-        Conn.Online, sessions, emptyList(), emptyList(), { now },
+        Conn.Online, sessions, emptyList(), emptyList(), now = { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -286,7 +306,7 @@ private fun SessionListNoUsagePreview() = Frame {
 @Composable
 private fun SessionListUnreachablePreview() = Frame {
     SessionListContent(
-        Conn.Unreachable(System.currentTimeMillis() + 12_000), sessions, emptyList(), usage, { now },
+        Conn.Unreachable(System.currentTimeMillis() + 12_000), sessions, emptyList(), usage, now = { now },
         onSession = {}, onRequest = {}, onUsage = {}, onAsk = {}, onAskHistory = {}, onSettings = {}, onRetry = {}, onRepair = {},
     )
 }
@@ -403,11 +423,16 @@ private fun QuestionPreview() = Frame {
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
-private fun UsagePreview() = Frame { UsageContent(detailUsage) { now } }
+private fun UsagePreview() = Frame { UsageContent(detailUsage, listSessions) { now } }
+
+// Each Codex account's badge before its name, the key to the list's marks; Pro's custom one and its nickname.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun UsageCustomMarkPreview() = Frame { UsageContent(detailUsage, listSessions, customAccounts) { now } }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
 @Composable
-private fun UsageKoPreview() = Frame { UsageContent(detailUsage) { now } }
+private fun UsageKoPreview() = Frame { UsageContent(detailUsage, listSessions) { now } }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable

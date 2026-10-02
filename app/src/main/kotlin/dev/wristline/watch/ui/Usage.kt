@@ -45,11 +45,19 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import dev.wristline.watch.R
 import dev.wristline.watch.data.Account
+import dev.wristline.watch.data.AccountBook
+import dev.wristline.watch.data.AccountLook
 import dev.wristline.watch.data.Bridge
+import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.accountKey
+import dev.wristline.watch.data.accountsOf
 import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.key
+import dev.wristline.watch.data.look
+import dev.wristline.watch.data.ordered
+import dev.wristline.watch.data.seen
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -70,22 +78,28 @@ private val USAGE_RING_GAP = 10.dp
 @Composable
 internal fun UsageScreen() {
     val usage by Bridge.usage.collectAsStateWithLifecycle()
+    val sessions by Bridge.sessions.collectAsStateWithLifecycle()
+    val accounts by Bridge.prefs.accounts.collectAsStateWithLifecycle()
     // Read by the time texts only (and by each row to see its reset pass), so the minute tick
     // recomposes just those, not the list.
     val now = rememberNowState()
-    UsageContent(usage) { now.value }
+    UsageContent(usage, sessions, accounts) { now.value }
 }
 
 /**
  * Per provider and account: a ring per limit window with the clock time it resets at and the time
  * left to it, and when the numbers were taken. Numbers, times and window names are in short English
- * with icons in every language; TalkBack reads them out in the watch's.
+ * with icons in every language; TalkBack reads them out in the watch's. An account of a provider
+ * the list marks ([markedProviders], with the [sessions]) has its badge before its name, the key
+ * to the list's marks; the name and the order as [accounts] has them.
  */
 @Composable
-internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
+internal fun UsageContent(usage: List<Usage>, sessions: List<Session> = emptyList(), accounts: AccountBook = AccountBook(), now: () -> Long) {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
-    val sorted = remember(usage) { usageOrder(usage) }
+    val book = rememberAccountBook(accounts, usage, sessions)
+    val marked = remember(usage, sessions) { markedProviders(usage, sessions) }
+    val sorted = remember(usage, book) { usageOrder(usage, book) }
     // Only the last item's bottom value takes effect; it keeps the final card off the round edge.
     val bottom = CardDefaults.minimumVerticalListContentPadding
     // The rings on screen fill in from zero one after another, once per visit: rings the list
@@ -131,7 +145,11 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
                             Text(providerLabel(provider.provider), style = MaterialTheme.typography.titleSmall)
                             // A long account label ends in an ellipsis, the updated time after it.
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                provider.account?.let { AccountText(it, Modifier.weight(1f, fill = false)) }
+                                provider.account?.let { account ->
+                                    val look = book.look(provider.provider, account)
+                                    if (provider.provider in marked) BadgeWithMark(provider.provider, look, decorative = true)
+                                    AccountText(account, look, Modifier.weight(1f, fill = false))
+                                }
                                 UpdatedText(provider.updatedAt, now)
                             }
                         }
@@ -154,12 +172,16 @@ internal fun UsageContent(usage: List<Usage>, now: () -> Long) {
     }
 }
 
-/** The account's label as given, `(est.)` after it when only estimated; read out with the word in the watch's language. */
+/**
+ * The account's name ([look]: the nickname, else the label as given), `(est.)` after it when only
+ * estimated; read out with the word in the watch's language.
+ */
 @Composable
-private fun AccountText(account: Account, modifier: Modifier) {
-    val spoken = if (account.estimated) stringResource(R.string.account_estimated, account.label) else account.label
+private fun AccountText(account: Account, look: AccountLook, modifier: Modifier) {
+    val name = look.name
+    val spoken = if (account.estimated) stringResource(R.string.account_estimated, name) else name
     Text(
-        if (account.estimated) "${account.label} (est.)" else account.label,
+        if (account.estimated) "$name (est.)" else name,
         modifier.semantics { contentDescription = spoken },
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.labelSmall,
@@ -268,25 +290,24 @@ private fun ResetTimes(resetsAt: Long, now: () -> Long) {
 
 /**
  * Usage entries in the order the app shows them (the limit card's lines too): by provider, and
- * within one first the entry without an account or of the account labelled as the default (`기본`,
- * `default`, `work`: the label given to the bridge's primary home), then the others by label
- * in any case, then by account id: the same entries are always in the same order. The bridge's own
- * order follows which of its homes reported first, and a `usage` event for a new entry adds it at
- * the end.
+ * within one first the entry without an account, then the accounts in [book]'s order (the user's,
+ * else the primary home's first, else the earlier seen; see [AccountBook.ordered]), then any it
+ * does not know by label in any case and by id: the same entries are always in the same order. The
+ * bridge's own order follows which of its homes reported first, and a `usage` event for a new entry
+ * adds it at the end.
  */
-internal fun usageOrder(usage: List<Usage>): List<Usage> =
-    usage.sortedWith(
+internal fun usageOrder(usage: List<Usage>, book: AccountBook = AccountBook().seen(accountsOf(usage, emptyList()), 0)): List<Usage> {
+    val ranks = usage.map { it.provider }.distinct().associateWith { provider -> book.ordered(provider).withIndex().associate { (i, key) -> key to i } }
+    return usage.sortedWith(
         compareBy(
             { it.provider },
-            { if (isDefaultAccount(it.account)) 0 else 1 },
+            { it.account != null },
+            { entry -> entry.account?.let { ranks[entry.provider]?.get(accountKey(entry.provider, it)) } ?: Int.MAX_VALUE },
             { it.account?.label?.lowercase(Locale.ROOT) },
             { it.account?.id },
         ),
     )
-
-private val DEFAULT_LABELS = setOf("기본", "default", "work")
-
-private fun isDefaultAccount(account: Account?): Boolean = account == null || account.label.trim().lowercase(Locale.ROOT) in DEFAULT_LABELS
+}
 
 /**
  * [minutes] left in full units, at most two, in short English in every language: days and hours

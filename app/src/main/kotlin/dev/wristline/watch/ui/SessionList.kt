@@ -65,6 +65,8 @@ import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
 import androidx.wear.compose.material3.touchTargetAwareSize
 import dev.wristline.watch.R
+import dev.wristline.watch.data.AccountBook
+import dev.wristline.watch.data.AccountLook
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.PendingRequest
@@ -72,9 +74,10 @@ import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.accountsOf
 import dev.wristline.watch.data.isoToMillis
-import java.text.BreakIterator
-import java.text.Normalizer
+import dev.wristline.watch.data.look
+import dev.wristline.watch.data.seen
 import java.time.ZoneId
 import kotlin.math.roundToInt
 
@@ -120,6 +123,7 @@ internal fun SessionListScreen(
     val sessions by Bridge.sessions.collectAsStateWithLifecycle()
     val requests by Bridge.requests.collectAsStateWithLifecycle()
     val usage by Bridge.usage.collectAsStateWithLifecycle()
+    val accounts by Bridge.prefs.accounts.collectAsStateWithLifecycle()
     val ask = rememberQuickAsk(onStarted = onAsk)
     // Read by the cards' time only, so the minute tick recomposes just the visible cards' time.
     val now = rememberNowState()
@@ -128,6 +132,7 @@ internal fun SessionListScreen(
         sessions = sessions,
         requests = requests,
         usage = usage,
+        accounts = accounts,
         now = { now.value },
         onSession = onSession,
         onRequest = onRequest,
@@ -146,6 +151,8 @@ internal fun SessionListContent(
     sessions: List<Session>,
     requests: List<PendingRequest>,
     usage: List<Usage>,
+    /** The stored marks and names; previews leave them out and get the automatic ones. */
+    accounts: AccountBook = AccountBook(),
     now: () -> Long,
     onSession: (String) -> Unit,
     onRequest: (String) -> Unit,
@@ -162,7 +169,8 @@ internal fun SessionListContent(
     val stale = conn is Conn.Offline || conn is Conn.Unreachable || conn is Conn.Unauthorized
     val oldestRequest = remember(requests) { requests.minByOrNull { it.createdAt } }
     val marked = remember(usage, sessions) { markedProviders(usage, sessions) }
-    val limits = remember(usage, sessions, marked) { limitLines(usage, sessions, marked) }
+    val book = rememberAccountBook(accounts, usage, sessions)
+    val limits = remember(usage, sessions, marked, book) { limitLines(usage, sessions, marked, book) }
     ScreenScaffold(scrollState = listState) { contentPadding ->
         TransformingLazyColumn(
             state = listState,
@@ -244,7 +252,7 @@ internal fun SessionListContent(
             items(sessions, key = { it.id }, contentType = { "session" }) { session ->
                 SessionCard(
                     session = session,
-                    account = session.account?.label?.takeIf { session.provider in marked },
+                    account = session.account?.takeIf { session.provider in marked }?.let { book.look(session.provider, it) },
                     stale = stale,
                     now = now,
                     spec = spec,
@@ -274,23 +282,33 @@ internal data class LimitLine(
     val resetsAt: Long?,
     /** Its sessions in the list, which has live ones only. */
     val sessions: Int,
-    /** The account's label when its provider is one of [markedProviders] (see [accountMark]); else null. */
-    val account: String? = null,
+    /** How the account looks when its provider is one of [markedProviders]; else null. */
+    val account: AccountLook? = null,
 )
+
+/**
+ * [stored] as it is once the Bridge has seen these [usage] entries' and [sessions]' accounts: an
+ * account new to it already has its mark here, before the stored book catches up (and in previews,
+ * which store none).
+ */
+@Composable
+internal fun rememberAccountBook(stored: AccountBook, usage: List<Usage>, sessions: List<Session>): AccountBook =
+    remember(stored, usage, sessions) { stored.seen(accountsOf(usage, sessions), System.currentTimeMillis()) }
 
 /**
  * The limit card's lines: one per usage entry with windows (the bridge sends the accounts logged in
  * now only), in [usageOrder], and one for a provider with sessions but no usage. A line's numbers
  * are its entry's [shortWindow]; without one it reads as without usage. It counts the provider's
  * sessions of its account; the first line of a provider also counts those without an account or of
- * an account without a line. A line of a provider in [marked] names its account.
+ * an account without a line. A line of a provider in [marked] has its account's look from [book].
  */
 internal fun limitLines(
     usage: List<Usage>,
     sessions: List<Session>,
     marked: Set<String> = markedProviders(usage, sessions),
+    book: AccountBook = AccountBook().seen(accountsOf(usage, sessions), 0),
 ): List<LimitLine> {
-    val entries = usageOrder(usage.filter { it.windows.isNotEmpty() }).groupBy { it.provider }
+    val entries = usageOrder(usage.filter { it.windows.isNotEmpty() }, book).groupBy { it.provider }
     val live = sessions.groupBy { it.provider }
     return (entries.keys + live.keys).sorted().flatMap { provider ->
         val own = live[provider].orEmpty()
@@ -300,14 +318,14 @@ internal fun limitLines(
         }.eachCount()
         accounts.mapIndexed { i, entry ->
             val window = shortWindow(entry)
-            val account = entry.account?.label?.takeIf { provider in marked }
+            val account = entry.account?.takeIf { provider in marked }?.let { book.look(provider, it) }
             LimitLine(provider, window?.usedPercent?.roundToInt(), isoToMillis(window?.resetsAt), counts[i] ?: 0, account)
         }
     }
 }
 
 /**
- * The providers whose limit lines and session cards mark their account (see [accountMark]): those
+ * The providers whose limit lines and session cards mark their account ([BadgeWithMark]): those
  * with more than one account among the [usage] entries with windows (the limit card's lines; one
  * without an account counts as one) and the [sessions] with an account.
  */
@@ -315,17 +333,6 @@ internal fun markedProviders(usage: List<Usage>, sessions: List<Session>): Set<S
     val lines = usage.filter { it.windows.isNotEmpty() }.map { it.provider to it.account?.id }
     val accounts = sessions.mapNotNull { session -> session.account?.let { session.provider to it.id } }
     return (lines + accounts).distinct().groupingBy { it.first }.eachCount().filterValues { it > 1 }.keys
-}
-
-/**
- * The mark of an account on its provider's badge: its label's first character as a person sees it,
- * as given: a whole syllable of a decomposed (NFD) Hangul label, a whole emoji or flag.
- */
-internal fun accountMark(label: String): String {
-    val text = Normalizer.normalize(label.trim(), Normalizer.Form.NFC)
-    if (text.isEmpty()) return ""
-    val characters = BreakIterator.getCharacterInstance().apply { setText(text) }
-    return text.substring(0, characters.next())
 }
 
 /**
@@ -478,32 +485,43 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
 }
 
 /**
- * A [SMALL_BADGE] provider badge with the mark of [account] (see [accountMark]), if any, on its
- * bottom-right corner: black on a white disc, set off from the badge by a ring in the card's color.
- * The mark hangs a little past the badge without taking room. Read out as `Codex Work`.
+ * A [SMALL_BADGE] provider badge with [account]'s mark, if any, on its bottom-right corner: its
+ * glyph on its color's disc ([markColor], white by default), set off from the badge by a ring in
+ * the card's color. The mark hangs a little past the badge without taking room. Read out as
+ * `Codex Work` (the nickname, if any), or not at all when [decorative] (a name beside it says it).
+ * [scale] enlarges the whole of it, for the Accounts screen's preview.
  */
 @Composable
-private fun BadgeWithMark(provider: String, account: String?) {
-    val description = account?.let { providerLabel(provider) + " " + it }
-    Box(if (description != null) Modifier.clearAndSetSemantics { contentDescription = description } else Modifier) {
-        ProviderBadge(provider, size = SMALL_BADGE)
+internal fun BadgeWithMark(provider: String, account: AccountLook?, scale: Float = 1f, decorative: Boolean = false) {
+    val description = account?.let { providerLabel(provider) + " " + it.name }
+    val semantics = when {
+        decorative -> Modifier.clearAndSetSemantics {}
+        description != null -> Modifier.clearAndSetSemantics { contentDescription = description }
+        else -> Modifier
+    }
+    Box(semantics) {
+        ProviderBadge(provider, size = SMALL_BADGE * scale)
         if (account != null) {
-            val mark = accountMark(account)
+            val color = markColor(account.color)
             // Sized in dp, as the badge's letter: in sp a large font scale would overflow the disc.
             val letterStyle = with(LocalDensity.current) {
-                MaterialTheme.typography.labelSmall.copy(fontSize = MARK_LETTER.toSp(), lineHeight = MARK.toSp(), fontWeight = FontWeight.Bold)
+                MaterialTheme.typography.labelSmall.copy(
+                    fontSize = (MARK_LETTER * scale).toSp(),
+                    lineHeight = (MARK * scale).toSp(),
+                    fontWeight = FontWeight.Bold,
+                )
             }
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
-                    .offset(x = 2.dp, y = 2.dp)
-                    .size(MARK + MARK_RING * 2)
+                    .offset(x = 2.dp * scale, y = 2.dp * scale)
+                    .size((MARK + MARK_RING * 2) * scale)
                     .background(MaterialTheme.colorScheme.surfaceContainer, CircleShape)
-                    .padding(MARK_RING)
-                    .background(Color.White, CircleShape),
+                    .padding(MARK_RING * scale)
+                    .background(color.disc, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(mark, color = Color.Black, style = letterStyle, maxLines = 1)
+                Text(account.mark, color = color.glyph, style = letterStyle, maxLines = 1)
             }
         }
     }
@@ -512,7 +530,7 @@ private fun BadgeWithMark(provider: String, account: String?) {
 /** `Codex Pro: 11% used, resets Friday 14:30, 4 active sessions`; the reset as [clock] words. */
 @Composable
 private fun limitDescription(line: LimitLine, clock: String?): String {
-    val name = providerLabel(line.provider) + (line.account?.let { " $it" } ?: "")
+    val name = providerLabel(line.provider) + (line.account?.let { " " + it.name } ?: "")
     val parts = buildList {
         add(line.percent?.let { stringResource(R.string.limit_used, name, it) } ?: stringResource(R.string.limit_unknown, name))
         if (clock != null) add(stringResource(R.string.limit_resets_at, clock))
@@ -548,8 +566,8 @@ internal fun durationWords(minutes: Long): String {
 @Composable
 private fun TransformingLazyColumnItemScope.SessionCard(
     session: Session,
-    /** The label of its account when its provider is one of [markedProviders]; else null. */
-    account: String?,
+    /** How its account looks when its provider is one of [markedProviders]; else null. */
+    account: AccountLook?,
     stale: Boolean,
     now: () -> Long,
     spec: TransformationSpec,

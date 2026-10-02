@@ -1,13 +1,20 @@
 package dev.wristline.watch.ui
 
 import dev.wristline.watch.data.Account
+import dev.wristline.watch.data.AccountBook
+import dev.wristline.watch.data.AccountLook
+import dev.wristline.watch.data.Mark
+import dev.wristline.watch.data.MarkType
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
+import dev.wristline.watch.data.edit
 import dev.wristline.watch.data.isoToMillis
-import java.text.Normalizer
+import dev.wristline.watch.data.move
+import dev.wristline.watch.data.ordered
+import dev.wristline.watch.data.seen
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -30,7 +37,8 @@ class UsagePickTest {
     private fun sessions(provider: String, count: Int) =
         List(count) { Session("$provider:$it", provider, status = SessionStatus.RUNNING, lastActivity = at) }
 
-    private val basic = Account("chatgpt-basic", "기본")
+    // The primary home's login, labelled without Latin letters: its mark is a digit.
+    private val basic = Account("chatgpt-basic", "기본", primary = true)
     private val pro = Account("chatgpt-pro", "Pro")
 
     private fun session(provider: String, id: Int, account: Account?) =
@@ -40,35 +48,59 @@ class UsagePickTest {
     fun limitLinesAreOnePerAccountInProviderOrder() {
         val lines = limitLines(listOf(codex(pro, 3.0), codex(basic, 11.0), claude(me, 42.0, 10.0)), emptyList())
         assertEquals(listOf(ProviderId.CLAUDE_CODE, ProviderId.CODEX, ProviderId.CODEX), lines.map { it.provider })
-        // The account labelled as the default first, whatever order the bridge sent them in.
+        // The primary home's account first, whatever order the bridge sent them in.
         assertEquals(listOf(42, 11, 3), lines.map { it.percent })
-        assertEquals(listOf(null, "기본", "Pro"), lines.map { it.account })
+        assertEquals(listOf(null, AccountLook("1", null, "기본"), AccountLook("P", null, "Pro")), lines.map { it.account })
     }
 
     @Test
-    fun usageOrderPutsTheDefaultAccountFirstThenTheRestByLabel() {
+    fun usageOrderPutsThePrimaryFirstThenTheRestByLabel() {
         val zed = Account("z", "zed")
         val alpha = Account("a", "alpha")
         val order = usageOrder(listOf(codex(zed, 1.0), codex(pro, 1.0), claude(me, 1.0, 1.0), codex(basic, 1.0), codex(alpha, 1.0)))
-        // The labels in any case.
+        // Seen together: the labels in any case.
         assertEquals(listOf("me@gmail.com", "기본", "alpha", "Pro", "zed"), order.map { it.account?.label })
-        // `default` in any case is the default too; an entry without an account comes first.
+        // A label is only a label: `Default` or `Work` is not put first. An entry without an account is.
         val english = usageOrder(listOf(codex(pro, 1.0), codex(Account("d", "Default"), 1.0), codex(null, 1.0)))
         assertEquals(listOf(null, "Default", "Pro"), english.map { it.account?.label })
-        // So is `work`, the primary home's label next to a personal one.
-        val work = usageOrder(listOf(codex(pro, 1.0), codex(Account("w", "Work"), 1.0)))
-        assertEquals(listOf("Work", "Pro"), work.map { it.account?.label })
-        assertEquals(listOf("W", "P"), work.map { accountMark(it.account!!.label) })
+        val work = Account("w", "Work")
+        assertEquals(listOf("Pro", "Work"), usageOrder(listOf(codex(work, 1.0), codex(pro, 1.0))).map { it.account?.label })
+        // The bridge's primary flag does: Work and Pro read W and P as before.
+        val primaryWork = work.copy(primary = true)
+        val lines = limitLines(listOf(codex(pro, 1.0), codex(primaryWork, 1.0)), emptyList())
+        assertEquals(listOf(AccountLook("W", null, "Work"), AccountLook("P", null, "Pro")), lines.map { it.account })
+    }
+
+    @Test
+    fun usageOrderIsTheUsersThenPrimaryThenFirstSeen() {
+        val zed = Account("z", "zed")
+        val alpha = Account("a", "alpha")
+        val usage = listOf(codex(alpha, 1.0), codex(zed, 1.0), codex(basic, 1.0))
+        // zed was seen a day before alpha: before it, whatever the labels; the primary still first.
+        val book = AccountBook().seen(listOf(ProviderId.CODEX to zed), 0).seen(usage.map { it.provider to it.account!! }, 86_400_000)
+        assertEquals(listOf("기본", "zed", "alpha"), usageOrder(usage, book).map { it.account?.label })
+        // The user's order over both; the limit card's lines in the same order.
+        val mine = book.move("codex:a", -1, book.ordered(ProviderId.CODEX)).let { it.move("codex:a", -1, it.ordered(ProviderId.CODEX)) }
+        assertEquals(listOf("alpha", "기본", "zed"), usageOrder(usage, mine).map { it.account?.label })
+        assertEquals(listOf("alpha", "기본", "zed"), limitLines(usage, emptyList(), book = mine).map { it.account?.name })
+    }
+
+    @Test
+    fun limitLinesShowTheChosenMarkColorAndNickname() {
+        val book = AccountBook().seen(listOf(ProviderId.CODEX to basic, ProviderId.CODEX to pro), 0)
+            .edit("codex:chatgpt-pro") { it.copy(mark = Mark(MarkType.EMOJI, "\u2B50"), color = "blue", nickname = "Side") }
+        val lines = limitLines(listOf(codex(basic, 11.0), codex(pro, 3.0)), emptyList(), book = book)
+        assertEquals(listOf(AccountLook("1", null, "기본"), AccountLook("\u2B50", "blue", "Side")), lines.map { it.account })
     }
 
     @Test
     fun usageOrderIsTheSameWhateverOrderTheBridgeSentIn() {
-        // Two defaults, and two accounts with the same label: the account id settles it.
+        // The primary, then the labels; two accounts with the same label: the account id settles it.
         val entries = listOf(
             codex(null, 1.0), codex(basic, 1.0), codex(Account("b", "default"), 1.0),
             codex(Account("pro-2", "Pro"), 1.0), codex(Account("pro-1", "pro"), 1.0), codex(pro, 1.0),
         )
-        val expected = listOf(null, "b", "chatgpt-basic", "chatgpt-pro", "pro-1", "pro-2")
+        val expected = listOf(null, "chatgpt-basic", "b", "chatgpt-pro", "pro-1", "pro-2")
         for (seed in 0 until 20) {
             assertEquals(expected, usageOrder(entries.shuffled(Random(seed))).map { it.account?.id })
         }
@@ -77,13 +109,9 @@ class UsagePickTest {
     @Test
     fun accountsAreMarkedOnlyWhenTheirProviderHasMoreThanOneLine() {
         val lines = limitLines(listOf(claude(me, 42.0, 10.0), codex(basic, 11.0), codex(pro, 3.0)), emptyList())
-        assertEquals(listOf(null, "기", "P"), lines.map { line -> line.account?.let(::accountMark) })
+        assertEquals(listOf(null, "1", "P"), lines.map { line -> line.account?.mark })
         // One account: no mark, and the line reads as the provider's alone.
-        assertEquals(listOf<String?>(null), limitLines(listOf(codex(pro, 3.0)), emptyList()).map { it.account })
-        // The first character as given, a surrogate pair kept whole.
-        assertEquals("p", accountMark(" personal"))
-        assertEquals("\uD83D\uDE80", accountMark("\uD83D\uDE80 rocket"))
-        assertEquals("", accountMark(" "))
+        assertEquals(listOf<AccountLook?>(null), limitLines(listOf(codex(pro, 3.0)), emptyList()).map { it.account })
     }
 
     @Test
@@ -98,25 +126,13 @@ class UsagePickTest {
         val mixedUsage = listOf(codex(basic, 11.0))
         val mixedSessions = listOf(session(ProviderId.CODEX, 1, pro))
         assertEquals(setOf(ProviderId.CODEX), markedProviders(mixedUsage, mixedSessions))
-        assertEquals(listOf("기본"), limitLines(mixedUsage, mixedSessions).map { it.account })
+        assertEquals(listOf("기본"), limitLines(mixedUsage, mixedSessions).map { it.account?.name })
         // A single account, in usage and sessions alike; sessions without one don't add any; an entry
         // without windows is no line.
         val single = listOf(session(ProviderId.CODEX, 1, pro), session(ProviderId.CODEX, 2, null))
         assertEquals(emptySet<String>(), markedProviders(listOf(codex(pro, 3.0)), single))
         assertEquals(emptySet<String>(), markedProviders(listOf(Usage(ProviderId.CODEX, at, emptyList(), basic)), single))
         assertEquals(emptySet<String>(), markedProviders(emptyList(), emptyList()))
-    }
-
-    @Test
-    fun accountMarkIsTheFirstCharacterAsAPersonSeesIt() {
-        // A decomposed (NFD) label, as pasted from macOS: the syllable, not its first jamo.
-        val nfd = Normalizer.normalize("기본", Normalizer.Form.NFD)
-        assertEquals(5, nfd.length)
-        assertEquals("기", accountMark(nfd))
-        // An emoji with a skin tone, a ZWJ sequence and a flag: whole.
-        assertEquals("\uD83D\uDC4D\uD83C\uDFFD", accountMark("\uD83D\uDC4D\uD83C\uDFFD ok"))
-        assertEquals("\uD83D\uDC69\u200D\uD83D\uDCBB", accountMark("\uD83D\uDC69\u200D\uD83D\uDCBB work"))
-        assertEquals("\uD83C\uDDF0\uD83C\uDDF7", accountMark("\uD83C\uDDF0\uD83C\uDDF7 kr"))
     }
 
     @Test
@@ -153,8 +169,8 @@ class UsagePickTest {
         )
         assertEquals(
             listOf(
-                LimitLine(ProviderId.CODEX, 11, isoToMillis("2026-10-05T09:00:00Z"), 0, "기본"),
-                LimitLine(ProviderId.CODEX, 3, isoToMillis("2026-09-29T15:10:00Z"), 0, "Pro"),
+                LimitLine(ProviderId.CODEX, 11, isoToMillis("2026-10-05T09:00:00Z"), 0, AccountLook("1", null, "기본")),
+                LimitLine(ProviderId.CODEX, 3, isoToMillis("2026-09-29T15:10:00Z"), 0, AccountLook("P", null, "Pro")),
             ),
             limitLines(listOf(fiveHour, weekly), emptyList()),
         )

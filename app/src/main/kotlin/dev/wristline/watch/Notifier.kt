@@ -9,15 +9,21 @@ import android.content.pm.PackageManager
 import android.text.format.DateFormat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import dev.wristline.watch.data.AccountBook
+import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Decision
 import dev.wristline.watch.data.PERMISSION_QUESTION
 import dev.wristline.watch.data.PendingRequest
+import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.RequestKind
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
+import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.isoToMillis
+import dev.wristline.watch.data.look
 import dev.wristline.watch.ui.basename
 import dev.wristline.watch.ui.errorRes
+import dev.wristline.watch.ui.markedProviders
 import dev.wristline.watch.ui.permissionQuestion
 import dev.wristline.watch.ui.resetClockText
 import java.time.ZoneId
@@ -63,6 +69,17 @@ internal fun notificationDecisions(request: PendingRequest): List<String> {
     val whole = request.title !in SUMMARIZED_TOOLS && text.isNotBlank() && text.length <= NOTIFY_TEXT_MAX &&
         !text.endsWith('…') && text.lines().size == 1
     return listOfNotNull(Decision.ALLOW.takeIf { whole && it in ids }, Decision.DENY.takeIf { it in ids })
+}
+
+/**
+ * `Codex · Work`: [session]'s provider ([providerName]) and its account's name in [book] (the
+ * nickname, else the label), when the provider has more than one account ([markedProviders] of
+ * [usage] and [sessions]), as its cards' badges are marked; else null.
+ */
+internal fun accountLine(providerName: String, session: Session?, usage: List<Usage>, sessions: List<Session>, book: AccountBook): String? {
+    val account = session?.account ?: return null
+    if (session.provider !in markedProviders(usage, sessions)) return null
+    return providerName + " · " + book.look(session.provider, account).name
 }
 
 /**
@@ -124,11 +141,11 @@ object Notifier {
 
     /** True when posted (false without the notification permission); likewise below. */
     fun request(context: Context, request: PendingRequest, session: Session?): Boolean =
-        request(context, request, sessionTitle(context, session))
+        request(context, request, sessionTitle(context, session), account = accountLine(context, session))
 
     /**
      * The request's question (clipped to [NOTIFY_TEXT_MAX]) under its title, the session as the
-     * sub text, and, when [answerable], the [notificationDecisions] as actions
+     * sub text after the [account] line ([accountLine]), and, when [answerable], the [notificationDecisions] as actions
      * ([NotificationActionReceiver]). [note] is a line above the question about an action's answer
      * (sending, not sent, already handled); a notification with one is posted silently. With
      * [timeoutMs] it goes away by itself.
@@ -140,6 +157,7 @@ object Notifier {
         note: String? = null,
         answerable: Boolean = true,
         timeoutMs: Long? = null,
+        account: String? = null,
     ): Boolean {
         val question = request.permissionQuestion()?.text.orEmpty()
         val body = clipText(question, NOTIFY_TEXT_MAX).ifBlank { sessionTitle }
@@ -149,10 +167,10 @@ object Notifier {
             sessionId = request.sessionId,
             title = request.title.ifBlank { context.getString(R.string.status_needs_input) },
             text = listOfNotNull(note, body).joinToString("\n"),
-            subText = sessionTitle.takeIf { question.isNotBlank() },
+            subText = listOfNotNull(account, sessionTitle.takeIf { question.isNotBlank() }).joinToString(" · ").ifEmpty { null },
             silent = note != null,
             timeoutMs = timeoutMs,
-            actions = if (answerable) notificationDecisions(request).map { decisionAction(context, request, it, sessionTitle) } else emptyList(),
+            actions = if (answerable) notificationDecisions(request).map { decisionAction(context, request, it, sessionTitle, account) } else emptyList(),
         )
     }
 
@@ -166,9 +184,9 @@ object Notifier {
      * Answers without opening the app. Authentication: a locked watch asks to unlock first. No UI:
      * the receiver answers in the background, and Wear OS is told the tap opens nothing.
      */
-    private fun decisionAction(context: Context, request: PendingRequest, decision: String, sessionTitle: String): NotificationCompat.Action {
+    private fun decisionAction(context: Context, request: PendingRequest, decision: String, sessionTitle: String, account: String?): NotificationCompat.Action {
         val question = request.permissionQuestion()?.id ?: PERMISSION_QUESTION
-        val intent = NotificationActionReceiver.intent(context, request, question, decision, sessionTitle)
+        val intent = NotificationActionReceiver.intent(context, request, question, decision, sessionTitle, account)
         // The intent's data is unique per request and decision, so the PendingIntents stay apart.
         val pending = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val allow = decision == Decision.ALLOW
@@ -189,6 +207,7 @@ object Notifier {
             context, TAG_SESSION, sessionId, CHANNEL_REQUESTS, MainActivity.EXTRA_SESSION_ID,
             title = sessionTitle(context, session),
             text = text ?: context.getString(R.string.status_needs_input),
+            subText = accountLine(context, session),
             // Replacing an earlier alert of the session (e.g. its "Finished") must vibrate again.
             alertOnce = false,
         )
@@ -199,6 +218,7 @@ object Notifier {
             context, TAG_SESSION, sessionId, CHANNEL_UPDATES, MainActivity.EXTRA_SESSION_ID,
             title = title?.takeIf { it.isNotBlank() } ?: sessionTitle(context, session),
             text = text ?: context.getString(R.string.notify_done),
+            subText = accountLine(context, session),
             // Each done alert is new (replays are deduplicated by id). A background client is not told
             // that the session ran again, so the previous one may still be shown: vibrate anyway.
             alertOnce = false,
@@ -206,7 +226,8 @@ object Notifier {
 
     /**
      * The agent hit a usage limit: titled in English as the agent says it, the session and the reset
-     * clock ([limitText]) below, the agent's own message when expanded.
+     * clock ([limitText]) below, the agent's own message when expanded; which account, when its
+     * provider has more than one, as the sub text ([accountLine]).
      */
     fun limit(context: Context, sessionId: String, text: String?, resetsAt: String?, session: Session?): Boolean {
         val clock = isoToMillis(resetsAt)?.let {
@@ -219,6 +240,7 @@ object Notifier {
             text = line,
             bigText = text?.takeIf { it.isNotBlank() }?.let { "$line\n$it" },
             alertOnce = false,
+            subText = accountLine(context, session),
         )
     }
 
@@ -324,6 +346,17 @@ object Notifier {
             .build()
         NotificationManagerCompat.from(context).notify(tag, id, notification)
         return true
+    }
+
+    /** [accountLine] for [session] as the Bridge has it now. */
+    private fun accountLine(context: Context, session: Session?): String? {
+        val provider = session?.provider ?: return null
+        val name = when (provider) {
+            ProviderId.CLAUDE_CODE -> context.getString(R.string.provider_claude_code)
+            ProviderId.CODEX -> context.getString(R.string.provider_codex)
+            else -> provider
+        }
+        return accountLine(name, session, Bridge.usage.value, Bridge.sessions.value, Bridge.prefs.accounts.value)
     }
 
     /** Same fallbacks as the screens' session title. */

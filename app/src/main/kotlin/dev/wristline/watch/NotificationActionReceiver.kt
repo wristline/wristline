@@ -81,11 +81,12 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val question = intent.getStringExtra(EXTRA_QUESTION) ?: return
         val decision = intent.getStringExtra(EXTRA_DECISION)?.takeIf { it == Decision.ALLOW || it == Decision.DENY } ?: return
         val sessionTitle = intent.getStringExtra(EXTRA_SESSION_TITLE).orEmpty()
+        val account = intent.getStringExtra(EXTRA_ACCOUNT)
         val app = context.applicationContext
         // One answer per request at a time: a second tap that got in before the actions went is dropped.
         if (!answering.add(request.id)) return
         // The actions go at once, so one decision is sent once; a retry brings them back.
-        Notifier.request(app, request, sessionTitle, note = app.getString(R.string.notify_answer_sending), answerable = false)
+        Notifier.request(app, request, sessionTitle, note = app.getString(R.string.notify_answer_sending), answerable = false, account = account)
         Bridge.init(app)
         val pending = goAsync()
         scope.launch {
@@ -102,8 +103,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 when (val after = outcome.after) {
                     AfterAnswer.Gone -> Unit
                     is AfterAnswer.Notice ->
-                        Notifier.request(app, request, sessionTitle, note = note(app, after.code), answerable = false, timeoutMs = NOTICE_MS)
-                    is AfterAnswer.Retry -> Notifier.request(app, request, sessionTitle, note = note(app, after.code))
+                        Notifier.request(app, request, sessionTitle, note = note(app, after.code), answerable = false, timeoutMs = NOTICE_MS, account = account)
+                    is AfterAnswer.Retry -> Notifier.request(app, request, sessionTitle, note = note(app, after.code), account = account)
                 }
                 // Notification usage: a process in the background may not play touch haptics.
                 Haptics.event(app, outcome.haptic)
@@ -112,7 +113,7 @@ class NotificationActionReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 // E.g. a malformed stored address. Uncaught, it would end the process; the actions come back.
                 Log.w(TAG, "action $decision id=${request.id} failed", e)
-                runCatching { Notifier.request(app, request, sessionTitle, note = Notifier.answerFailed(app, "exception")) }
+                runCatching { Notifier.request(app, request, sessionTitle, note = Notifier.answerFailed(app, "exception"), account = account) }
             } finally {
                 answering.remove(request.id)
                 pending.finish()
@@ -133,14 +134,15 @@ class NotificationActionReceiver : BroadcastReceiver() {
         private const val EXTRA_QUESTION = "question"
         private const val EXTRA_DECISION = "decision"
         private const val EXTRA_SESSION_TITLE = "sessionTitle"
+        private const val EXTRA_ACCOUNT = "account"
 
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         /** Ids of the requests an answer is on its way for. */
         private val answering: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
-        /** The broadcast [decision] sends for [request]'s [question]. */
-        fun intent(context: Context, request: PendingRequest, question: String, decision: String, sessionTitle: String): Intent =
+        /** The broadcast [decision] sends for [request]'s [question]; [account] is the notification's account line, if any. */
+        fun intent(context: Context, request: PendingRequest, question: String, decision: String, sessionTitle: String, account: String?): Intent =
             Intent(ACTION_ANSWER)
                 .setClass(context, NotificationActionReceiver::class.java)
                 .setData(Uri.Builder().scheme("wristline").authority("answer").appendPath(request.id).appendPath(decision).build())
@@ -148,5 +150,6 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 .putExtra(EXTRA_QUESTION, question)
                 .putExtra(EXTRA_DECISION, decision)
                 .putExtra(EXTRA_SESSION_TITLE, sessionTitle)
+                .putExtra(EXTRA_ACCOUNT, account)
     }
 }
