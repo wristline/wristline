@@ -313,7 +313,7 @@ private fun SessionListUnreachablePreview() = Frame {
 
 @Composable
 private fun AskFrame(thread: List<Ask>?, speaking: Boolean = false) = Frame {
-    AskContent(thread, sending = false, speaking = speaking, onCancel = {}, onAgain = {}, onOther = {}, onSpeak = {}, onFollowUp = {})
+    AskContent(thread, sending = false, speaking = speaking, onCancel = {}, onAgain = {}, other = thread?.lastOrNull()?.let { otherProvider(it.provider) }, onOther = {}, onSpeak = {}, onFollowUp = {})
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)

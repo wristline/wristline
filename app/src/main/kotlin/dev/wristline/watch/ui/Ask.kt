@@ -80,6 +80,13 @@ internal fun otherProvider(provider: String): String =
     if (provider == ProviderId.CODEX) ProviderId.CLAUDE_CODE else ProviderId.CODEX
 
 /**
+ * The provider the answer screen offers to ask instead of [provider]: the other one when it is
+ * among Quick Ask's choices for [available] (as in Settings and the confirm dialog), else none.
+ */
+internal fun otherAskProvider(provider: String, available: Set<String>?): String? =
+    otherProvider(provider).takeIf { it in askProviders(available) }
+
+/**
  * The conversation [askId] belongs to, oldest first, or null when the bridge has none of it. A
  * thread's id is its first ask's id, so the thread is still found by that id once the bridge,
  * which keeps only its newest asks, has dropped the first one. [asks] is newest first, so among
@@ -239,10 +246,10 @@ private fun ProviderChip(provider: String, onClick: (() -> Unit)?) {
 
 /**
  * The conversation [askId] belongs to, newest at the bottom. Under the newest answer: ask the
- * newest question again (a new thread, same provider), ask it of the other provider (a new
- * thread), read the answer aloud, and a follow-up that continues this thread. A new thread swaps
- * this screen for its own ([onReplaced]). Leaving while a question is still running cancels it
- * ([AskCanceller]); a screen opened on top (a notification tap) is not leaving.
+ * newest question again (a new thread, same provider), ask it of the other provider when that one
+ * is installed (a new thread), read the answer aloud, and a follow-up that continues this thread.
+ * A new thread swaps this screen for its own ([onReplaced]). Leaving while a question is still
+ * running cancels it ([AskCanceller]); a screen opened on top (a notification tap) is not leaving.
  */
 @Composable
 internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
@@ -255,6 +262,8 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     val touch = rememberTouchHaptics()
     val reader = rememberReader()
+    val available by Bridge.providers.collectAsStateWithLifecycle()
+    val other = newest?.let { otherAskProvider(it.provider, available) }
 
     val running by rememberUpdatedState(newest?.takeIf { it.status == AskStatus.RUNNING }?.id)
     viewModel { AskCanceller(askId) }
@@ -310,7 +319,8 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
         speaking = reader.speaking,
         onCancel = { running?.let { Bridge.cancelAsk(it) } },
         onAgain = { newest?.let { resend(it.provider) } },
-        onOther = { newest?.let { resend(otherProvider(it.provider)) } },
+        other = other,
+        onOther = { other?.let { resend(it) } },
         onSpeak = { newest?.answer?.let { reader.toggle(it) } },
         onFollowUp = followUp,
     )
@@ -336,6 +346,7 @@ internal fun AskContent(
     speaking: Boolean,
     onCancel: () -> Unit,
     onAgain: () -> Unit,
+    other: String?,
     onOther: () -> Unit,
     onSpeak: () -> Unit,
     onFollowUp: () -> Unit,
@@ -392,18 +403,20 @@ internal fun AskContent(
                         FilledTonalIconButton(onClick = onAgain, enabled = !sending, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                             if (sending) SmallSpinner() else Icon(painterResource(R.drawable.ic_replay), stringResource(R.string.ask_again), Modifier.size(iconSize))
                         }
-                        val other = otherProvider(newest.provider)
-                        val askOther = stringResource(if (other == ProviderId.CODEX) R.string.ask_other_codex else R.string.ask_other_claude)
-                        FilledTonalIconButton(
-                            onClick = onOther,
-                            enabled = !sending,
-                            modifier = Modifier.touchTargetAwareSize(ACTION_SIZE).clearAndSetSemantics {
-                                contentDescription = askOther
-                                role = Role.Button
-                            },
-                            shapes = shapes,
-                        ) {
-                            ProviderBadge(other, size = 20.dp)
+                        // Only a provider installed on the PC is offered; with none, no button.
+                        if (other != null) {
+                            val askOther = stringResource(if (other == ProviderId.CODEX) R.string.ask_other_codex else R.string.ask_other_claude)
+                            FilledTonalIconButton(
+                                onClick = onOther,
+                                enabled = !sending,
+                                modifier = Modifier.touchTargetAwareSize(ACTION_SIZE).clearAndSetSemantics {
+                                    contentDescription = askOther
+                                    role = Role.Button
+                                },
+                                shapes = shapes,
+                            ) {
+                                ProviderBadge(other, size = 20.dp)
+                            }
                         }
                         FilledTonalIconButton(onClick = onSpeak, enabled = newest.answer != null, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                             if (speaking) {
