@@ -48,9 +48,9 @@ class OngoingStatusTest {
     }
 
     @Test
-    fun zeroRunningWhenNothingRunsOrWaits() {
-        assertEquals("▶ 0", text(emptyList(), emptyList()))
-        assertEquals("▶ 0", text(listOf(session("d", SessionStatus.IDLE), session("e", SessionStatus.ENDED)), emptyList()))
-        assertEquals("실행 0", description(emptyList(), emptyList()))
+    fun aGlyphAloneWhenNothingRunsOrWaits() {
+        assertEquals("◦", text(emptyList(), emptyList()))
+        assertEquals("◦", text(listOf(session("d", SessionStatus.IDLE), session("e", SessionStatus.ENDED)), emptyList()))
+        assertEquals("실행 0, 대기 0", description(emptyList(), emptyList()))
     }
 }

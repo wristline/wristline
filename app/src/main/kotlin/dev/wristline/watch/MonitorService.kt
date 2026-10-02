@@ -51,19 +51,22 @@ internal fun ongoingCounts(sessions: List<Session>, requests: List<PendingReques
     waiting = (sessions.filter { it.status == SessionStatus.NEEDS_INPUT }.map { it.id } + requests.map { it.sessionId }).toSet().size,
 )
 
+/** The monitoring status when nothing runs or waits: a glyph alone, no number. */
+internal const val ONGOING_IDLE = "◦"
+
 /**
  * Text of the monitoring ongoing activity, icons and numbers in every locale: `▶ 2 · ✋ 1`, a
- * count of zero left out, `▶ 0` when both are.
+ * count of zero left out, [ONGOING_IDLE] when both are.
  */
 internal fun ongoingStatusText(counts: OngoingCounts): String =
-    ongoingParts(counts, { "▶ $it" }, { "✋ $it" }).joinToString(" · ")
+    ongoingParts(counts, { "▶ $it" }, { "✋ $it" }).joinToString(" · ").ifEmpty { ONGOING_IDLE }
 
-/** The same read out, e.g. "실행 2, 대기 1": [running] and [waiting] spell out a count. */
+/** The same read out, e.g. "실행 2, 대기 1" ([running] and [waiting] spell out a count); both, at zero, when both are. */
 internal fun ongoingStatusDescription(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): String =
-    ongoingParts(counts, running, waiting).joinToString(", ")
+    ongoingParts(counts, running, waiting).ifEmpty { listOf(running(0), waiting(0)) }.joinToString(", ")
 
 private fun ongoingParts(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): List<String> = buildList {
-    if (counts.running > 0 || counts.waiting == 0) add(running(counts.running))
+    if (counts.running > 0) add(running(counts.running))
     if (counts.waiting > 0) add(waiting(counts.waiting))
 }
 
