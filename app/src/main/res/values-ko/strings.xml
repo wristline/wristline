@@ -70,6 +70,9 @@
     </plurals>
     <string name="session_untitled">제목 없는 세션</string>
     <string name="status_running">실행 중</string>
+    <plurals name="tasks_done">
+        <item quantity="other">작업 %2$d개 중 %1$d개 완료</item>
+    </plurals>
     <string name="status_idle">대기</string>
     <string name="status_needs_input">입력 필요</string>
     <string name="status_ended">종료됨</string>
@@ -174,6 +177,8 @@
     <string name="settings_ask_provider">물어보기 제공자</string>
     <string name="settings_monitoring">백그라운드 알림</string>
     <string name="settings_monitoring_detail">앱을 닫아도 연결을 유지해 배터리를 더 씁니다</string>
+    <string name="settings_live_updates">진행 상황 Live Update</string>
+    <string name="settings_live_updates_detail">1분 넘거나 할 일 목록이 있는 작업</string>
     <string name="settings_notifications_off">알림이 꺼져 있음</string>
     <string name="settings_notifications_open">앱 설정에서 허용해 주세요</string>
     <string name="settings_token">토큰 입력</string>
@@ -210,6 +215,7 @@
     <string name="channel_requests">응답 요청</string>
     <string name="channel_updates">작업 알림</string>
     <string name="channel_monitor">백그라운드 연결</string>
+    <string name="channel_live">긴 작업 진행</string>
     <string name="notify_done">작업을 마쳤습니다</string>
     <string name="item_error">오류</string>
     <string name="notify_answer_failed">보내지 못했습니다. %1$s</string>

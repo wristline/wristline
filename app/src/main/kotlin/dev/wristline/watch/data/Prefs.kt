@@ -41,6 +41,17 @@ class Prefs(context: Context) {
             sp.edit().putBoolean(KEY_MONITORING, value).apply()
         }
 
+    private val liveUpdatesFlow = MutableStateFlow(sp.getBoolean(KEY_LIVE_UPDATES, true))
+
+    /** Long turns get a Live Update while monitoring (see dev.wristline.watch.LiveUpdates); on by default. */
+    val liveUpdatesState: StateFlow<Boolean> = liveUpdatesFlow.asStateFlow()
+    var liveUpdates: Boolean
+        get() = liveUpdatesFlow.value
+        set(value) {
+            liveUpdatesFlow.value = value
+            sp.edit().putBoolean(KEY_LIVE_UPDATES, value).apply()
+        }
+
     private val watchColorsFlow = MutableStateFlow(sp.getBoolean(KEY_WATCH_COLORS, false))
 
     /** The theme follows the watch's dynamic colors where it has them; off by default (graphite and blue). */
@@ -105,6 +116,7 @@ class Prefs(context: Context) {
     fun clear() {
         sp.edit().clear().apply()
         monitoringFlow.value = false
+        liveUpdatesFlow.value = true
         watchColorsFlow.value = false
         accountsFlow.value = AccountBook()
     }
@@ -115,6 +127,7 @@ class Prefs(context: Context) {
         const val KEY_DEVICE_ID = "deviceId"
         const val KEY_DEVICE_NAME = "deviceName"
         const val KEY_MONITORING = "monitoring"
+        const val KEY_LIVE_UPDATES = "liveUpdates"
         const val KEY_DEMO = "demo"
         const val KEY_SHOW_TOOL_CALLS = "showToolCalls"
         const val KEY_ASK_PROVIDER = "askProvider"

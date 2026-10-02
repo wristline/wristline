@@ -6,7 +6,12 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.format.DateFormat
+import android.text.style.TtsSpan
+import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.wristline.watch.data.AccountBook
@@ -96,6 +101,7 @@ object Notifier {
     /** A new id: an existing channel's importance and vibration cannot be changed by the app. */
     const val CHANNEL_UPDATES = "updates_v2"
     const val CHANNEL_MONITOR = "monitor"
+    const val CHANNEL_LIVE = "live"
 
     /** The silent channel done alerts used before [CHANNEL_UPDATES]. */
     private const val OLD_CHANNEL_UPDATES = "updates"
@@ -104,6 +110,8 @@ object Notifier {
     private const val TAG_SESSION = "session"
     /** A usage-limit alert: keyed by session id like [TAG_SESSION], apart from its needs-input and done alerts. */
     private const val TAG_LIMIT = "limit"
+    /** A long turn's Live Update ([liveUpdate]): keyed by session id, apart from the session's alerts. */
+    private const val TAG_LIVE = "live"
 
     /** The app's primary (the theme's), for the small icon here and in the Now Bar: gray without it. */
     val COLOR: Int = 0xFF4FA8FF.toInt()
@@ -134,9 +142,15 @@ object Notifier {
             context.getString(R.string.channel_monitor),
             NotificationManager.IMPORTANCE_LOW,
         ).apply { setShowBadge(false) }
+        // Live Updates: silent, as they change often; not IMPORTANCE_MIN, which may not be promoted.
+        val live = NotificationChannel(
+            CHANNEL_LIVE,
+            context.getString(R.string.channel_live),
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply { setShowBadge(false) }
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.deleteNotificationChannel(OLD_CHANNEL_UPDATES)
-        manager.createNotificationChannels(listOf(requests, updates, monitor))
+        manager.createNotificationChannels(listOf(requests, updates, monitor, live))
     }
 
     fun enabled(context: Context): Boolean = NotificationManagerCompat.from(context).areNotificationsEnabled()
@@ -257,6 +271,81 @@ object Notifier {
         LimitEnd.Credits -> "¤ credits"
     }
 
+    /** Live Updates exist from Wear OS 7 (API 37) on; elsewhere none is posted and the setting is left out. */
+    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.CINNAMON_BUN)
+    fun liveUpdatesSupported(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN
+
+    /**
+     * The system will promote [liveUpdate]'s notifications: [liveUpdatesSupported], and the user has
+     * not turned the app's Live Updates off in the system settings (the permission,
+     * POST_PROMOTED_NOTIFICATIONS, is granted at install).
+     */
+    fun canPostLiveUpdates(context: Context): Boolean =
+        liveUpdatesSupported() && NotificationManagerCompat.from(context).canPostPromotedNotifications()
+
+    /**
+     * A long turn's Live Update, promoted to the watch face's status chip: the session title, its
+     * account line as the sub text, and a [NotificationCompat.ProgressStyle] bar: one segment per
+     * task of its task list, else indeterminate with the time since the turn started as a
+     * chronometer. Swiping it away tells [LiveUpdateDismissReceiver]. Posts nothing where it would
+     * not be promoted ([canPostLiveUpdates]).
+     */
+    internal fun liveUpdate(context: Context, update: LiveUpdate, session: Session?): Boolean {
+        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+        if (!canPostLiveUpdates(context)) return false
+        val id = notificationId(update.sessionId)
+        val open = MainActivity.openIntent(context).putExtra(MainActivity.EXTRA_SESSION_ID, update.sessionId)
+        val openIntent = PendingIntent.getActivity(context, id, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val dismiss = LiveUpdateDismissReceiver.intent(context, update.sessionId, update.turn)
+        val dismissIntent = PendingIntent.getBroadcast(context, 0, dismiss, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val progress = liveProgress(update)
+        // Not apply {}: Style has a member apply(builder), which would be called instead.
+        val style = NotificationCompat.ProgressStyle()
+        if (progress == null) {
+            style.setProgressIndeterminate(true)
+        } else {
+            style.setProgressSegments(List(progress.total) { NotificationCompat.ProgressStyle.Segment(1).setColor(COLOR) })
+                .setProgress(progress.done)
+        }
+        val text = liveUpdateText(update)
+        val spoken = when {
+            update.waiting -> context.getString(R.string.status_needs_input)
+            progress != null -> context.resources.getQuantityString(R.plurals.tasks_done, progress.total, progress.done, progress.total)
+            else -> context.getString(R.string.status_running)
+        }
+        val notification = NotificationCompat.Builder(context, CHANNEL_LIVE)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(COLOR)
+            // A colorized notification is never promoted.
+            .setColorized(false)
+            .setContentTitle(sessionTitle(context, session))
+            .setContentText(SpannableString(text).apply { setSpan(TtsSpan.TextBuilder(spoken).build(), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) })
+            .setSubText(accountLine(context, session))
+            .setStyle(style)
+            .setShortCriticalText(liveUpdateChip(update))
+            .apply {
+                if (progress == null && update.startedAt != null) {
+                    setWhen(update.startedAt)
+                    setShowWhen(true)
+                    setUsesChronometer(true)
+                }
+            }
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setContentIntent(openIntent)
+            .setDeleteIntent(dismissIntent)
+            .setOngoing(true)
+            .setRequestPromotedOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(TAG_LIVE, id, notification)
+        return true
+    }
+
+    fun cancelLiveUpdate(context: Context, sessionId: String) {
+        NotificationManagerCompat.from(context).cancel(TAG_LIVE, notificationId(sessionId))
+    }
+
     fun cancelRequest(context: Context, requestId: String) {
         NotificationManagerCompat.from(context).cancel(TAG_REQUEST, notificationId(requestId))
     }
@@ -295,13 +384,14 @@ object Notifier {
     /**
      * Whether the notification [tag]/[id] posted on [channel] still applies: a request in
      * [requests]; a needs-input alert (requests channel) of a session in [sessions] that is still
-     * waiting; a done or limit alert of one that is not running (an ended one is no longer listed).
-     * Untagged ones (monitoring) always do.
+     * waiting; a done or limit alert of one that is not running (an ended one is no longer listed);
+     * a Live Update of one still running or waiting. Untagged ones (monitoring) always do.
      */
     internal fun notificationApplies(tag: String?, channel: String?, id: Int, requests: List<PendingRequest>, sessions: List<Session>): Boolean =
         when (tag) {
             TAG_REQUEST -> requests.any { notificationId(it.id) == id }
             TAG_LIMIT -> sessions.any { notificationId(it.id) == id && it.status != SessionStatus.RUNNING }
+            TAG_LIVE -> sessions.any { notificationId(it.id) == id && (it.status == SessionStatus.RUNNING || it.status == SessionStatus.NEEDS_INPUT) }
             TAG_SESSION -> sessions.any { session ->
                 notificationId(session.id) == id && when (channel) {
                     CHANNEL_REQUESTS -> session.status == SessionStatus.NEEDS_INPUT

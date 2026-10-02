@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -77,6 +79,7 @@ internal fun SettingsScreen(
     val askChoices = askProviders(available)
     // The service turns the setting off itself when the pairing is gone.
     val monitoring by prefs.monitoringState.collectAsStateWithLifecycle()
+    val liveUpdates by prefs.liveUpdatesState.collectAsStateWithLifecycle()
     // Re-read on every resume: the user may have changed it in the system settings.
     var notificationsOn by remember { mutableStateOf(Notifier.enabled(context)) }
     LifecycleResumeEffect(Unit) {
@@ -115,6 +118,7 @@ internal fun SettingsScreen(
         canChangeAskProvider = askChoices.size > 1,
         monitoring = monitoring,
         canMonitor = prefs.isPaired && conn !is Conn.Unauthorized,
+        liveUpdates = liveUpdates.takeIf { Notifier.liveUpdatesSupported() },
         notificationsOff = !notificationsOn,
         busy = busy,
         tokenNeedsAddress = tokenNeedsAddress,
@@ -138,6 +142,11 @@ internal fun SettingsScreen(
                 context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED ->
                     askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
+        },
+        onLiveUpdates = { on ->
+            prefs.liveUpdates = on
+            // The permission is granted at install, but the user may have turned Live Updates off.
+            if (on && Notifier.liveUpdatesSupported() && !Notifier.canPostLiveUpdates(context)) openLiveUpdateSettings(context)
         },
         onNotificationSettings = { openAppSettings(context) },
         onRepair = onRepair,
@@ -184,6 +193,8 @@ internal fun SettingsContent(
     canChangeAskProvider: Boolean,
     monitoring: Boolean,
     canMonitor: Boolean,
+    /** Null where the watch has no Live Updates: the row is left out. Needs [monitoring]. */
+    liveUpdates: Boolean?,
     notificationsOff: Boolean,
     busy: Boolean,
     tokenNeedsAddress: Boolean,
@@ -194,6 +205,7 @@ internal fun SettingsContent(
     onWatchColors: (Boolean) -> Unit,
     onAskProvider: () -> Unit,
     onMonitoring: (Boolean) -> Unit,
+    onLiveUpdates: (Boolean) -> Unit,
     onNotificationSettings: () -> Unit,
     onRepair: () -> Unit,
     onToken: () -> Unit,
@@ -308,6 +320,19 @@ internal fun SettingsContent(
                         secondaryLabel = { Text(stringResource(R.string.settings_monitoring_detail), maxLines = 2) },
                     )
                 }
+                if (liveUpdates != null) {
+                    item(key = "liveUpdates") {
+                        SwitchButton(
+                            checked = liveUpdates,
+                            onCheckedChange = onLiveUpdates,
+                            enabled = monitoring && canMonitor,
+                            modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                            transformation = SurfaceTransformation(spec),
+                            label = { Text(stringResource(R.string.settings_live_updates), maxLines = 2) },
+                            secondaryLabel = { Text(stringResource(R.string.settings_live_updates_detail), maxLines = 2) },
+                        )
+                    }
+                }
                 if (notificationsOff) {
                     item(key = "notificationsOff") {
                         FilledTonalButton(
@@ -371,6 +396,17 @@ internal fun SettingsContent(
                 )
             }
         }
+    }
+}
+
+/** The system's Live Updates switch for this app, else its app info. */
+@RequiresApi(Build.VERSION_CODES.BAKLAVA)
+private fun openLiveUpdateSettings(context: Context) {
+    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        openAppSettings(context)
     }
 }
 

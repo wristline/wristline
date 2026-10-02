@@ -74,6 +74,11 @@
     </plurals>
     <string name="session_untitled">Untitled session</string>
     <string name="status_running">Running</string>
+    <!-- TalkBack for a session card's "3/7" (its task list); the quantity is the total. -->
+    <plurals name="tasks_done">
+        <item quantity="one">%1$d of %2$d task done</item>
+        <item quantity="other">%1$d of %2$d tasks done</item>
+    </plurals>
     <string name="status_idle">Idle</string>
     <string name="status_needs_input">Needs input</string>
     <string name="status_ended">Ended</string>
@@ -192,6 +197,8 @@
     <string name="settings_ask_provider">Quick Ask provider</string>
     <string name="settings_monitoring">Background alerts</string>
     <string name="settings_monitoring_detail">Stays connected when closed; uses more battery</string>
+    <string name="settings_live_updates">Live Updates for long turns</string>
+    <string name="settings_live_updates_detail">Over 1 min or with a task list</string>
     <string name="settings_notifications_off">Notifications are off</string>
     <string name="settings_notifications_open">Allow them in app settings</string>
     <string name="settings_token">Enter token</string>
@@ -228,6 +235,7 @@
     <string name="channel_requests">Requests</string>
     <string name="channel_updates">Task updates</string>
     <string name="channel_monitor">Background connection</string>
+    <string name="channel_live">Long turns</string>
     <string name="notify_done">Finished</string>
     <!-- A usage-limit alert's title: the agents' own English, in every locale. -->
     <string name="notify_limit" translatable="false">Usage limit reached</string>

@@ -37,6 +37,7 @@ import dev.wristline.watch.data.Holder
 import dev.wristline.watch.data.PendingRequest
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -94,9 +95,13 @@ private fun ongoingParts(counts: OngoingCounts, running: (Int) -> String, waitin
  * released, so the socket closes and the bridge's presence for this watch goes false; the status
  * reads "Not worn" meanwhile. Putting the watch back on reconnects.
  *
- * The bridge does not push session changes other than needs-input ones to a background client, so
+ * Older bridges do not push session changes other than needs-input ones to a background client, so
  * the screen turning on (when the Now Bar can be seen) fetches the session list once
  * ([Bridge.refreshOnScreenOn]) and the counts follow it.
+ *
+ * Long turns also get a Live Update each ([LiveUpdates], [Notifier.liveUpdate]) while the setting
+ * is on ([dev.wristline.watch.data.Prefs.liveUpdates]); newer bridges push the status and task-list
+ * changes they follow.
  *
  * Runs only while the user has it on in Settings ([dev.wristline.watch.data.Prefs.monitoring]).
  * There is no boot receiver: after a reboot, or when the system stops the service, it starts
@@ -110,6 +115,10 @@ class MonitorService : Service() {
     /** The Now Bar icon and the waiting count drawn on it, re-rendered only when the count changes. */
     private var nowBarIcon: Icon? = null
     private var nowBarIconCount = -1
+
+    /** Bumped when a running session becomes due for a Live Update by age alone ([LiveUpdates.nextDueAt]). */
+    private val liveTick = MutableStateFlow(0)
+    private var liveTimer: Job? = null
 
     /** False while the off-body sensor says the watch is not worn; the hold follows it. */
     private val worn = MutableStateFlow(true)
@@ -212,6 +221,31 @@ class MonitorService : Service() {
                 }
         }
         scope.launch {
+            combine(Bridge.sessions, prefs.liveUpdatesState, liveTick) { sessions, on, _ -> if (on) sessions else emptyList() }
+                .conflate()
+                .collect { sessions ->
+                    val now = System.currentTimeMillis()
+                    for (change in liveUpdates.plan(sessions, now)) {
+                        when (change) {
+                            is LiveChange.Post -> {
+                                val session = sessions.firstOrNull { it.id == change.update.sessionId }
+                                if (!Notifier.liveUpdate(this@MonitorService, change.update, session)) liveUpdates.forget(change.update.sessionId)
+                            }
+                            is LiveChange.Cancel -> Notifier.cancelLiveUpdate(this@MonitorService, change.sessionId)
+                        }
+                    }
+                    liveTimer?.cancel()
+                    liveTimer = liveUpdates.nextDueAt(sessions, now)?.let { at ->
+                        scope.launch {
+                            delay(at - now)
+                            liveTick.value++
+                        }
+                    }
+                    // Changes meanwhile are conflated into the next round.
+                    delay(LIVE_UPDATE_INTERVAL_MS)
+                }
+        }
+        scope.launch {
             Bridge.conn.first { it is Conn.Unauthorized || it is Conn.NotPaired }
             prefs.monitoring = false
             stopSelf()
@@ -221,6 +255,10 @@ class MonitorService : Service() {
 
     override fun onDestroy() {
         scope.cancel()
+        // Nothing would update or end them any more.
+        for (change in liveUpdates.plan(emptyList(), System.currentTimeMillis())) {
+            if (change is LiveChange.Cancel) Notifier.cancelLiveUpdate(this, change.sessionId)
+        }
         getSystemService(SensorManager::class.java).unregisterListener(offBody)
         if (running) unregisterReceiver(screenOn)
         if (running && worn.value) Bridge.release(Holder.SERVICE)
@@ -340,6 +378,9 @@ class MonitorService : Service() {
         private const val BADGE_FILL = 0xFFFFD60A.toInt() // Status.Attention
         private const val BADGE_OUTLINE = 0xFF000000.toInt()
         private const val BADGE_TEXT = 0xFF000000.toInt()
+
+        /** The Live Updates this service posts; process-wide, so a swipe-away reaches it ([LiveUpdateDismissReceiver]). */
+        internal val liveUpdates = LiveUpdates()
 
         /**
          * Runs the service while monitoring is on, the watch is paired and notifications are

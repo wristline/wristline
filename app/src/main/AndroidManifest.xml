@@ -7,6 +7,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Live Updates of long turns (Wear OS 7). A normal permission, granted at install; the user can
+         still turn them off in the system settings (Notifier.canPostLiveUpdates). -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <!-- One haptic tick when a request arrives while the app is open; notifications vibrate through their channel. -->
@@ -71,6 +74,11 @@
         <!-- Allow or Deny on a request notification; only the app's own PendingIntents reach it. -->
         <receiver
             android:name=".NotificationActionReceiver"
+            android:exported="false" />
+
+        <!-- A Live Update swiped away; only the app's own PendingIntents reach it. -->
+        <receiver
+            android:name=".LiveUpdateDismissReceiver"
             android:exported="false" />
     </application>
 

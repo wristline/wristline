@@ -91,6 +91,11 @@ object AskStatus {
 @Serializable
 data class ContextUsage(val used: Long, val window: Long)
 
+/** The agent's task list: [done] of [total] tasks. */
+@Immutable
+@Serializable
+data class TaskProgress(val done: Int, val total: Int)
+
 /** Absent on a session or usage entry means a single or unknown account. */
 @Immutable
 @Serializable
@@ -124,6 +129,10 @@ data class Session(
     val model: String? = null,
     /** Reasoning effort, e.g. `xhigh`; absent when unknown or not applicable. */
     val effort: String? = null,
+    /** ISO 8601: when the current turn started; set while [status] is running, absent otherwise and from older bridges. */
+    val turnStartedAt: String? = null,
+    /** The agent's task list, while it has one; absent otherwise and from older bridges. */
+    val progress: TaskProgress? = null,
 )
 
 @Immutable
@@ -392,8 +401,8 @@ fun subscribeMessage(sessionId: String?, kinds: List<String>? = null): String =
 
 /**
  * `{type:'mode', mode:'foreground'|'background'}`. In the background mode the bridge sends only
- * `request`, `resolved`, `alert` and the `session` events that enter or leave needs_input; a new
- * socket starts in the foreground mode.
+ * `request`, `resolved`, `alert` and the `session` events that change a status or task-list progress
+ * (older bridges: only those entering or leaving needs_input); a new socket starts in the foreground mode.
  */
 fun modeMessage(background: Boolean): String =
     buildJsonObject {

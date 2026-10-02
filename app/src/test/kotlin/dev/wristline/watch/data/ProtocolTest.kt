@@ -297,6 +297,23 @@ class ProtocolTest {
         assertNull(list[2].effort)
     }
 
+    // Not in the fixtures yet (synced from the bridge later): both optional.
+    @Test
+    fun sessionTurnStartAndProgressDecodeWhenPresent() {
+        val list = decode<SessionList>(
+            WireJson.parseToJsonElement(
+                """{"sessions":[
+                   {"id":"claude-code:1","provider":"claude-code","status":"running","lastActivity":"2026-10-02T00:00:00Z",
+                    "turnStartedAt":"2026-10-02T00:00:00Z","progress":{"done":3,"total":7,"future":true}},
+                   {"id":"codex:2","provider":"codex","status":"idle","lastActivity":"2026-10-02T00:00:00Z"}]}""",
+            ) as JsonObject,
+        ).sessions
+        assertEquals("2026-10-02T00:00:00Z", list[0].turnStartedAt)
+        assertEquals(TaskProgress(3, 7), list[0].progress)
+        assertNull(list[1].turnStartedAt)
+        assertNull(list[1].progress)
+    }
+
     @Test
     fun usageKeyIsProviderAndAccountId() {
         val at = "2026-09-29T00:00:00Z"
