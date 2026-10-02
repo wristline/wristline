@@ -80,10 +80,10 @@ class NotifierTest {
         val zone = ZoneId.of("Asia/Seoul")
         val now = ZonedDateTime.of(2026, 9, 29, 12, 0, 0, 0, zone).toInstant().toEpochMilli()
         val evening = ZonedDateTime.of(2026, 9, 29, 19, 40, 0, 0, zone).toInstant().toEpochMilli()
-        assertEquals("◷ 7:40 PM", Notifier.limitEndText(LimitEnd.At(evening, estimated = false), now, zone, is24Hour = false))
-        assertEquals("◷ ~7:40 PM", Notifier.limitEndText(LimitEnd.At(evening, estimated = true), now, zone, is24Hour = false))
+        assertEquals("◷ 07:40 PM", Notifier.limitEndText(LimitEnd.At(evening, estimated = false), now, zone, is24Hour = false))
+        assertEquals("◷ ~07:40 PM", Notifier.limitEndText(LimitEnd.At(evening, estimated = true), now, zone, is24Hour = false))
         assertEquals("¤ credits", Notifier.limitEndText(LimitEnd.Credits, now, zone, is24Hour = false))
-        assertEquals("Fix CI · ◷ 7:40 PM", Notifier.limitText("Fix CI", "◷ 7:40 PM"))
+        assertEquals("Fix CI · ◷ 07:40 PM", Notifier.limitText("Fix CI", "◷ 07:40 PM"))
         assertEquals("Fix CI", Notifier.limitText("Fix CI", null))
     }
 

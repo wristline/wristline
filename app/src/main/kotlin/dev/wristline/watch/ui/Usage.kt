@@ -328,8 +328,8 @@ internal fun remainingIn(minutes: Long): String {
 }
 
 private val CLOCK_24 = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
-private val CLOCK_12 = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
-private val CLOCK_12_DIGITS = DateTimeFormatter.ofPattern("h:mm", Locale.US)
+private val CLOCK_12 = DateTimeFormatter.ofPattern("hh:mm a", Locale.US)
+private val CLOCK_12_DIGITS = DateTimeFormatter.ofPattern("hh:mm", Locale.US)
 private val WEEKDAY = DateTimeFormatter.ofPattern("EEE", Locale.US)
 internal val MONTH_DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 
@@ -337,7 +337,7 @@ internal val MONTH_DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 private fun daysFrom(now: Long, time: ZonedDateTime): Long =
     ChronoUnit.DAYS.between(Instant.ofEpochMilli(now).atZone(time.zone).toLocalDate(), time.toLocalDate())
 
-/** [time]'s clock in English whatever the language: `14:30` when [is24Hour], else `2:30 PM`, or with [compact] `2:30p`. */
+/** [time]'s clock in English whatever the language: `14:30` when [is24Hour], else `02:30 PM` (the hour always two digits), or with [compact] `02:30p`. */
 internal fun clockText(time: ZonedDateTime, is24Hour: Boolean, compact: Boolean = false): String = when {
     is24Hour -> CLOCK_24.format(time)
     compact -> CLOCK_12_DIGITS.format(time) + if (time.hour < 12) "a" else "p"

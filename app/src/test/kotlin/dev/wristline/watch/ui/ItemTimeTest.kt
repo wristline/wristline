@@ -19,13 +19,13 @@ class ItemTimeTest {
     fun todayIsTheTimeAlone() {
         // 07:52Z is 16:52 in Seoul.
         assertEquals("16:52", itemTimeAt("2026-09-30T07:52:00Z", is24Hour = true))
-        assertEquals("4:52 PM", itemTimeAt("2026-09-30T07:52:00Z", is24Hour = false))
+        assertEquals("04:52 PM", itemTimeAt("2026-09-30T07:52:00Z", is24Hour = false))
     }
 
     @Test
     fun anotherDayLeadsWithTheDate() {
         assertEquals("Sep 29 16:52", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = true))
-        assertEquals("Sep 29 4:52 PM", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = false))
+        assertEquals("Sep 29 04:52 PM", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = false))
     }
 
     @Test
@@ -34,7 +34,7 @@ class ItemTimeTest {
         try {
             for (locale in listOf(Locale.US, Locale.KOREAN, Locale.KOREA)) {
                 Locale.setDefault(locale)
-                assertEquals("4:52 PM", itemTimeAt("2026-09-30T07:52:00Z", is24Hour = false))
+                assertEquals("04:52 PM", itemTimeAt("2026-09-30T07:52:00Z", is24Hour = false))
                 assertEquals("Sep 29 16:52", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = true))
             }
         } finally {

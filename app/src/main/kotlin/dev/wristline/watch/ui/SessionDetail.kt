@@ -734,8 +734,8 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
 
 /**
  * An item's time, after its date when it is not from [today]: on screen (no [locale]) in English
- * whatever the language, as the reset clocks ([clockText]: `16:52`, `4:52 PM`; the date as
- * [MONTH_DAY]: `Sep 29 4:52 PM`); for TalkBack in [locale] ([clockWords], an `M/d` date:
+ * whatever the language, as the reset clocks ([clockText]: `16:52`, `04:52 PM`; the date as
+ * [MONTH_DAY]: `Sep 29 04:52 PM`); for TalkBack in [locale] ([clockWords], an `M/d` date:
  * `9/29 오후 4:52`). In 24 hours when [is24Hour]. Null when [iso] does not parse.
  */
 internal fun itemTime(
@@ -759,28 +759,40 @@ internal fun itemTime(
  * does not parse.
  */
 @Composable
-private fun ItemTime(ts: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+private fun ItemTime(ts: String, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     val locale = LocalConfiguration.current.locales[0]
     val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
     val time = remember(ts, is24Hour) { itemTime(ts, is24Hour) } ?: return
     val spoken = remember(ts, is24Hour, locale) { itemTime(ts, is24Hour, locale) } ?: time
     Text(
         time,
-        Modifier.semantics { contentDescription = spoken },
+        modifier.semantics { contentDescription = spoken },
         style = MaterialTheme.typography.labelSmall,
         color = color,
         maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
     )
 }
 
 /**
- * When the usage limit an error item reports ends ([limitEnd]): `◷ 7:40 PM` ([resetClockText], as of
- * the item's composition), read out as `resets today 7:40 PM`; `◷ ~7:40 PM` for an estimate, read
- * out as `resets around today 7:40 PM (estimated)`; a coin and `credits` when credits ran out, read
- * out as `credits exhausted`.
+ * The clock time a limit reported by an item at [itemAt] ends at, [resetsAt], in [zone]: the time
+ * alone when it falls on the item's day, as the item's time above it gives the date (`11:24 PM`
+ * under `Oct 1 07:53 PM`); otherwise as of [now] ([resetClockText]: `Fri 07:40 PM`, `Oct 1 07:53 PM`).
+ */
+internal fun limitEndClockText(resetsAt: Long, itemAt: Long?, now: Long, zone: ZoneId, is24Hour: Boolean): String {
+    val time = Instant.ofEpochMilli(resetsAt).atZone(zone)
+    if (itemAt != null && Instant.ofEpochMilli(itemAt).atZone(zone).toLocalDate() == time.toLocalDate()) return clockText(time, is24Hour)
+    return resetClockText(resetsAt, now, zone, is24Hour)
+}
+
+/**
+ * When the usage limit the error item of [itemTs] reports ends ([limitEnd]): `◷ 07:40 PM`
+ * ([limitEndClockText], as of the item's composition), read out as `resets today 7:40 PM`;
+ * `◷ ~07:40 PM` for an estimate, read out as `resets around today 7:40 PM (estimated)`; a coin and
+ * `credits` when credits ran out, read out as `credits exhausted`.
  */
 @Composable
-private fun ItemLimitEnd(end: LimitEnd) {
+private fun ItemLimitEnd(end: LimitEnd, itemTs: String) {
     val colors = MaterialTheme.colorScheme
     val style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
     val spoken: String
@@ -794,7 +806,7 @@ private fun ItemLimitEnd(end: LimitEnd) {
             val words = resetClockWords(end.millis, now, zone, LocalConfiguration.current.locales[0], is24Hour, stringResource(R.string.limit_today))
             spoken = stringResource(if (end.estimated) R.string.limit_resets_around else R.string.limit_resets_at, words)
             glyph = R.drawable.ic_clock
-            text = resetClockText(end.millis, now, zone, is24Hour)
+            text = limitEndClockText(end.millis, isoToMillis(itemTs), now, zone, is24Hour)
         }
         LimitEnd.Credits -> {
             spoken = stringResource(R.string.limit_credits)
@@ -879,8 +891,9 @@ private fun TransformingLazyColumnItemScope.ItemRow(
                             Modifier.size(PLAN_GLYPH),
                             tint = colors.error,
                         )
-                        ItemTime(item.ts, colors.error)
-                        limitEnd?.let { ItemLimitEnd(it) }
+                        // The limit's end keeps its width; a long item time gives way first, in an ellipsis.
+                        ItemTime(item.ts, Modifier.weight(1f, fill = false), colors.error)
+                        limitEnd?.let { ItemLimitEnd(it, item.ts) }
                     }
                 } else {
                     ItemTime(item.ts)

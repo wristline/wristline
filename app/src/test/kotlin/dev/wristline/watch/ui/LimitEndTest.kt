@@ -8,6 +8,7 @@ import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
 import dev.wristline.watch.data.UsageWindow
 import dev.wristline.watch.data.isoToMillis
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -66,5 +67,19 @@ class LimitEndTest {
     @Test
     fun anErrorThatIsNoLimitHasNoEnd() {
         assertNull(end(null, listOf(codex(work, 100.0, 100.0))))
+    }
+
+    @Test
+    fun theEndsClockIsTheTimeAloneOnTheItemsDayElseAsOfNow() {
+        val seoul = ZoneId.of("Asia/Seoul")
+        // Now is 12:00 on Friday 2 October in Seoul; the item is from 19:53 on Thursday 1 October.
+        val item = isoToMillis("2026-10-01T10:53:00Z")
+        val sameDay = isoToMillis("2026-10-01T14:24:00Z")!!
+        assertEquals("11:24 PM", limitEndClockText(sameDay, item, now, seoul, is24Hour = false))
+        assertEquals("23:24", limitEndClockText(sameDay, item, now, seoul, is24Hour = true))
+        // Another day than the item's: the weekday or date, as of now.
+        assertEquals("Oct 1 11:24 PM", limitEndClockText(sameDay, null, now, seoul, is24Hour = false))
+        assertEquals("Mon 06:00 PM", limitEndClockText(isoToMillis(week)!!, item, now, seoul, is24Hour = false))
+        assertEquals("07:40 PM", limitEndClockText(isoToMillis("2026-10-02T10:40:00Z")!!, item, now, seoul, is24Hour = false))
     }
 }

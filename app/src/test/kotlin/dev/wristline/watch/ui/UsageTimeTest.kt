@@ -71,12 +71,17 @@ class UsageTimeTest {
     @Test
     fun resetClockFollowsTheTwelveHourSetting() {
         assertEquals("11:30 PM", clock(at(29, 23, 30), is24Hour = false))
-        assertEquals("Fri 2:30 PM", clock(at(2, 14, 30, month = 10), is24Hour = false))
+        // The hour is always two digits.
+        assertEquals("07:53 PM", clock(at(29, 19, 53), is24Hour = false))
+        assertEquals("19:53", clock(at(29, 19, 53)))
+        assertEquals("Thu 07:40 PM", clock(at(1, 19, 40, month = 10), is24Hour = false))
+        assertEquals("Fri 02:30 PM", clock(at(2, 14, 30, month = 10), is24Hour = false))
         assertEquals("Wed 12:13 AM", clock(at(30, 0, 13), is24Hour = false))
-        assertEquals("Oct 8 9:05 AM", clock(at(8, 9, 5, month = 10), is24Hour = false))
+        assertEquals("Oct 8 09:05 AM", clock(at(8, 9, 5, month = 10), is24Hour = false))
         // Compact, for the limit card when the full form does not fit.
-        assertEquals("Fri 2:30p", clock(at(2, 14, 30, month = 10), is24Hour = false, compact = true))
+        assertEquals("Fri 02:30p", clock(at(2, 14, 30, month = 10), is24Hour = false, compact = true))
         assertEquals("Wed 12:13a", clock(at(30, 0, 13), is24Hour = false, compact = true))
+        assertEquals("Thu 07:40p", clock(at(1, 19, 40, month = 10), is24Hour = false, compact = true))
         assertEquals("12:00p", resetClockText(at(30, 12, 0), at(30, 9, 0), seoul, is24Hour = false, compact = true))
         // Compact changes nothing in 24 hours.
         assertEquals("Fri 14:30", clock(at(2, 14, 30, month = 10), compact = true))

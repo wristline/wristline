@@ -247,11 +247,11 @@ object Notifier {
         )
     }
 
-    /** `Fix CI · ◷ 7:40 PM`: the session, then when the limit ends ([limitEndText]) when known. */
+    /** `Fix CI · ◷ 07:40 PM`: the session, then when the limit ends ([limitEndText]) when known. */
     internal fun limitText(sessionTitle: String, end: String?): String =
         if (end == null) sessionTitle else "$sessionTitle · $end"
 
-    /** When a limit ends, in English as its card shows it: `◷ 7:40 PM`, `◷ ~7:40 PM` (estimated) or `¤ credits` ([resetClockText]). */
+    /** When a limit ends, in English as its card shows it: `◷ 07:40 PM`, `◷ ~07:40 PM` (estimated) or `¤ credits` ([resetClockText]). */
     internal fun limitEndText(end: LimitEnd, now: Long, zone: ZoneId, is24Hour: Boolean): String = when (end) {
         is LimitEnd.At -> "◷ " + (if (end.estimated) "~" else "") + resetClockText(end.millis, now, zone, is24Hour)
         LimitEnd.Credits -> "¤ credits"
@@ -347,11 +347,7 @@ object Notifier {
             .setOnlyAlertOnce(alertOnce)
             .setSilent(silent)
             .apply { timeoutMs?.let(::setTimeoutAfter) }
-            // Open first, as the content action: on Wear OS a tap on the notification itself opens its
-            // session or request, without scrolling to an Open button. Allow and Deny follow.
-            .addAction(NotificationCompat.Action.Builder(R.drawable.ic_open, context.getString(R.string.notify_open), openIntent).build())
             .apply { actions.forEach(::addAction) }
-            .extend(NotificationCompat.WearableExtender().setContentAction(0).setHintContentIntentLaunchesActivity(true))
             .build()
         NotificationManagerCompat.from(context).notify(tag, id, notification)
         return true
