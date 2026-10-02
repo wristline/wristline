@@ -24,8 +24,8 @@ class ItemTimeTest {
 
     @Test
     fun anotherDayLeadsWithTheDate() {
-        assertEquals("9/29 16:52", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = true))
-        assertEquals("9/29 4:52 PM", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = false))
+        assertEquals("Sep 29 16:52", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = true))
+        assertEquals("Sep 29 4:52 PM", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = false))
     }
 
     @Test
@@ -35,7 +35,7 @@ class ItemTimeTest {
             for (locale in listOf(Locale.US, Locale.KOREAN, Locale.KOREA)) {
                 Locale.setDefault(locale)
                 assertEquals("4:52 PM", itemTimeAt("2026-09-30T07:52:00Z", is24Hour = false))
-                assertEquals("9/29 16:52", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = true))
+                assertEquals("Sep 29 16:52", itemTimeAt("2026-09-29T07:52:00Z", is24Hour = true))
             }
         } finally {
             Locale.setDefault(default)

@@ -331,7 +331,7 @@ private val CLOCK_24 = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 private val CLOCK_12 = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 private val CLOCK_12_DIGITS = DateTimeFormatter.ofPattern("h:mm", Locale.US)
 private val WEEKDAY = DateTimeFormatter.ofPattern("EEE", Locale.US)
-private val MONTH_DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
+internal val MONTH_DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 
 /** Calendar days in [zone] from [now] to [time]: 0 today, 1 tomorrow; negative before today. */
 private fun daysFrom(now: Long, time: ZonedDateTime): Long =

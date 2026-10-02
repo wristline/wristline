@@ -700,10 +700,10 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
 }
 
 /**
- * An item's time, after its `M/d` date when it is not from [today]: on screen (no [locale]) in
- * English whatever the language, as the reset clocks ([clockText]: `16:52`, `4:52 PM`); for
- * TalkBack in [locale] ([clockWords]: `오후 4:52`). In 24 hours when [is24Hour]. Null when [iso]
- * does not parse.
+ * An item's time, after its date when it is not from [today]: on screen (no [locale]) in English
+ * whatever the language, as the reset clocks ([clockText]: `16:52`, `4:52 PM`; the date as
+ * [MONTH_DAY]: `Sep 29 4:52 PM`); for TalkBack in [locale] ([clockWords], an `M/d` date:
+ * `9/29 오후 4:52`). In 24 hours when [is24Hour]. Null when [iso] does not parse.
  */
 internal fun itemTime(
     iso: String,
@@ -716,7 +716,8 @@ internal fun itemTime(
     val time = Instant.ofEpochMilli(millis).atZone(zone)
     val clock = if (locale == null) clockText(time, is24Hour) else clockWords(time, locale, is24Hour)
     if (time.toLocalDate() == today) return clock
-    return DateTimeFormatter.ofPattern("M/d", locale ?: Locale.US).format(time) + " " + clock
+    val date = if (locale == null) MONTH_DAY.format(time) else DateTimeFormatter.ofPattern("M/d", locale).format(time)
+    return "$date $clock"
 }
 
 /**

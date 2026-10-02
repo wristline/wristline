@@ -66,6 +66,7 @@ import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.Haptic
 import dev.wristline.watch.data.ProviderId
+import dev.wristline.watch.data.askProviders
 import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.thread
 import java.util.Locale
@@ -123,6 +124,10 @@ internal fun rememberQuickAsk(
     var confirming by remember { mutableStateOf(false) }
     var provider by remember { mutableStateOf(threadProvider ?: prefs.askProvider) }
     var error by remember { mutableStateOf<String?>(null) }
+    // Only the providers installed on the PC, as in Settings: the toggle never offers one that is not.
+    val available by Bridge.providers.collectAsStateWithLifecycle()
+    val choices = askProviders(available)
+    val chosen = provider.takeIf { it in choices } ?: choices.first()
     val label = stringResource(R.string.ask_prompt_label)
     // A switch in a dialog that was dismissed is not kept: each dialog opens on the thread's provider, or the default.
     val tryType = rememberTextInputLauncher(label) {
@@ -159,8 +164,8 @@ internal fun rememberQuickAsk(
                 onClick = {
                     confirming = false
                     scope.launch {
-                        val continued = threadId?.takeIf { provider == threadProvider }
-                        when (val sent = Bridge.ask(provider, draft, continued)) {
+                        val continued = threadId?.takeIf { chosen == threadProvider }
+                        when (val sent = Bridge.ask(chosen, draft, continued)) {
                             is AskSent.Started -> latestStarted(sent.askId)
                             is AskSent.Refused -> error = sent.code
                             AskSent.Unreachable -> error = "unreachable"
@@ -172,13 +177,18 @@ internal fun rememberQuickAsk(
         title = { Text(stringResource(R.string.ask_confirm_title)) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                // Tapping the badge switches the provider and makes it the default for next time.
+                // Tapping the badge switches the provider and makes it the default for next time;
+                // with only one installed it is just shown.
                 ProviderChip(
-                    provider = provider,
-                    onClick = {
-                        touch(Haptic.SEGMENT)
-                        provider = otherProvider(provider)
-                        if (threadId == null) prefs.askProvider = provider
+                    provider = chosen,
+                    onClick = if (choices.size > 1) {
+                        {
+                            touch(Haptic.SEGMENT)
+                            provider = otherProvider(chosen).takeIf { it in choices } ?: chosen
+                            if (threadId == null) prefs.askProvider = provider
+                        }
+                    } else {
+                        null
                     },
                 )
                 DialogMessage(draft)
@@ -210,13 +220,13 @@ internal fun rememberQuickAsk(
     }
 }
 
-/** The provider's badge with its name beside it (never colour alone), as one 48dp-tall tap target. */
+/** The provider's badge with its name beside it (never colour alone), as one 48dp-tall tap target; not one without [onClick]. */
 @Composable
-private fun ProviderChip(provider: String, onClick: () -> Unit) {
+private fun ProviderChip(provider: String, onClick: (() -> Unit)?) {
     Row(
         Modifier
             .clip(CircleShape)
-            .clickable(onClick = onClick, role = Role.Button)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick, role = Role.Button) else Modifier)
             .defaultMinSize(minHeight = 48.dp)
             .padding(horizontal = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),

@@ -1,7 +1,8 @@
 package dev.wristline.watch.ui
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,7 +15,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,11 +26,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -59,7 +66,6 @@ import androidx.wear.compose.material3.SurfaceTransformation
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TextDefaults
 import androidx.wear.compose.material3.TextToggleButton
-import androidx.wear.compose.material3.TextToggleButtonDefaults
 import androidx.wear.compose.material3.lazy.TransformationSpec
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import androidx.wear.compose.material3.lazy.transformedHeight
@@ -144,8 +150,19 @@ private val PICK_GAP_TIGHT = 2.dp
 /** A picker tab: room for `ABC` in three that fit across the round screen low in the list. */
 private val TAB_WIDTH = 56.dp
 
+/**
+ * A color swatch: six in a row fit across the round screen under the name. Smaller than the
+ * minimum touch target, which Compose's hit test extends each to (the nearest wins where they meet).
+ */
+private val SWATCH_SIZE = 30.dp
+private val SWATCH_GAP = 3.dp
+
+/** The selected pick's rings ([selectedRing]): the outer and the inner one. */
+private val RING_OUTER = 3.dp
+private val RING_INNER = 2.dp
+
 /** The badge's enlarged copy beside the actual size in the account's preview. */
-private const val PREVIEW_SCALE = 3f
+private const val PREVIEW_SCALE = 2f
 
 /**
  * The accounts the Accounts screen lists: per provider with more than one ([markedProviders]), in
@@ -265,9 +282,11 @@ internal fun AccountScreen(key: String) {
 /**
  * One account. Pinned at the top, its badge at the size the cards show it and enlarged, so every
  * choice shows there at once. Under it, scrolling: its name (the nickname, in place of the label
- * everywhere; a tap renames it), its provider and `Default`; its mark in tabs ([MarkTab]: Auto
- * among the letters; the ones its provider's other accounts show dimmed); its color ([MarkColor]);
- * Reset to auto. A choice applies at once, as the Wear settings screens do.
+ * everywhere; a tap renames it) with its provider and `Default` beside it; its color
+ * ([MarkColor]), which goes with every mark, in one row; its mark in tabs ([MarkTab]: Auto among
+ * the letters; the ones its provider's other accounts show dimmed); Reset to auto. Kept tight so
+ * the preview, name, colors, tabs and the first row of marks show at once. A choice applies at
+ * once, as the Wear settings screens do.
  */
 @Composable
 internal fun AccountContent(
@@ -311,22 +330,52 @@ internal fun AccountContent(
                 }
                 item(key = "name") {
                     val rename = stringResource(R.string.account_rename)
+                    val provider = providerLabel(style.provider)
+                    val caption = if (style.primary) "$provider · ${stringResource(R.string.accounts_primary)}" else provider
                     CompactButton(
                         onClick = onRename,
+                        // The caption is said with the preview.
                         modifier = Modifier.transformedHeight(this, spec).semantics { onClick(label = rename) { onRename(); true } },
                         colors = ButtonDefaults.filledTonalButtonColors(),
                         transformation = SurfaceTransformation(spec),
                         icon = { Icon(painterResource(R.drawable.ic_edit), null, Modifier.size(ButtonDefaults.ExtraSmallIconSize)) },
-                        label = { Text(style.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        label = {
+                            Text(
+                                style.name,
+                                Modifier.weight(1f, fill = false),
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                " · $caption",
+                                Modifier.clearAndSetSemantics {},
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                            )
+                        },
                     )
                 }
-                item(key = "provider") {
-                    val provider = providerLabel(style.provider)
-                    // Said with the preview: a line this short would be skipped (minListItemHeight), and is kept short for room.
-                    CaptionText(
-                        if (style.primary) "$provider · ${stringResource(R.string.accounts_primary)}" else provider,
-                        Modifier.edgeTransform(this, spec).clearAndSetSemantics {},
-                    )
+                item(key = "colors") {
+                    val ring = MaterialTheme.colorScheme.onSurface
+                    val gap = MaterialTheme.colorScheme.background
+                    PickRow(this, spec, Modifier.selectableGroup(), gap = SWATCH_GAP) {
+                        for (color in MarkColor.entries) {
+                            val checked = markColor(style.color) == color
+                            val name = colorName(color)
+                            Box(
+                                Modifier
+                                    .size(SWATCH_SIZE)
+                                    .clip(CircleShape)
+                                    .background(color.disc)
+                                    .selectable(selected = checked, role = Role.RadioButton) { onColor(color.id) }
+                                    .semantics { contentDescription = name }
+                                    .selectedRing(checked, ring, gap),
+                                contentAlignment = Alignment.Center,
+                            ) { Text(style.glyph, color = color.glyph, style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+                        }
+                    }
                 }
                 item(key = "tabs") {
                     PickRow(this, spec, Modifier.selectableGroup(), gap = PICK_GAP_TIGHT * 2) {
@@ -357,36 +406,16 @@ internal fun AccountContent(
                                 }
                                 val taken = mark.value in used
                                 val description = if (taken) stringResource(R.string.account_mark_used, mark.value, others[mark.value].orEmpty()) else null
+                                val checked = style.mark?.value == mark.value
                                 TextToggleButton(
-                                    checked = style.mark?.value == mark.value,
+                                    checked = checked,
                                     onCheckedChange = { on -> onMark(mark.takeIf { on }) },
                                     enabled = !taken,
                                     modifier = Modifier
                                         .touchTargetAwareSize(PICK_SIZE)
+                                        .selectedRing(checked, MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.background)
                                         .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier),
                                 ) { Text(mark.value, style = MaterialTheme.typography.titleMedium) }
-                            }
-                        }
-                    }
-                }
-                MarkColor.entries.chunked(3).forEachIndexed { row, colors ->
-                    item(key = "colors/$row") {
-                        PickRow(this, spec) {
-                            for (color in colors) {
-                                val checked = markColor(style.color) == color
-                                val name = colorName(color)
-                                TextToggleButton(
-                                    checked = checked,
-                                    onCheckedChange = { onColor(color.id) },
-                                    modifier = Modifier.touchTargetAwareSize(PICK_SIZE).semantics { contentDescription = name },
-                                    colors = TextToggleButtonDefaults.colors(
-                                        checkedContainerColor = color.disc,
-                                        checkedContentColor = color.glyph,
-                                        uncheckedContainerColor = color.disc,
-                                        uncheckedContentColor = color.glyph,
-                                    ),
-                                    border = if (checked) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else null,
-                                ) { Text(style.glyph, style = MaterialTheme.typography.titleMedium) }
                             }
                         }
                     }
@@ -424,9 +453,9 @@ private fun AccountPreview(style: AccountStyle, modifier: Modifier = Modifier) {
     Row(
         modifier
             .fillMaxWidth()
-            .padding(bottom = 4.dp)
+            .padding(bottom = 2.dp)
             .clearAndSetSemantics { contentDescription = spoken },
-        horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BadgeWithMark(style.provider, look, decorative = true)
@@ -441,7 +470,10 @@ private fun AutoButton(auto: String, checked: Boolean, onSelect: () -> Unit) {
     TextToggleButton(
         checked = checked,
         onCheckedChange = { onSelect() },
-        modifier = Modifier.touchTargetAwareSize(PICK_SIZE).semantics { contentDescription = description },
+        modifier = Modifier
+            .touchTargetAwareSize(PICK_SIZE)
+            .selectedRing(checked, MaterialTheme.colorScheme.onSurface, MaterialTheme.colorScheme.background)
+            .semantics { contentDescription = description },
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(auto, style = MaterialTheme.typography.titleMedium, maxLines = 1)
@@ -449,6 +481,25 @@ private fun AutoButton(auto: String, checked: Boolean, onSelect: () -> Unit) {
         }
     }
 }
+
+/**
+ * A selected pick's mark, the same on every color and fill: a [RING_OUTER] ring in [ring] (white)
+ * around a [RING_INNER] one in [gap] (the black background), which shows on a white disc as on a
+ * blue one; nothing when not [selected].
+ */
+private fun Modifier.selectedRing(selected: Boolean, ring: Color, gap: Color): Modifier =
+    if (!selected) {
+        this
+    } else {
+        drawWithContent {
+            drawContent()
+            val outer = RING_OUTER.toPx()
+            val inner = RING_INNER.toPx()
+            val radius = size.minDimension / 2
+            drawCircle(ring, radius = radius - outer / 2, style = Stroke(outer))
+            drawCircle(gap, radius = radius - outer - inner / 2, style = Stroke(inner))
+        }
+    }
 
 @Composable
 private fun TransformingLazyColumnItemScope.Header(text: String, spec: TransformationSpec) {
