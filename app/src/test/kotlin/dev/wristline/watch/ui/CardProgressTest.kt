@@ -1,5 +1,6 @@
 package dev.wristline.watch.ui
 
+import dev.wristline.watch.data.PROGRESS_AGENTS
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
@@ -40,5 +41,14 @@ class CardProgressTest {
         assertEquals("3/7", detailProgressText(TaskProgress(3, 7, current = " ")))
         // Clamped as on the card, the task kept.
         assertEquals("7/7 · Ship", detailProgressText(cardProgress(session(SessionStatus.RUNNING, TaskProgress(9, 7, current = "Ship")))!!))
+    }
+
+    @Test
+    fun subAgentCountIsLabelledAgents() {
+        val agents = TaskProgress(1, 2, kind = PROGRESS_AGENTS)
+        assertEquals("1/2 agents · Review the diff", detailProgressText(agents.copy(current = "Review the diff")))
+        assertEquals("1/2 agents", detailProgressText(agents))
+        // The card keeps the count alone.
+        assertEquals("1/2", cardProgressText(cardProgress(session(SessionStatus.RUNNING, agents))!!))
     }
 }

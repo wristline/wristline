@@ -70,6 +70,9 @@
     </plurals>
     <string name="session_untitled">제목 없는 세션</string>
     <string name="status_running">실행 중</string>
+    <plurals name="agents_done">
+        <item quantity="other">백그라운드 에이전트 %2$d개 중 %1$d개 완료</item>
+    </plurals>
     <plurals name="tasks_done">
         <item quantity="other">작업 %2$d개 중 %1$d개 완료</item>
     </plurals>

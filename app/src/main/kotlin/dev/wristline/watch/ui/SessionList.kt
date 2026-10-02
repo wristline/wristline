@@ -609,7 +609,7 @@ private fun TransformingLazyColumnItemScope.SessionCard(
             AgoText(session.lastActivity, now, color = muted, style = MaterialTheme.typography.labelSmall)
             Text("·", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             cardProgress(session)?.let { progress ->
-                val spoken = pluralStringResource(R.plurals.tasks_done, progress.total, progress.done, progress.total)
+                val spoken = pluralStringResource(progressDoneRes(progress), progress.total, progress.done, progress.total)
                 Text(
                     cardProgressText(progress),
                     Modifier.clearAndSetSemantics { contentDescription = spoken },
@@ -632,6 +632,9 @@ internal fun cardProgress(session: Session): TaskProgress? =
 
 /** `3/7`, in every locale. */
 internal fun cardProgressText(progress: TaskProgress): String = "${progress.done}/${progress.total}"
+
+/** [progress] read out: `3 of 7 tasks done`, or `1 of 2 agents done` for a count of sub-agents. */
+internal fun progressDoneRes(progress: TaskProgress): Int = if (progress.agents) R.plurals.agents_done else R.plurals.tasks_done
 
 /** A session card's title space never shrinks below this for the model and effort after it. */
 private val TITLE_MIN = 80.dp

@@ -34,6 +34,7 @@ import dev.wristline.watch.ui.errorRes
 import dev.wristline.watch.ui.limitEnd
 import dev.wristline.watch.ui.markedProviders
 import dev.wristline.watch.ui.permissionQuestion
+import dev.wristline.watch.ui.progressDoneRes
 import dev.wristline.watch.ui.resetClockText
 import java.time.ZoneId
 
@@ -117,8 +118,12 @@ object Notifier {
 
     /** The app's primary (the theme's), for the small icon here and in the Now Bar: gray without it. */
     val COLOR: Int = 0xFF4FA8FF.toInt()
-    /** The Live Updates' colour: the Now Bar draws their small icon on a disc of it, the expanded card's own background (sampled) so the disc vanishes. */
-    private val LIVE_COLOR: Int = 0xFF373738.toInt()
+    /**
+     * The Live Updates' colour, the icon's navy: the system draws a backdrop circle of it behind
+     * their small icon in the Now Bar. Samsung keeps its hue but normalises its lightness, and
+     * forces a neutral grey to a fixed grey whatever its shade, so only the hue is ours.
+     */
+    private val LIVE_COLOR: Int = 0xFF16324F.toInt()
     private val VIBRATION = longArrayOf(0, 250, 150, 250)
     private val SHORT_VIBRATION = longArrayOf(0, 200)
 
@@ -322,7 +327,7 @@ object Notifier {
         val spoken = when {
             update.waiting -> context.getString(R.string.status_needs_input)
             else -> listOfNotNull(
-                progress?.let { context.resources.getQuantityString(R.plurals.tasks_done, it.total, it.done, it.total) }
+                progress?.let { context.resources.getQuantityString(progressDoneRes(it), it.total, it.done, it.total) }
                     ?: context.getString(R.string.status_running),
                 progress?.let { liveCurrent(update) },
                 update.minutes?.let { context.resources.getQuantityString(R.plurals.duration_minutes, it, it) },

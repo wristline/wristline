@@ -307,7 +307,9 @@ class ProtocolTest {
                     "turnStartedAt":"2026-10-02T00:00:00Z","progress":{"done":3,"total":7,"future":true}},
                    {"id":"codex:2","provider":"codex","status":"idle","lastActivity":"2026-10-02T00:00:00Z"},
                    {"id":"claude-code:3","provider":"claude-code","status":"running","lastActivity":"2026-10-02T00:00:00Z",
-                    "progress":{"done":1,"total":4,"current":"Run the tests"}}]}""",
+                    "progress":{"done":1,"total":4,"current":"Run the tests"}},
+                   {"id":"claude-code:4","provider":"claude-code","status":"running","lastActivity":"2026-10-02T00:00:00Z",
+                    "progress":{"done":1,"total":2,"kind":"agents"}}]}""",
             ) as JsonObject,
         ).sessions
         assertEquals("2026-10-02T00:00:00Z", list[0].turnStartedAt)
@@ -315,6 +317,9 @@ class ProtocolTest {
         assertNull(list[1].turnStartedAt)
         assertNull(list[1].progress)
         assertEquals(TaskProgress(1, 4, current = "Run the tests"), list[2].progress)
+        assertFalse(list[2].progress!!.agents)
+        assertEquals(TaskProgress(1, 2, kind = PROGRESS_AGENTS), list[3].progress)
+        assertTrue(list[3].progress!!.agents)
     }
 
     @Test

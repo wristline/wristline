@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import dev.wristline.watch.data.PROGRESS_AGENTS
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.TaskProgress
@@ -75,19 +76,21 @@ internal fun liveUpdateChip(update: LiveUpdate): String {
 
 /**
  * The content title, the Now Bar expanded card's second line: the session's [title] first, then the
- * task in progress (`Fix CI · Run the tests`); the system ellipsizes what does not fit.
+ * task in progress (`Fix CI · Run the tests`), or `agents` for a count of sub-agents with none
+ * (`Fix CI · agents`); the system ellipsizes what does not fit.
  */
 internal fun liveUpdateTitle(title: String, update: LiveUpdate): String =
-    liveCurrent(update)?.let { "$title · $it" } ?: title
+    (liveCurrent(update) ?: PROGRESS_AGENTS.takeIf { liveProgress(update)?.agents == true })?.let { "$title · $it" } ?: title
 
 /**
  * The text under the title, for the shade: `3/7 done · Run the tests · 12m` with a task list (the
- * task and the minutes when known), `running · 12m` without one, `✋ waiting` while waiting.
+ * task and the minutes when known), `1/2 agents · …` for a count of sub-agents, `running · 12m`
+ * without one, `✋ waiting` while waiting.
  */
 internal fun liveUpdateText(update: LiveUpdate): String {
     if (update.waiting) return "✋ waiting"
     val progress = liveProgress(update)
-    val status = progress?.let { "${it.done}/${it.total} done" } ?: "running"
+    val status = progress?.let { "${it.done}/${it.total} ${if (it.agents) PROGRESS_AGENTS else "done"}" } ?: "running"
     return listOfNotNull(status, progress?.let { liveCurrent(update) }, update.minutes?.let { "${it}m" }).joinToString(" · ")
 }
 

@@ -75,6 +75,10 @@
     <string name="session_untitled">Untitled session</string>
     <string name="status_running">Running</string>
     <!-- TalkBack for a session card's "3/7" (its task list); the quantity is the total. -->
+    <plurals name="agents_done">
+        <item quantity="one">%1$d of %2$d agent done</item>
+        <item quantity="other">%1$d of %2$d agents done</item>
+    </plurals>
     <plurals name="tasks_done">
         <item quantity="one">%1$d of %2$d task done</item>
         <item quantity="other">%1$d of %2$d tasks done</item>

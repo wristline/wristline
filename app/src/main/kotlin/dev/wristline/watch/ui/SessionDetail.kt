@@ -99,6 +99,7 @@ import dev.wristline.watch.data.ContextUsage
 import dev.wristline.watch.data.Item
 import dev.wristline.watch.data.ItemKind
 import dev.wristline.watch.data.LimitKind
+import dev.wristline.watch.data.PROGRESS_AGENTS
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.Session
@@ -711,7 +712,7 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
         title,
         providerLabel(session.provider),
         status,
-        progress?.let { pluralStringResource(R.plurals.tasks_done, it.total, it.done, it.total) },
+        progress?.let { pluralStringResource(progressDoneRes(it), it.total, it.done, it.total) },
         progress?.let { detailCurrent(it) },
         contextPercent(session.context)?.let { stringResource(R.string.detail_context_description, it.roundToInt()) },
         limit?.let { "${windowLabel(it)} ${it.usedPercent.roundToInt()}%" },
@@ -753,9 +754,15 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
 /** The title of [progress]'s task in progress, when the bridge sent one. */
 internal fun detailCurrent(progress: TaskProgress): String? = progress.current?.trim()?.takeIf { it.isNotEmpty() }
 
-/** The detail header's task list line, in every locale: `3/7 · Run the tests`, or `3/7` with no task in progress. */
+/**
+ * The detail header's task list line, in every locale: `3/7 · Run the tests`, or `3/7` with no task
+ * in progress; `1/2 agents · Review the diff` for a count of sub-agents.
+ */
 internal fun detailProgressText(progress: TaskProgress): String =
-    listOfNotNull(cardProgressText(progress), detailCurrent(progress)).joinToString(" · ")
+    listOfNotNull(
+        cardProgressText(progress) + if (progress.agents) " $PROGRESS_AGENTS" else "",
+        detailCurrent(progress),
+    ).joinToString(" · ")
 
 /**
  * An item's time, after its date when it is not from [today]: on screen (no [locale]) in English

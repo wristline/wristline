@@ -1,5 +1,6 @@
 package dev.wristline.watch
 
+import dev.wristline.watch.data.PROGRESS_AGENTS
 import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
@@ -190,6 +191,22 @@ class LiveUpdatesTest {
         assertEquals("7/7", liveUpdateChip(update(TaskProgress(9, 7))))
         assertEquals("▶", liveUpdateChip(update(TaskProgress(0, 0), minutes = null)))
         assertEquals("running · 1m", liveUpdateText(update(TaskProgress(0, 0, current = "Run the tests"))))
+    }
+
+    @Test
+    fun subAgentCountIsLabelledAgents() {
+        val agents = TaskProgress(1, 2, kind = PROGRESS_AGENTS)
+        val reviewing = agents.copy(current = "Review the diff")
+        assertEquals("Fix CI · agents", liveUpdateTitle("Fix CI", update(agents)))
+        assertEquals("Fix CI · Review the diff", liveUpdateTitle("Fix CI", update(reviewing)))
+        assertEquals("1/2 agents · Review the diff · 12m", liveUpdateText(update(reviewing, minutes = 12)))
+        assertEquals("1/2 agents · 1m", liveUpdateText(update(agents)))
+        assertEquals("✋ waiting", liveUpdateText(update(reviewing, waiting = true)))
+        // The chip is the count alone, as for tasks.
+        assertEquals("1/2", liveUpdateChip(update(reviewing)))
+        // Without a count it is no agents' line.
+        assertEquals("Fix CI", liveUpdateTitle("Fix CI", update(TaskProgress(0, 0, kind = PROGRESS_AGENTS))))
+        assertEquals("running · 1m", liveUpdateText(update(TaskProgress(0, 0, kind = PROGRESS_AGENTS))))
     }
 
     @Test

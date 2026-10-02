@@ -93,11 +93,18 @@ data class ContextUsage(val used: Long, val window: Long)
 
 /**
  * The agent's task list: [done] of [total] tasks; [current] is the title of the task in progress
- * (at most 80 characters), absent when none is or from older bridges.
+ * (at most 80 characters), absent when none is or from older bridges. [kind] is `agents` when the
+ * count is of background sub-agents rather than tasks; absent (tasks) from older bridges.
  */
 @Immutable
 @Serializable
-data class TaskProgress(val done: Int, val total: Int, val current: String? = null)
+data class TaskProgress(val done: Int, val total: Int, val current: String? = null, val kind: String? = null) {
+    /** The count is of background sub-agents ([kind] `agents`), not tasks. */
+    val agents: Boolean get() = kind == PROGRESS_AGENTS
+}
+
+/** [TaskProgress.kind] for a count of background sub-agents. */
+const val PROGRESS_AGENTS = "agents"
 
 /** Absent on a session or usage entry means a single or unknown account. */
 @Immutable
