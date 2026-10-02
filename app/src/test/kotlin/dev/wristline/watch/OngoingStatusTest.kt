@@ -37,27 +37,27 @@ class OngoingStatusTest {
     @Test
     fun countsRunningAndWaitingSessions() {
         // c needs input; the request waits on another session.
-        assertEquals("✋ 2", text(sessions, listOf(request("r1"))))
+        assertEquals("▶ 2 · ✋ 2", text(sessions, listOf(request("r1"))))
         assertEquals("실행 2, 대기 2", description(sessions, listOf(request("r1"))))
     }
 
     @Test
     fun countsASessionWaitingOnSeveralRequestsOnce() {
-        assertEquals("✋ 1", text(sessions, listOf(request("r1", "c"), request("r2", "c"))))
+        assertEquals("▶ 2 · ✋ 1", text(sessions, listOf(request("r1", "c"), request("r2", "c"))))
     }
 
     @Test
-    fun showsOnlyTheWaitingCount() {
-        assertEquals(ONGOING_IDLE, text(sessions.filterNot { it.id == "c" }, emptyList()))
+    fun showsBothCountsZerosIncluded() {
+        assertEquals("▶ 2 · ✋ 0", text(sessions.filterNot { it.id == "c" }, emptyList()))
         assertEquals("실행 2", description(sessions.filterNot { it.id == "c" }, emptyList()))
-        assertEquals("✋ 3", text(listOf(session("d", SessionStatus.IDLE)), listOf(request("r1", "x"), request("r2", "y"), request("r3", "z"))))
+        assertEquals("▶ 0 · ✋ 3", text(listOf(session("d", SessionStatus.IDLE)), listOf(request("r1", "x"), request("r2", "y"), request("r3", "z"))))
         assertEquals("대기 3", description(listOf(session("d", SessionStatus.IDLE)), listOf(request("r1", "x"), request("r2", "y"), request("r3", "z"))))
     }
 
     @Test
-    fun idleWhenNothingWaits() {
-        assertEquals(ONGOING_IDLE, text(emptyList(), emptyList()))
-        assertEquals(ONGOING_IDLE, text(listOf(session("d", SessionStatus.IDLE), session("e", SessionStatus.ENDED)), emptyList()))
+    fun zerosWhenNothingRunsOrWaits() {
+        assertEquals("▶ 0 · ✋ 0", text(emptyList(), emptyList()))
+        assertEquals("▶ 0 · ✋ 0", text(listOf(session("d", SessionStatus.IDLE), session("e", SessionStatus.ENDED)), emptyList()))
         assertEquals("실행 0, 대기 0", description(emptyList(), emptyList()))
     }
 
@@ -74,17 +74,20 @@ class OngoingStatusTest {
     @Test
     fun monitorRepostsOnlyForWhatItShows() {
         val shown = content(Conn.Online, sessions)
-        assertEquals(MonitorContent("✋ 1", 1), shown)
-        // More or fewer running sessions: the same card, nothing to post.
-        assertEquals(shown, content(Conn.Online, sessions + session("f", SessionStatus.RUNNING)))
-        assertEquals(shown, content(Conn.Online, sessions.filterNot { it.id == "a" }))
+        assertEquals(MonitorContent("▶ 2 · ✋ 1", waiting = 1, running = 2), shown)
+        // The same counts: the same card, nothing to post.
+        assertEquals(shown, content(Conn.Online, sessions + session("f", SessionStatus.IDLE)))
+        // Another running count: the text and the running badge change.
+        assertEquals(MonitorContent("▶ 3 · ✋ 1", waiting = 1, running = 3), content(Conn.Online, sessions + session("f", SessionStatus.RUNNING)))
         // Another waiting count: text and badge change.
-        assertEquals(MonitorContent("✋ 2", 2), content(Conn.Online, sessions, listOf(request("r1"))))
-        assertEquals(MonitorContent(ONGOING_IDLE, 0), content(Conn.Online, sessions.filterNot { it.id == "c" }))
-        // Not online or not worn: no badge, whatever waits.
-        assertEquals(MonitorContent("Connecting", 0), content(Conn.Connecting, sessions))
-        assertEquals(MonitorContent("Update", 0), content(Conn.Incompatible(2), sessions))
-        assertEquals(MonitorContent("Not worn", 0), content(Conn.Online, sessions, worn = false))
+        assertEquals(MonitorContent("▶ 2 · ✋ 2", waiting = 2, running = 2), content(Conn.Online, sessions, listOf(request("r1"))))
+        assertEquals(MonitorContent("▶ 2 · ✋ 0", running = 2), content(Conn.Online, sessions.filterNot { it.id == "c" }))
+        // Idle and online: the plain icon.
+        assertEquals(MonitorContent("▶ 0 · ✋ 0"), content(Conn.Online, emptyList()))
+        // Not online or not worn: grey, no badges, whatever runs or waits.
+        assertEquals(MonitorContent("Connecting", offline = true), content(Conn.Connecting, sessions))
+        assertEquals(MonitorContent("Update", offline = true), content(Conn.Incompatible(2), sessions))
+        assertEquals(MonitorContent("Not worn", offline = true), content(Conn.Online, sessions, worn = false))
     }
 
     @Test
@@ -113,5 +116,39 @@ class OngoingStatusTest {
         assertEquals("9+", many.label)
         assertEquals(one.radius, many.radius, 0f)
         assertTrue(many.textSize < one.textSize)
+    }
+
+    @Test
+    fun runningBadgeSitsAtTheBottomLeftAndCountsFromTwo() {
+        assertNull(ongoingRunningBadge(96, 0))
+        val one = ongoingRunningBadge(96, 1)!!
+        // One running: a plain dot.
+        assertEquals("", one.label)
+        assertTrue(one.cx - one.radius >= 0 && one.cx + one.radius <= 48)
+        assertTrue(one.cy - one.radius >= 48 && one.cy + one.radius <= 96)
+        // The waiting badge's size, mirrored.
+        val waiting = ongoingBadge(96, 1)!!
+        assertEquals(waiting.radius, one.radius, 0f)
+        assertEquals(96 - waiting.cx, one.cx, 0.01f)
+        assertEquals(96 - waiting.cy, one.cy, 0.01f)
+        assertEquals("2", ongoingRunningBadge(96, 2)!!.label)
+        assertEquals("9+", ongoingRunningBadge(96, 10)!!.label)
+    }
+
+    @Test
+    fun ringSitsAtTheEdgeAroundASmallerSquircle() {
+        val ring = ongoingRing(96)
+        assertEquals(96 * 0.08f, ring.stroke, 0.01f)
+        // The outer edge at the icon's edge.
+        assertEquals(48f, ring.radius + ring.stroke / 2, 0.01f)
+        // The squircle's corners (1.1766 half-widths out) clear the ring's inner edge.
+        val half = 48 - ring.inset
+        assertTrue(ring.inset > 0 && half * 1.1766f < ring.radius - ring.stroke / 2)
+        assertTrue(half * 1.1766f > ring.radius - ring.stroke / 2 - 3)
+        // The arc: clockwise from 12 o'clock, clamped.
+        assertEquals(0f, ongoingRingSweep(0f), 0f)
+        assertEquals(144f, ongoingRingSweep(0.4f), 0.01f)
+        assertEquals(360f, ongoingRingSweep(1.5f), 0f)
+        assertEquals(0f, ongoingRingSweep(-1f), 0f)
     }
 }

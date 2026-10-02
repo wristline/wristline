@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ic_ongoing greyed out, for the Now Bar card while the bridge is not reachable or the watch is
+     off the wrist (OngoingIcon, offline): the same shapes, the squircle and prompt in a light grey
+     and the dial in a dark one. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <group
+        android:pivotX="256"
+        android:pivotY="256"
+        android:scaleX="1.18"
+        android:scaleY="1.18">
+        <path
+            android:pathData="M180,40H332C424,40 472,88 472,180V332C472,424 424,472 332,472H180C88,472 40,424 40,332V180C40,88 88,40 180,40Z"
+            android:fillColor="#FF9A9A9E" />
+        <path
+            android:pathData="M256,70A186,186 0,1 0,256 442A186,186 0,1 0,256 70Z"
+            android:fillColor="#FF3A3A3C" />
+        <path
+            android:pathData="M172,190L238,256L172,322M276,322H340"
+            android:strokeWidth="46"
+            android:strokeColor="#FF9A9A9E"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

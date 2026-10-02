@@ -62,25 +62,24 @@ internal fun liveCurrent(update: LiveUpdate): String? = update.progress?.current
 
 /**
  * The status chip's text, also the first line of the Now Bar's expanded card: `✋` while waiting,
- * `3/7` with a task list, else `12m` since the turn started; `▶` when there is no number (no start,
- * or a task count longer than [LIVE_CHIP_MAX]). The icon beside it says whose it is, so a number
- * goes without a glyph and keeps the narrow chip's width.
+ * else `12m` since the turn started, with a task list too (the icon's ring and the title show the
+ * count); `▶` without a start. The icon beside it says whose it is, so a number goes without a
+ * glyph and keeps the narrow chip's width.
  */
 internal fun liveUpdateChip(update: LiveUpdate): String {
     if (update.waiting) return "✋"
-    liveProgress(update)?.let { progress ->
-        return "${progress.done}/${progress.total}".takeIf { it.length <= LIVE_CHIP_MAX } ?: "▶"
-    }
     return update.minutes?.let { "${it}m" } ?: "▶"
 }
 
 /**
  * The content title, the Now Bar expanded card's second line: the session's [title] first, then the
- * task in progress (`Fix CI · Run the tests`), or `agents` for a count of sub-agents with none
- * (`Fix CI · agents`); the system ellipsizes what does not fit.
+ * count and the task in progress (`Fix CI · 3/7 · Run the tests`; `Fix CI · 1/2 agents · …` for a
+ * count of sub-agents), each left out when missing; the system ellipsizes what does not fit.
  */
-internal fun liveUpdateTitle(title: String, update: LiveUpdate): String =
-    (liveCurrent(update) ?: PROGRESS_AGENTS.takeIf { liveProgress(update)?.agents == true })?.let { "$title · $it" } ?: title
+internal fun liveUpdateTitle(title: String, update: LiveUpdate): String {
+    val count = liveProgress(update)?.let { "${it.done}/${it.total}" + if (it.agents) " $PROGRESS_AGENTS" else "" }
+    return listOfNotNull(title, count, liveCurrent(update)).joinToString(" · ")
+}
 
 /**
  * The text under the title, for the shade: `3/7 done · Run the tests · 12m` with a task list (the

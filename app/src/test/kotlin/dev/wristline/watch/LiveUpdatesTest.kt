@@ -156,19 +156,18 @@ class LiveUpdatesTest {
     }
 
     @Test
-    fun chipShowsProgressElseMinutesWithinSevenCharacters() {
-        assertEquals("3/7", liveUpdateChip(update(TaskProgress(3, 7))))
+    fun chipShowsMinutesWithinSevenCharacters() {
+        assertEquals("1m", liveUpdateChip(update(TaskProgress(3, 7))))
         assertEquals("12m", liveUpdateChip(update(minutes = 12)))
         assertEquals("9999m", liveUpdateChip(update(minutes = 9_999)))
         assertEquals("✋", liveUpdateChip(update(waiting = true)))
         // No turn start: the glyph alone.
         assertEquals("▶", liveUpdateChip(update(minutes = null)))
-        // The count, however long it fits; too long: the glyph.
-        assertEquals("12/15", liveUpdateChip(update(TaskProgress(12, 15))))
-        assertEquals("100/200", liveUpdateChip(update(TaskProgress(100, 200))))
-        assertEquals("▶", liveUpdateChip(update(TaskProgress(1000, 2000))))
+        // The minutes with a task list too; without a start, the glyph.
+        assertEquals("12m", liveUpdateChip(update(TaskProgress(12, 15), minutes = 12)))
+        assertEquals("▶", liveUpdateChip(update(TaskProgress(3, 7), minutes = null)))
         // The task in progress is never on the chip.
-        assertEquals("3/7", liveUpdateChip(update(TaskProgress(3, 7, current = "Run the tests"))))
+        assertEquals("1m", liveUpdateChip(update(TaskProgress(3, 7, current = "Run the tests"))))
         val late = LiveUpdates().plan(listOf(session()), start + 100_000 * LIVE_UPDATE_AFTER_MS).single() as LiveChange.Post
         assertEquals("9999m", liveUpdateChip(late.update))
         for (chip in listOf(update(TaskProgress(100, 200)), update(minutes = 9_999), late.update).map(::liveUpdateChip)) {
@@ -181,14 +180,14 @@ class LiveUpdatesTest {
         assertEquals("1m", liveUpdateChip(update()))
         assertEquals("running · 1m", liveUpdateText(update()))
         assertEquals("running", liveUpdateText(update(minutes = null)))
-        assertEquals("3/7", liveUpdateChip(update(TaskProgress(3, 7))))
+        assertEquals("1m", liveUpdateChip(update(TaskProgress(3, 7))))
         assertEquals("3/7 done · 1m", liveUpdateText(update(TaskProgress(3, 7))))
         assertEquals("3/7 done · Run the tests · 12m", liveUpdateText(update(TaskProgress(3, 7, current = "Run the tests"), minutes = 12)))
         assertEquals("3/7 done · Run the tests", liveUpdateText(update(TaskProgress(3, 7, current = "Run the tests"), minutes = null)))
         assertEquals("✋", liveUpdateChip(update(TaskProgress(3, 7), waiting = true)))
         assertEquals("✋ waiting", liveUpdateText(update(TaskProgress(3, 7, current = "Run the tests"), waiting = true)))
         // Out of range from the bridge: clamped; an empty list is no list, nor its task.
-        assertEquals("7/7", liveUpdateChip(update(TaskProgress(9, 7))))
+        assertEquals("Fix CI · 7/7", liveUpdateTitle("Fix CI", update(TaskProgress(9, 7))))
         assertEquals("▶", liveUpdateChip(update(TaskProgress(0, 0), minutes = null)))
         assertEquals("running · 1m", liveUpdateText(update(TaskProgress(0, 0, current = "Run the tests"))))
     }
@@ -197,13 +196,13 @@ class LiveUpdatesTest {
     fun subAgentCountIsLabelledAgents() {
         val agents = TaskProgress(1, 2, kind = PROGRESS_AGENTS)
         val reviewing = agents.copy(current = "Review the diff")
-        assertEquals("Fix CI · agents", liveUpdateTitle("Fix CI", update(agents)))
-        assertEquals("Fix CI · Review the diff", liveUpdateTitle("Fix CI", update(reviewing)))
+        assertEquals("Fix CI · 1/2 agents", liveUpdateTitle("Fix CI", update(agents)))
+        assertEquals("Fix CI · 1/2 agents · Review the diff", liveUpdateTitle("Fix CI", update(reviewing)))
         assertEquals("1/2 agents · Review the diff · 12m", liveUpdateText(update(reviewing, minutes = 12)))
         assertEquals("1/2 agents · 1m", liveUpdateText(update(agents)))
         assertEquals("✋ waiting", liveUpdateText(update(reviewing, waiting = true)))
-        // The chip is the count alone, as for tasks.
-        assertEquals("1/2", liveUpdateChip(update(reviewing)))
+        // The chip is the minutes, as for tasks.
+        assertEquals("12m", liveUpdateChip(update(reviewing, minutes = 12)))
         // Without a count it is no agents' line.
         assertEquals("Fix CI", liveUpdateTitle("Fix CI", update(TaskProgress(0, 0, kind = PROGRESS_AGENTS))))
         assertEquals("running · 1m", liveUpdateText(update(TaskProgress(0, 0, kind = PROGRESS_AGENTS))))
@@ -212,11 +211,13 @@ class LiveUpdatesTest {
     @Test
     fun titleIsTheSessionsThenTheTaskInProgress() {
         assertEquals("Fix CI", liveUpdateTitle("Fix CI", update()))
-        assertEquals("Fix CI", liveUpdateTitle("Fix CI", update(TaskProgress(3, 7))))
-        assertEquals("Fix CI · Run the tests", liveUpdateTitle("Fix CI", update(TaskProgress(3, 7, current = "Run the tests"))))
+        assertEquals("Fix CI · 3/7", liveUpdateTitle("Fix CI", update(TaskProgress(3, 7))))
+        assertEquals("Fix CI · 3/7 · Run the tests", liveUpdateTitle("Fix CI", update(TaskProgress(3, 7, current = "Run the tests"))))
         // Kept while waiting; blank is none.
-        assertEquals("Fix CI · Run the tests", liveUpdateTitle("Fix CI", update(TaskProgress(3, 7, current = " Run the tests "), waiting = true)))
-        assertEquals("Fix CI", liveUpdateTitle("Fix CI", update(TaskProgress(3, 7, current = "  "))))
+        assertEquals("Fix CI · 3/7 · Run the tests", liveUpdateTitle("Fix CI", update(TaskProgress(3, 7, current = " Run the tests "), waiting = true)))
+        assertEquals("Fix CI · 3/7", liveUpdateTitle("Fix CI", update(TaskProgress(3, 7, current = "  "))))
+        // A task without a list: the task alone.
+        assertEquals("Fix CI · Run the tests", liveUpdateTitle("Fix CI", update(TaskProgress(0, 0, current = "Run the tests"))))
     }
 
     @Test

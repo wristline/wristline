@@ -58,39 +58,33 @@ internal fun ongoingCounts(sessions: List<Session>, requests: List<PendingReques
 )
 
 /**
- * The monitoring status when nothing waits: a glyph alone. The Now Bar chip keeps its full width
- * with no text at all too (empty or left out), showing only a blank after the icon.
+ * Text of the monitoring ongoing activity, glyphs and numbers in every locale: `▶ 2 · ✋ 1`, the
+ * sessions running and those waiting for the user, both always (zeros too), so the Now Bar chip
+ * keeps one width and layout.
  */
-internal const val ONGOING_IDLE = "◦"
-
-/**
- * Text of the monitoring ongoing activity, an icon and a number in every locale: `✋ 1`, the
- * sessions waiting for the user; [ONGOING_IDLE] when none does. Running sessions are left out (the
- * description still reads them out).
- */
-internal fun ongoingStatusText(counts: OngoingCounts): String =
-    if (counts.waiting > 0) "✋ ${counts.waiting}" else ONGOING_IDLE
+internal fun ongoingStatusText(counts: OngoingCounts): String = "▶ ${counts.running} · ✋ ${counts.waiting}"
 
 /** The same read out, e.g. "실행 2, 대기 1" ([running] and [waiting] spell out a count); both, at zero, when both are. */
 internal fun ongoingStatusDescription(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): String =
     ongoingParts(counts, running, waiting).ifEmpty { listOf(running(0), waiting(0)) }.joinToString(", ")
 
 /**
- * What the monitoring card shows: its [text] and the [badge] count on its icon. The notification is
- * re-posted only when this changes, as every post moves the card to the top of the Now Bar, above
- * the Live Updates: never for a running count (read out only, by TalkBack) or a connection blip.
+ * What the monitoring card shows: its [text], and its icon ([OngoingIcon]): the [waiting] and
+ * [running] counts as badges, greyed out when [offline]. The notification is re-posted, and the
+ * icon re-drawn, only when this changes, as every post moves the card to the top of the Now Bar,
+ * above the Live Updates: never for a connection blip ([settledConn]).
  */
-internal data class MonitorContent(val text: String, val badge: Int)
+internal data class MonitorContent(val text: String, val waiting: Int = 0, val running: Int = 0, val offline: Boolean = false)
 
 /**
- * [MonitorContent] for the state: the counts while worn and online (no badge otherwise); [notWorn]
- * or [notOnline]'s text for the connection ([shownConn]) else.
+ * [MonitorContent] for the state: the counts while worn and online; [notWorn] or [notOnline]'s
+ * text for the connection ([shownConn]) else, with a grey icon and no counts.
  */
 internal fun monitorContent(conn: Conn, counts: OngoingCounts, worn: Boolean, notWorn: String, notOnline: (Conn) -> String): MonitorContent =
     when {
-        !worn -> MonitorContent(notWorn, 0)
-        conn is Conn.Online -> MonitorContent(ongoingStatusText(counts), counts.waiting)
-        else -> MonitorContent(notOnline(conn), 0)
+        !worn -> MonitorContent(notWorn, offline = true)
+        conn is Conn.Online -> MonitorContent(ongoingStatusText(counts), counts.waiting, counts.running)
+        else -> MonitorContent(notOnline(conn), offline = true)
     }
 
 /** The connection as the monitoring card tells it: Offline and Unreachable read "Connecting" too, so they are one state. */
@@ -140,9 +134,9 @@ class MonitorService : Service() {
     private val scope = MainScope()
     private var running = false
 
-    /** The Now Bar icon ([OngoingIcon]) and the waiting count drawn on it, re-rendered only when the count changes. */
+    /** The Now Bar icon ([OngoingIcon]) and the content it was drawn for, re-rendered only when its counts or greying change. */
     private var nowBarIcon: Icon? = null
-    private var nowBarIconCount = -1
+    private var nowBarIconFor: MonitorContent? = null
 
     /** Bumped when a running session becomes due for a Live Update by age alone ([LiveUpdates.nextDueAt]). */
     private val liveTick = MutableStateFlow(0)
@@ -228,7 +222,7 @@ class MonitorService : Service() {
                 val counts = ongoingCounts(sessions, requests)
                 content(conn, counts, worn) to description(conn, counts, worn)
             }
-                // The description (running counts) alone posts nothing; it goes along with the next change.
+                // The description follows the counts in the text, so a change to it alone posts nothing.
                 .distinctUntilChangedBy { it.first }
                 .conflate()
                 .collect { (next, description) ->
@@ -342,12 +336,12 @@ class MonitorService : Service() {
      * Samsung: Wear OS services pass `extras["customDisplayBundle"]` through and the system UI reads
      * the keys below, the way Samsung's media card is made. Such a card gets no backdrop behind its
      * icon unless it names one ("cardIconBgLeft"), so the full-color [R.drawable.ic_ongoing] shows
-     * bare and fills the icon slot. The icon carries the waiting count as a badge
-     * ([nowBarIcon]), so the card still shows it with the Now Bar set to icons only.
+     * bare and fills the icon slot. The icon carries the counts as badges and greys out offline
+     * ([nowBarIcon]), so the card still tells the state with the Now Bar set to icons only.
      */
     private fun nowBarExtras(content: MonitorContent): Bundle {
         val text = content.text
-        val icon = nowBarIcon(content.badge)
+        val icon = nowBarIcon(content)
         val card = Bundle().apply {
             putInt("type", 1)
             putParcelable("cardIconLeft", icon)
@@ -364,12 +358,13 @@ class MonitorService : Service() {
         return Bundle().apply { putBundle("customDisplayBundle", display) }
     }
 
-    /** [OngoingIcon] with the [waiting] count as its badge. */
-    private fun nowBarIcon(waiting: Int): Icon {
-        nowBarIcon?.takeIf { nowBarIconCount == waiting }?.let { return it }
-        return Icon.createWithBitmap(OngoingIcon.bitmap(this, waiting)).also {
+    /** [OngoingIcon] for [content]'s counts and greying. */
+    private fun nowBarIcon(content: MonitorContent): Icon {
+        val key = content.copy(text = "")
+        nowBarIcon?.takeIf { nowBarIconFor == key }?.let { return it }
+        return Icon.createWithBitmap(OngoingIcon.bitmap(this, content.waiting, running = content.running, offline = content.offline)).also {
             nowBarIcon = it
-            nowBarIconCount = waiting
+            nowBarIconFor = key
         }
     }
 

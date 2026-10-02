@@ -37,6 +37,7 @@ import dev.wristline.watch.ui.permissionQuestion
 import dev.wristline.watch.ui.progressDoneRes
 import dev.wristline.watch.ui.resetClockText
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 /**
  * Notification id for a request or session id. String.hashCode is specified by the Java API, so
@@ -119,11 +120,11 @@ object Notifier {
     /** The app's primary (the theme's), for the small icon here and in the Now Bar: gray without it. */
     val COLOR: Int = 0xFF4FA8FF.toInt()
     /**
-     * The Live Updates' colour, the icon's navy: the system draws a backdrop circle of it behind
-     * their small icon in the Now Bar. Samsung keeps its hue but normalises its lightness, and
-     * forces a neutral grey to a fixed grey whatever its shade, so only the hue is ours.
+     * The Live Updates' colour: the system draws a backdrop circle of it behind their small icon in
+     * the Now Bar. Samsung normalises a colour's lightness and renders any neutral grey as its own
+     * fixed grey whatever the shade, so this neutral gives the Now Bar's grey backdrop.
      */
-    private val LIVE_COLOR: Int = 0xFF16324F.toInt()
+    private val LIVE_COLOR: Int = 0xFF373738.toInt()
     private val VIBRATION = longArrayOf(0, 250, 150, 250)
     private val SHORT_VIBRATION = longArrayOf(0, 200)
 
@@ -292,8 +293,8 @@ object Notifier {
     fun canPostLiveUpdates(context: Context): Boolean =
         liveUpdatesSupported() && NotificationManagerCompat.from(context).canPostPromotedNotifications()
 
-    /** The Live Updates' small icon ([OngoingIcon], no badge), drawn once. */
-    private var liveIcon: Bitmap? = null
+    /** The Live Updates' small icons ([OngoingIcon], no badge), by the ring's rounded percent (-1: no ring), each drawn once. */
+    private val liveIcons = HashMap<Int, Bitmap>()
 
     /**
      * A long turn's Live Update, promoted to the watch face's status chip: the chip text
@@ -301,8 +302,9 @@ object Notifier {
      * progress), the two lines the Now Bar's expanded card shows; the status ([liveUpdateText]) and
      * account line as the text, and a [NotificationCompat.ProgressStyle] bar: one segment per task
      * of its task list, else indeterminate with the time since the turn started as a chronometer
-     * (both for the notification shade). The small icon is the Now Bar card's own ([OngoingIcon]):
-     * the Now Bar draws it untinted on a disc of [LIVE_COLOR]. Swiping it away tells
+     * (both for the notification shade). The small icon is the Now Bar card's own ([OngoingIcon]),
+     * with a ring of the done fraction when there is a count: the Now Bar draws it untinted on a
+     * disc of [LIVE_COLOR]. Swiping it away tells
      * [LiveUpdateDismissReceiver]. Posts nothing where it would not be promoted ([canPostLiveUpdates]).
      */
     internal fun liveUpdate(context: Context, update: LiveUpdate, session: Session?): Boolean {
@@ -333,7 +335,8 @@ object Notifier {
                 update.minutes?.let { context.resources.getQuantityString(R.plurals.duration_minutes, it, it) },
             ).joinToString(", ")
         }
-        val icon = liveIcon ?: OngoingIcon.bitmap(context).also { liveIcon = it }
+        val percent = progress?.let { (it.done * 100f / it.total).roundToInt() } ?: -1
+        val icon = liveIcons.getOrPut(percent) { OngoingIcon.bitmap(context, progress = if (percent < 0) null else percent / 100f) }
         val notification = NotificationCompat.Builder(context, CHANNEL_LIVE)
             .setSmallIcon(IconCompat.createWithBitmap(icon))
             .setColor(LIVE_COLOR)
