@@ -1,13 +1,16 @@
 package dev.wristline.watch
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.drawable.Icon
 import android.os.Build
+import android.os.Bundle
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.format.DateFormat
@@ -122,9 +125,13 @@ object Notifier {
     /**
      * The Live Updates' colour: the system draws a backdrop circle of it behind their small icon in
      * the Now Bar. Samsung normalises a colour's lightness and renders any neutral grey as its own
-     * fixed grey whatever the shade, so this neutral gives the Now Bar's grey backdrop.
+     * fixed grey whatever the shade ([LIVE_BACKDROP]), so this neutral gives the Now Bar's grey backdrop.
      */
     private val LIVE_COLOR: Int = 0xFF373738.toInt()
+    /** The grey Samsung's Now Bar tints a Live Update's backdrop for [LIVE_COLOR], for [liveNowBarExtras] to draw the same. */
+    private val LIVE_BACKDROP: Int = 0xFF737375.toInt()
+    /** Samsung's watch system UI, which draws the Now Bar. */
+    internal const val SAMSUNG_SYSUI = "com.samsung.android.wearable.sysui"
     private val VIBRATION = longArrayOf(0, 250, 150, 250)
     private val SHORT_VIBRATION = longArrayOf(0, 200)
 
@@ -293,6 +300,14 @@ object Notifier {
     fun canPostLiveUpdates(context: Context): Boolean =
         liveUpdatesSupported() && NotificationManagerCompat.from(context).canPostPromotedNotifications()
 
+    /** [SAMSUNG_SYSUI]'s drawable [name]; 0 without one (or without Samsung's system UI). */
+    @SuppressLint("DiscouragedApi") // A resource of another package has no R constant.
+    internal fun samsungDrawable(context: Context, name: String): Int = try {
+        context.packageManager.getResourcesForApplication(SAMSUNG_SYSUI).getIdentifier(name, "drawable", SAMSUNG_SYSUI)
+    } catch (_: PackageManager.NameNotFoundException) {
+        0
+    }
+
     /** The Live Updates' small icons ([OngoingIcon], no badge), by the fill's rounded percent (-1: no fill), each drawn once. */
     private val liveIcons = HashMap<Int, Bitmap>()
 
@@ -304,8 +319,11 @@ object Notifier {
      * of its task list, else indeterminate with the time since the turn started as a chronometer
      * (both for the notification shade). The small icon is the Now Bar card's own ([OngoingIcon]),
      * filled to the done fraction when there is a count: the Now Bar draws it untinted on a
-     * disc of [LIVE_COLOR]. Swiping it away tells
-     * [LiveUpdateDismissReceiver]. Posts nothing where it would not be promoted ([canPostLiveUpdates]).
+     * disc of [LIVE_COLOR]. On Samsung's Now Bar it is a custom card instead ([liveNowBarExtras]),
+     * not promoted: Samsung sends a promoted notification's content intent from its expanded Now Bar
+     * without allowing the activity start (no background activity start mode), so the system blocks
+     * the tap, while it sends a custom card's with MODE_BACKGROUND_ACTIVITY_START_ALLOWED. Swiping it
+     * away tells [LiveUpdateDismissReceiver]. Posts nothing where Live Updates are off ([canPostLiveUpdates]).
      */
     internal fun liveUpdate(context: Context, update: LiveUpdate, session: Session?): Boolean {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
@@ -337,12 +355,14 @@ object Notifier {
         }
         val percent = progress?.let { (it.done * 100f / it.total).roundToInt() } ?: -1
         val icon = liveIcons.getOrPut(percent) { OngoingIcon.bitmap(context, progress = if (percent < 0) null else percent / 100f) }
+        val title = liveUpdateTitle(sessionTitle(context, session), update)
+        val backdrop = samsungDrawable(context, "nowbar_card_view_liveupdate_icon_bg")
         val notification = NotificationCompat.Builder(context, CHANNEL_LIVE)
             .setSmallIcon(IconCompat.createWithBitmap(icon))
             .setColor(LIVE_COLOR)
             // A colorized notification is never promoted.
             .setColorized(false)
-            .setContentTitle(liveUpdateTitle(sessionTitle(context, session), update))
+            .setContentTitle(title)
             .setContentText(SpannableString(text).apply { setSpan(TtsSpan.TextBuilder(spoken).build(), 0, status.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) })
             .setStyle(style)
             .setShortCriticalText(liveUpdateChip(update))
@@ -357,12 +377,39 @@ object Notifier {
             .setContentIntent(openIntent)
             .setDeleteIntent(dismissIntent)
             .setOngoing(true)
-            .setRequestPromotedOngoing(true)
+            .setRequestPromotedOngoing(backdrop == 0)
+            .apply { if (backdrop != 0) addExtras(liveNowBarExtras(liveUpdateChip(update), title, icon, backdrop)) }
             .setOnlyAlertOnce(true)
             .setSilent(true)
             .build()
         NotificationManagerCompat.from(context).notify(TAG_LIVE, id, notification)
         return true
+    }
+
+    /**
+     * [liveUpdate]'s card on Samsung's Now Bar, described as MonitorService's is: [chip] on the
+     * watch face and first in the expanded card, [title] second, [icon] on [backdrop] (Samsung's
+     * Live Update disc) tinted [LIVE_BACKDROP], as the Now Bar draws a promoted one.
+     */
+    private fun liveNowBarExtras(chip: String, title: String, icon: Bitmap, backdrop: Int): Bundle {
+        val image = Icon.createWithBitmap(icon)
+        val disc = Icon.createWithResource(SAMSUNG_SYSUI, backdrop).setTint(LIVE_BACKDROP)
+        val card = Bundle().apply {
+            putInt("type", 1)
+            putParcelable("cardIconLeft", image)
+            putParcelable("cardIconBgLeft", disc)
+            putParcelable("expandViewIcon", image)
+            putParcelable("expandViewIconBg", disc)
+            putParcelable("queIcon", image)
+            putString("cardContents", chip)
+            putString("expandPrimaryInfo", chip)
+            putString("expandSecondaryInfo", title)
+        }
+        val display = Bundle().apply {
+            putBoolean("enableNowBar", true)
+            putBundle("nowBarData", card)
+        }
+        return Bundle().apply { putBundle("customDisplayBundle", display) }
     }
 
     fun cancelLiveUpdate(context: Context, sessionId: String) {

@@ -1,7 +1,6 @@
 package dev.wristline.watch
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -323,13 +322,7 @@ class MonitorService : Service() {
      * draws behind every OngoingActivity icon (it has no condition: a full-bleed icon cannot cover
      * it either, since the icon is inset by a padding inside the disc).
      */
-    @SuppressLint("DiscouragedApi") // A resource of another package has no R constant.
-    private fun hasSamsungNowBar(): Boolean = try {
-        packageManager.getResourcesForApplication(SAMSUNG_SYSUI)
-            .getIdentifier("nowbar_card_view_default_ongoing_icon_bg", "drawable", SAMSUNG_SYSUI) != 0
-    } catch (_: PackageManager.NameNotFoundException) {
-        false
-    }
+    private fun hasSamsungNowBar(): Boolean = Notifier.samsungDrawable(this, "nowbar_card_view_default_ongoing_icon_bg") != 0
 
     /**
      * A Now Bar card described by the notification itself, used instead of an OngoingActivity on
@@ -372,7 +365,6 @@ class MonitorService : Service() {
         private const val TAG = "Wristline"
         private const val NOTIFICATION_ID = 1
         private const val STATUS_INTERVAL_MS = 2_000L
-        private const val SAMSUNG_SYSUI = "com.samsung.android.wearable.sysui"
 
         /** The Live Updates this service posts; process-wide, so a swipe-away reaches it ([LiveUpdateDismissReceiver]). */
         internal val liveUpdates = LiveUpdates()
