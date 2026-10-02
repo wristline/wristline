@@ -55,8 +55,8 @@ class UsageTimeTest {
         assertEquals("Tue 09:00", clock(at(6, 9, 0, month = 10)))
         assertEquals("Tue 23:59", clock(at(6, 23, 59, month = 10)))
         // From eight days the date.
-        assertEquals("10/7 00:00", clock(at(7, 0, 0, month = 10)))
-        assertEquals("10/8 14:30", clock(at(8, 14, 30, month = 10)))
+        assertEquals("Oct 7 00:00", clock(at(7, 0, 0, month = 10)))
+        assertEquals("Oct 8 14:30", clock(at(8, 14, 30, month = 10)))
     }
 
     @Test
@@ -73,7 +73,7 @@ class UsageTimeTest {
         assertEquals("11:30 PM", clock(at(29, 23, 30), is24Hour = false))
         assertEquals("Fri 2:30 PM", clock(at(2, 14, 30, month = 10), is24Hour = false))
         assertEquals("Wed 12:13 AM", clock(at(30, 0, 13), is24Hour = false))
-        assertEquals("10/8 9:05 AM", clock(at(8, 9, 5, month = 10), is24Hour = false))
+        assertEquals("Oct 8 9:05 AM", clock(at(8, 9, 5, month = 10), is24Hour = false))
         // Compact, for the limit card when the full form does not fit.
         assertEquals("Fri 2:30p", clock(at(2, 14, 30, month = 10), is24Hour = false, compact = true))
         assertEquals("Wed 12:13a", clock(at(30, 0, 13), is24Hour = false, compact = true))

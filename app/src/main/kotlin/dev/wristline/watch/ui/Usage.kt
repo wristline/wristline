@@ -331,7 +331,7 @@ private val CLOCK_24 = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 private val CLOCK_12 = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 private val CLOCK_12_DIGITS = DateTimeFormatter.ofPattern("h:mm", Locale.US)
 private val WEEKDAY = DateTimeFormatter.ofPattern("EEE", Locale.US)
-private val MONTH_DAY = DateTimeFormatter.ofPattern("M/d", Locale.US)
+private val MONTH_DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
 
 /** Calendar days in [zone] from [now] to [time]: 0 today, 1 tomorrow; negative before today. */
 private fun daysFrom(now: Long, time: ZonedDateTime): Long =
@@ -351,8 +351,9 @@ internal fun clockWords(time: ZonedDateTime, locale: Locale, is24Hour: Boolean):
 /**
  * The clock time [resetsAt] falls on in [zone], as of [now], in English whatever the language: the
  * time alone today (`14:30`), with the weekday within the next seven days (`Fri 14:30`; seven days
- * on, today's weekday names next week's, as today shows the time alone), with the date from eight
- * (`10/9 14:30`). The clock as [clockText].
+ * on, today's weekday names next week's, as today shows the time alone), with the date from eight,
+ * the month's English abbreviation (`Oct 9 14:30`), which no reader takes for 10 September. The
+ * clock as [clockText].
  */
 internal fun resetClockText(resetsAt: Long, now: Long, zone: ZoneId, is24Hour: Boolean, compact: Boolean = false): String {
     val time = Instant.ofEpochMilli(resetsAt).atZone(zone)

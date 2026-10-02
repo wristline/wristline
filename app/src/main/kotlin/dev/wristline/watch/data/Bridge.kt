@@ -299,6 +299,18 @@ internal fun ArrayDeque<String>.replayAlerts(alerts: List<ServerEvent.Alert>, se
  * windows it removes that entry instead (its last window has reset, or its account is no longer
  * logged in).
  */
+/** The providers [health] reports installed (`ok`), each once. */
+internal fun availableProviders(health: Health): Set<String> = health.providers.filter { it.status == "ok" }.mapTo(LinkedHashSet()) { it.id }
+
+/**
+ * The providers Quick Ask offers, Claude first: the ones of [available] it knows; both while that is
+ * unknown (null: not reported yet, or demo mode) or names neither.
+ */
+internal fun askProviders(available: Set<String>?): List<String> {
+    val known = listOf(ProviderId.CLAUDE_CODE, ProviderId.CODEX)
+    return available?.let { names -> known.filter { it in names } }?.takeIf { it.isNotEmpty() } ?: known
+}
+
 internal fun List<Usage>.withUsage(usage: Usage): List<Usage> {
     if (usage.windows.isEmpty()) return filterNot { it.key == usage.key }
     val index = indexOfFirst { it.key == usage.key }
@@ -372,6 +384,10 @@ object Bridge {
     val requests: StateFlow<List<PendingRequest>> = _requests.asStateFlow()
     private val _usage = MutableStateFlow<List<Usage>>(emptyList())
     val usage: StateFlow<List<Usage>> = _usage.asStateFlow()
+
+    /** The providers installed on the PC, from `GET /api/health` on each connect; null until known. */
+    private val _providers = MutableStateFlow<Set<String>?>(null)
+    val providers: StateFlow<Set<String>?> = _providers.asStateFlow()
 
     /** This device's Quick Asks, newest first (the bridge keeps them in memory only). */
     private val _asks = MutableStateFlow<List<Ask>>(emptyList())
@@ -760,6 +776,7 @@ object Bridge {
                 // Asks are not in the snapshot; an answer that arrived while the socket was down is
                 // fetched, unless nothing is shown (the service alone never polls).
                 if (!background) scope.launch { loadAsks() }
+                scope.launch { loadHealth() }
             }
             is ServerEvent.SessionChanged -> {
                 _sessions.value = sortSessions(_sessions.value.filterNot { it.id == event.session.id } + event.session)
@@ -1109,6 +1126,15 @@ object Bridge {
         Sent.Ok
     }
 
+    /** Which providers are installed; Quick Ask's stored provider moves to one that is, if it is not. */
+    private suspend fun loadHealth() {
+        val health = get(Health.serializer(), "health") ?: return
+        val available = availableProviders(health)
+        _providers.value = available
+        val choices = askProviders(available)
+        if (prefs.askProvider !in choices) prefs.askProvider = choices.first()
+    }
+
     private suspend fun loadAsks() {
         val list = get(AskList.serializer(), "asks") ?: return
         _asks.value = list.asks.take(ASK_KEEP)
@@ -1129,6 +1155,7 @@ object Bridge {
         _requests.value = emptyList()
         postedRequests.clear()
         _usage.value = emptyList()
+        _providers.value = null
         _asks.value = emptyList()
         synchronized(lock) { itemFlows.values.forEach { it.value = SessionItems() } }
         Notifier.reconcile(appContext, emptyList(), emptyList())

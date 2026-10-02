@@ -18,11 +18,20 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import dev.wristline.watch.R
 import java.util.Locale
 
-/** Korean when the text has any Hangul (syllables or jamo), otherwise US English. */
-internal fun ttsLocale(text: String): Locale {
+/**
+ * The voice for [text]: Korean when it has any Hangul (syllables or jamo), otherwise the watch's
+ * language [watch]; US English for a Korean watch, as text without Hangul is not Korean.
+ */
+internal fun ttsLocale(text: String, watch: Locale): Locale {
     val hangul = text.any { it in '가'..'힣' || it in 'ᄀ'..'ᇿ' || it in '㄰'..'㆏' }
-    return if (hangul) Locale.KOREAN else Locale.US
+    return when {
+        hangul -> Locale.KOREAN
+        watch.language == Locale.KOREAN.language -> Locale.US
+        else -> watch
+    }
 }
+
+private fun missing(language: Int): Boolean = language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED
 
 /**
  * Reads an answer aloud with the system text-to-speech engine. The engine is bound on the first
@@ -107,9 +116,11 @@ internal class Reader(private val context: Context) {
     }
 
     private fun start(engine: TextToSpeech, text: String) {
-        val locale = ttsLocale(text)
-        val language = engine.setLanguage(locale)
-        if (language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED) {
+        val locale = ttsLocale(text, Locale.getDefault())
+        var language = engine.setLanguage(locale)
+        // Without a voice for the watch's language, US English as the last resort; not for Korean text.
+        if (missing(language) && locale != Locale.KOREAN && locale != Locale.US) language = engine.setLanguage(Locale.US)
+        if (missing(language)) {
             speaking = false
             Failure.show(context.getString(R.string.tts_no_language, locale.getDisplayLanguage()))
             return

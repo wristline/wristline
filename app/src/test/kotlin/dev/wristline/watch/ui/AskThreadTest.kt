@@ -64,10 +64,15 @@ class AskThreadTest {
     }
 
     @Test
-    fun ttsLocaleIsKoreanForHangulElseEnglish() {
-        assertEquals(Locale.KOREAN, ttsLocale("뮤텍스는 잠금입니다."))
-        assertEquals(Locale.KOREAN, ttsLocale("Mutex: 상호 배제 (mutual exclusion)"))
-        assertEquals(Locale.US, ttsLocale("A mutex is a lock."))
-        assertEquals(Locale.US, ttsLocale(""))
+    fun ttsLocaleIsKoreanForHangulElseTheWatchLanguage() {
+        assertEquals(Locale.KOREAN, ttsLocale("뮤텍스는 잠금입니다.", Locale.GERMANY))
+        assertEquals(Locale.KOREAN, ttsLocale("Mutex: 상호 배제 (mutual exclusion)", Locale.US))
+        // Not forced to US English: a German or Japanese watch reads in its own language.
+        assertEquals(Locale.GERMANY, ttsLocale("Ein Mutex ist eine Sperre.", Locale.GERMANY))
+        assertEquals(Locale.JAPAN, ttsLocale("ミューテックスはロックです。", Locale.JAPAN))
+        assertEquals(Locale.UK, ttsLocale("A mutex is a lock.", Locale.UK))
+        // A Korean watch and text without Hangul: that is not Korean, so English.
+        assertEquals(Locale.US, ttsLocale("A mutex is a lock.", Locale.KOREA))
+        assertEquals(Locale.US, ttsLocale("", Locale.KOREAN))
     }
 }

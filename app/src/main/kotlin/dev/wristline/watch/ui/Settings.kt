@@ -48,6 +48,7 @@ import dev.wristline.watch.Notifier
 import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
+import dev.wristline.watch.data.askProviders
 import kotlinx.coroutines.launch
 
 @Composable
@@ -71,6 +72,9 @@ internal fun SettingsScreen(
     // Offered only where the watch has dynamic colors: elsewhere the switch would change nothing.
     val hasWatchColors = remember(context) { watchColorScheme(context) != null }
     var askProvider by remember { mutableStateOf(prefs.askProvider) }
+    // Only the providers installed on the PC, once the bridge has said which.
+    val available by Bridge.providers.collectAsStateWithLifecycle()
+    val askChoices = askProviders(available)
     // The service turns the setting off itself when the pairing is gone.
     val monitoring by prefs.monitoringState.collectAsStateWithLifecycle()
     // Re-read on every resume: the user may have changed it in the system settings.
@@ -107,7 +111,8 @@ internal fun SettingsScreen(
         accounts = hasAccounts,
         showToolCalls = showToolCalls,
         watchColors = watchColors.takeIf { hasWatchColors },
-        askProvider = askProvider,
+        askProvider = askProvider.takeIf { it in askChoices } ?: askChoices.first(),
+        canChangeAskProvider = askChoices.size > 1,
         monitoring = monitoring,
         canMonitor = prefs.isPaired && conn !is Conn.Unauthorized,
         notificationsOff = !notificationsOn,
@@ -122,7 +127,7 @@ internal fun SettingsScreen(
         },
         onWatchColors = { prefs.watchColors = it },
         onAskProvider = {
-            askProvider = otherProvider(askProvider)
+            askProvider = otherProvider(askProvider).takeIf { it in askChoices } ?: askChoices.first()
             prefs.askProvider = askProvider
         },
         onMonitoring = { on ->
@@ -175,6 +180,8 @@ internal fun SettingsContent(
     /** Null where the watch has no dynamic colors: the row is left out. */
     watchColors: Boolean?,
     askProvider: String,
+    /** More than one provider is installed: the Quick Ask row toggles between them. */
+    canChangeAskProvider: Boolean,
     monitoring: Boolean,
     canMonitor: Boolean,
     notificationsOff: Boolean,
@@ -282,6 +289,7 @@ internal fun SettingsContent(
                 // Two values only: a tap toggles rather than opening a chooser.
                 FilledTonalButton(
                     onClick = onAskProvider,
+                    enabled = canChangeAskProvider,
                     modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
                     transformation = SurfaceTransformation(spec),
                     label = { Text(stringResource(R.string.settings_ask_provider)) },
