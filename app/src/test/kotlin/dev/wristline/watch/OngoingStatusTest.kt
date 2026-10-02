@@ -69,7 +69,7 @@ class OngoingStatusTest {
     }
 
     private fun content(conn: Conn, sessions: List<Session>, requests: List<PendingRequest> = emptyList(), worn: Boolean = true) =
-        monitorContent(conn, ongoingCounts(sessions, requests), worn, "Not worn") { if (it is Conn.Incompatible) "Update" else "Connecting" }
+        monitorContent(conn, ongoingCounts(sessions, requests), worn)
 
     @Test
     fun monitorRepostsOnlyForWhatItShows() {
@@ -84,10 +84,12 @@ class OngoingStatusTest {
         assertEquals(MonitorContent("▶ 2 · ✋ 0", running = 2), content(Conn.Online, sessions.filterNot { it.id == "c" }))
         // Idle and online: the plain icon.
         assertEquals(MonitorContent("▶ 0 · ✋ 0"), content(Conn.Online, emptyList()))
-        // Not online or not worn: grey, no badges, whatever runs or waits.
-        assertEquals(MonitorContent("Connecting", offline = true), content(Conn.Connecting, sessions))
-        assertEquals(MonitorContent("Update", offline = true), content(Conn.Incompatible(2), sessions))
-        assertEquals(MonitorContent("Not worn", offline = true), content(Conn.Online, sessions, worn = false))
+        // Not online or not worn: the last counts' text, grey and without badges.
+        assertEquals(MonitorContent("▶ 2 · ✋ 1", offline = true), content(Conn.Connecting, sessions))
+        assertEquals(MonitorContent("▶ 2 · ✋ 1", offline = true), content(Conn.Incompatible(2), sessions))
+        assertEquals(MonitorContent("▶ 2 · ✋ 1", offline = true), content(Conn.Online, sessions, worn = false))
+        // Nothing known yet: zeros.
+        assertEquals(MonitorContent("▶ 0 · ✋ 0", offline = true), content(Conn.Connecting, emptyList()))
     }
 
     @Test

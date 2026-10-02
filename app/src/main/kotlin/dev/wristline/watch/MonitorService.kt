@@ -76,14 +76,15 @@ internal fun ongoingStatusDescription(counts: OngoingCounts, running: (Int) -> S
 internal data class MonitorContent(val text: String, val waiting: Int = 0, val running: Int = 0, val offline: Boolean = false)
 
 /**
- * [MonitorContent] for the state: the counts while worn and online; [notWorn] or [notOnline]'s
- * text for the connection ([shownConn]) else, with a grey icon and no counts.
+ * [MonitorContent] for the state: always the counts' text ([ongoingStatusText]); badges while worn
+ * and online, else a grey icon without them. Offline, [counts] are the last the bridge sent (the
+ * lists stay while disconnected), zeros when it sent none.
  */
-internal fun monitorContent(conn: Conn, counts: OngoingCounts, worn: Boolean, notWorn: String, notOnline: (Conn) -> String): MonitorContent =
-    when {
-        !worn -> MonitorContent(notWorn, offline = true)
-        conn is Conn.Online -> MonitorContent(ongoingStatusText(counts), counts.waiting, counts.running)
-        else -> MonitorContent(notOnline(conn), offline = true)
+internal fun monitorContent(conn: Conn, counts: OngoingCounts, worn: Boolean): MonitorContent =
+    if (worn && conn is Conn.Online) {
+        MonitorContent(ongoingStatusText(counts), counts.waiting, counts.running)
+    } else {
+        MonitorContent(ongoingStatusText(counts), offline = true)
     }
 
 /** The connection as the monitoring card tells it: Offline and Unreachable read "Connecting" too, so they are one state. */
@@ -113,8 +114,8 @@ private fun ongoingParts(counts: OngoingCounts, running: (Int) -> String, waitin
  * (on Samsung's Now Bar, a card the notification describes itself: see [nowBarExtras]).
  *
  * While the watch is off the wrist (the off-body sensor, no permission needed) the hold is
- * released, so the socket closes and the bridge's presence for this watch goes false; the status
- * reads "Not worn" meanwhile. Putting the watch back on reconnects.
+ * released, so the socket closes and the bridge's presence for this watch goes false; the icon
+ * greys out meanwhile and the text keeps the last counts. Putting the watch back on reconnects.
  *
  * Older bridges do not push session changes other than needs-input ones to a background client, so
  * the screen turning on (when the Now Bar can be seen) fetches the session list once
@@ -180,7 +181,7 @@ class MonitorService : Service() {
         )
         val firstCounts = ongoingCounts(Bridge.sessions.value, Bridge.requests.value)
         val firstConn = shownConn(Bridge.conn.value)
-        var shown = content(firstConn, firstCounts, worn = true)
+        var shown = monitorContent(firstConn, firstCounts, worn = true)
         val builder = NotificationCompat.Builder(this, Notifier.CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_notification)
             // OngoingActivity (wear-ongoing 1.1.0) has no color of its own; the Now Bar takes this one.
@@ -224,7 +225,7 @@ class MonitorService : Service() {
         scope.launch {
             combine(settledConn(Bridge.conn), Bridge.sessions, Bridge.requests, worn) { conn, sessions, requests, worn ->
                 val counts = ongoingCounts(sessions, requests)
-                content(conn, counts, worn) to description(conn, counts, worn)
+                monitorContent(conn, counts, worn) to description(conn, counts, worn)
             }
                 // The description follows the counts in the text, so a change to it alone posts nothing.
                 .distinctUntilChangedBy { it.first }
@@ -294,27 +295,25 @@ class MonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /** What the card shows ([monitorContent]). */
-    private fun content(conn: Conn, counts: OngoingCounts, worn: Boolean): MonitorContent =
-        monitorContent(conn, counts, worn, getString(R.string.ongoing_off_body)) {
-            getString(if (it is Conn.Incompatible) R.string.conn_incompatible else R.string.conn_connecting)
+    /** How TalkBack reads the card's text: the state when not worn or not online (the icon's grey), then the running and waiting counts. */
+    private fun description(conn: Conn, counts: OngoingCounts, worn: Boolean): String {
+        val state = when {
+            !worn -> getString(R.string.ongoing_off_body)
+            conn is Conn.Online -> null
+            conn is Conn.Incompatible -> getString(R.string.conn_incompatible)
+            else -> getString(R.string.conn_connecting)
         }
-
-    /** How TalkBack reads the card's text: the running and waiting counts while it shows them, else the text itself. */
-    private fun description(conn: Conn, counts: OngoingCounts, worn: Boolean): String? =
-        if (worn && conn is Conn.Online) {
-            ongoingStatusDescription(
-                counts,
-                running = { getString(R.string.ongoing_running, it) },
-                waiting = { getString(R.string.ongoing_waiting, it) },
-            )
-        } else {
-            null
-        }
+        val spokenCounts = ongoingStatusDescription(
+            counts,
+            running = { getString(R.string.ongoing_running, it) },
+            waiting = { getString(R.string.ongoing_waiting, it) },
+        )
+        return listOfNotNull(state, spokenCounts).joinToString(", ")
+    }
 
     /** The status text, read out by TalkBack as its [description] rather than glyph by glyph. */
-    private fun spoken(text: String, description: String?): CharSequence {
-        if (description == null || text == description) return text
+    private fun spoken(text: String, description: String): CharSequence {
+        if (text == description) return text
         return SpannableString(text).apply {
             setSpan(TtsSpan.TextBuilder(description).build(), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
