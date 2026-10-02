@@ -172,7 +172,12 @@ class MonitorService : Service() {
             return START_NOT_STICKY
         }
         // Through OpenActivity, not MainActivity: see there why the touch target must not be always-on.
-        val open = PendingIntent.getActivity(this, 0, Intent(this, OpenActivity::class.java).putExtra(MainActivity.EXTRA_HOME, true), PendingIntent.FLAG_IMMUTABLE)
+        // UPDATE_CURRENT: an existing PendingIntent for the same intent keeps its own extras otherwise
+        // (extras do not count in the match), and one the system still holds from an earlier build has none.
+        val open = PendingIntent.getActivity(
+            this, 0, Intent(this, OpenActivity::class.java).putExtra(MainActivity.EXTRA_HOME, true),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val firstCounts = ongoingCounts(Bridge.sessions.value, Bridge.requests.value)
         val firstConn = shownConn(Bridge.conn.value)
         var shown = content(firstConn, firstCounts, worn = true)
