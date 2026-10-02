@@ -117,8 +117,8 @@ object Notifier {
 
     /** The app's primary (the theme's), for the small icon here and in the Now Bar: gray without it. */
     val COLOR: Int = 0xFF4FA8FF.toInt()
-    /** The Live Updates' colour: the Now Bar draws their small icon on a disc of it, white to blend with the icon's white squircle. */
-    private val LIVE_COLOR: Int = 0xFFFFFFFF.toInt()
+    /** The Live Updates' colour: the Now Bar draws their small icon on a disc of it, the expanded card's own background (sampled) so the disc vanishes. */
+    private val LIVE_COLOR: Int = 0xFF373738.toInt()
     private val VIBRATION = longArrayOf(0, 250, 150, 250)
     private val SHORT_VIBRATION = longArrayOf(0, 200)
 
