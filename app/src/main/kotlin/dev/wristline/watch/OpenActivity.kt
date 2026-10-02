@@ -13,7 +13,8 @@ import android.os.Bundle
  * activity, or shares its task affinity and package; a touch intent that is not an activity (a
  * broadcast or service) counts every task of the package. This activity shows nothing, opens
  * [MainActivity] in MainActivity's own task and finishes, so it is never in that task, and
- * MainActivity's empty taskAffinity keeps the affinities apart.
+ * MainActivity's empty taskAffinity keeps the affinities apart. Its extras go along to MainActivity
+ * (MainActivity.EXTRA_HOME: the session list).
  */
 class OpenActivity : Activity() {
     // WearRecents: NEW_TASK with the launcher's intent resumes the one existing task, as a
@@ -23,7 +24,7 @@ class OpenActivity : Activity() {
         super.onCreate(savedInstanceState)
         // NEW_TASK: MainActivity resumes its own task (matched by component, as from the launcher)
         // instead of stacking on this one.
-        startActivity(MainActivity.openIntent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        startActivity(MainActivity.openIntent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtras(intent))
         finish()
     }
 }

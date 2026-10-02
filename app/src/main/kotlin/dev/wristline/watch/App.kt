@@ -90,9 +90,11 @@ internal val routeModule = SerializersModule { polymorphic(NavKey::class) { subc
 
 /**
  * The screens a notification opens above the session list: a request over its session when the
- * notification names one, so Back goes request, session, list.
+ * notification names one, so Back goes request, session, list; none above it, the list alone, for
+ * [home] (the monitoring card).
  */
-internal fun notificationTarget(requestId: String?, sessionId: String?): List<Route>? = when {
+internal fun notificationTarget(requestId: String?, sessionId: String?, home: Boolean = false): List<Route>? = when {
+    home -> emptyList()
     requestId != null -> listOfNotNull(sessionId?.let(Route::Session), Route.Request(requestId))
     sessionId != null -> listOf(Route.Session(sessionId))
     else -> null
@@ -101,10 +103,10 @@ internal fun notificationTarget(requestId: String?, sessionId: String?): List<Ro
 /**
  * [stack] with [target] opened on top. A session or request on top gives way to it; any other
  * screen stays below, so an Ask screen a notification covers is not popped (that would cancel its
- * question, see AskCanceller).
+ * question, see AskCanceller). An empty [target] (home) leaves the session list alone.
  */
 internal fun notificationStack(stack: List<NavKey>, target: List<Route>): List<NavKey> =
-    stack.dropLastWhile { it is Route.Session || it is Route.Request } + target
+    if (target.isEmpty()) listOf(Route.Sessions) else stack.dropLastWhile { it is Route.Session || it is Route.Request } + target
 
 /**
  * Makes this back stack [keys], keeping the entries both share at the bottom: only the screens
@@ -117,7 +119,7 @@ internal fun MutableList<NavKey>.replaceWith(keys: List<NavKey>) {
 }
 
 /**
- * Root composable. [openTarget] comes from a notification tap (a request or a session) and is
+ * Root composable. [openTarget] comes from a notification tap (a request, a session, or the list) and is
  * opened once. AppScaffold shows the TimeText above every screen; each screen brings its own
  * ScreenScaffold.
  */

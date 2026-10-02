@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent) {
         // A task first opened from a notification keeps that intent; Recents replays it later.
         if ((intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
-            notificationTarget(intent.getStringExtra(EXTRA_REQUEST_ID), intent.getStringExtra(EXTRA_SESSION_ID))
+            notificationTarget(intent.getStringExtra(EXTRA_REQUEST_ID), intent.getStringExtra(EXTRA_SESSION_ID), intent.getBooleanExtra(EXTRA_HOME, false))
                 ?.let { openTarget = it }
         }
         if (BuildConfig.DEBUG) debugPair(intent)
@@ -122,6 +122,9 @@ class MainActivity : ComponentActivity() {
 
         /** Extra carrying a session id (alert notifications); opens the session. */
         const val EXTRA_SESSION_ID = "sessionId"
+
+        /** Extra of the monitoring card's intent (through [OpenActivity]); opens the session list, whatever was open. */
+        const val EXTRA_HOME = "home"
 
         /**
          * Opens the app from a notification. Same action and category as the launcher's intent, so

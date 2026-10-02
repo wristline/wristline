@@ -22,6 +22,14 @@ class NavigationTest {
     }
 
     @Test
+    fun monitoringCardOpensTheListAlone() {
+        assertEquals(emptyList<Route>(), notificationTarget(requestId = null, sessionId = null, home = true))
+        assertEquals(listOf(list), notificationStack(listOf(list, session, request), emptyList()))
+        assertEquals(listOf(list), notificationStack(listOf(list, Route.Settings, Route.Accounts), emptyList()))
+        assertEquals(listOf(list), notificationStack(listOf(list), emptyList()))
+    }
+
+    @Test
     fun notificationStackPutsTheTargetAboveTheList() {
         val target = listOf(session, request)
         assertEquals(listOf(list, session, request), notificationStack(listOf(list), target))
