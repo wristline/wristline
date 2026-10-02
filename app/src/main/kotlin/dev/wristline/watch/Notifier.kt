@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Build
 import android.text.SpannableString
 import android.text.Spanned
@@ -14,6 +15,7 @@ import android.text.style.TtsSpan
 import androidx.annotation.ChecksSdkIntAtLeast
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import dev.wristline.watch.data.AccountBook
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Decision
@@ -283,12 +285,17 @@ object Notifier {
     fun canPostLiveUpdates(context: Context): Boolean =
         liveUpdatesSupported() && NotificationManagerCompat.from(context).canPostPromotedNotifications()
 
+    /** The Live Updates' small icon ([OngoingIcon], no badge), drawn once. */
+    private var liveIcon: Bitmap? = null
+
     /**
-     * A long turn's Live Update, promoted to the watch face's status chip: the session title, its
-     * account line as the sub text, and a [NotificationCompat.ProgressStyle] bar: one segment per
-     * task of its task list, else indeterminate with the time since the turn started as a
-     * chronometer. Swiping it away tells [LiveUpdateDismissReceiver]. Posts nothing where it would
-     * not be promoted ([canPostLiveUpdates]).
+     * A long turn's Live Update, promoted to the watch face's status chip: the chip text
+     * ([liveUpdateChip]) and the session title, the two lines the Now Bar's expanded card shows;
+     * the status and account line as the text, and a [NotificationCompat.ProgressStyle] bar: one
+     * segment per task of its task list, else indeterminate with the time since the turn started as
+     * a chronometer (both for the notification shade). The small icon is the Now Bar card's own
+     * ([OngoingIcon]): the Now Bar draws it untinted on a disc of [COLOR]. Swiping it away tells
+     * [LiveUpdateDismissReceiver]. Posts nothing where it would not be promoted ([canPostLiveUpdates]).
      */
     internal fun liveUpdate(context: Context, update: LiveUpdate, session: Session?): Boolean {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
@@ -307,20 +314,21 @@ object Notifier {
             style.setProgressSegments(List(progress.total) { NotificationCompat.ProgressStyle.Segment(1).setColor(COLOR) })
                 .setProgress(progress.done)
         }
-        val text = liveUpdateText(update)
+        val status = liveUpdateText(update)
+        val text = listOfNotNull(status, accountLine(context, session)).joinToString(" · ")
         val spoken = when {
             update.waiting -> context.getString(R.string.status_needs_input)
             progress != null -> context.resources.getQuantityString(R.plurals.tasks_done, progress.total, progress.done, progress.total)
             else -> context.getString(R.string.status_running)
         }
+        val icon = liveIcon ?: OngoingIcon.bitmap(context).also { liveIcon = it }
         val notification = NotificationCompat.Builder(context, CHANNEL_LIVE)
-            .setSmallIcon(R.drawable.ic_notification)
+            .setSmallIcon(IconCompat.createWithBitmap(icon))
             .setColor(COLOR)
             // A colorized notification is never promoted.
             .setColorized(false)
             .setContentTitle(sessionTitle(context, session))
-            .setContentText(SpannableString(text).apply { setSpan(TtsSpan.TextBuilder(spoken).build(), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) })
-            .setSubText(accountLine(context, session))
+            .setContentText(SpannableString(text).apply { setSpan(TtsSpan.TextBuilder(spoken).build(), 0, status.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE) })
             .setStyle(style)
             .setShortCriticalText(liveUpdateChip(update))
             .apply {

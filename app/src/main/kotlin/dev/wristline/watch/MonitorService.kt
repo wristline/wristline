@@ -10,10 +10,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Typeface
 import android.graphics.drawable.Icon
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -37,15 +33,20 @@ import dev.wristline.watch.data.Holder
 import dev.wristline.watch.data.PendingRequest
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 
 /** Running sessions, and sessions waiting for the user: needs_input or with an open request, each once. */
@@ -70,16 +71,43 @@ internal const val ONGOING_IDLE = "◦"
 internal fun ongoingStatusText(counts: OngoingCounts): String =
     if (counts.waiting > 0) "✋ ${counts.waiting}" else ONGOING_IDLE
 
-/** The number on the Now Bar icon's badge: [waiting] up to 9, then "9+"; null (no badge) at zero. */
-internal fun ongoingBadgeText(waiting: Int): String? = when {
-    waiting <= 0 -> null
-    waiting <= 9 -> waiting.toString()
-    else -> "9+"
-}
-
 /** The same read out, e.g. "실행 2, 대기 1" ([running] and [waiting] spell out a count); both, at zero, when both are. */
 internal fun ongoingStatusDescription(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): String =
     ongoingParts(counts, running, waiting).ifEmpty { listOf(running(0), waiting(0)) }.joinToString(", ")
+
+/**
+ * What the monitoring card shows: its [text] and the [badge] count on its icon. The notification is
+ * re-posted only when this changes, as every post moves the card to the top of the Now Bar, above
+ * the Live Updates: never for a running count (read out only, by TalkBack) or a connection blip.
+ */
+internal data class MonitorContent(val text: String, val badge: Int)
+
+/**
+ * [MonitorContent] for the state: the counts while worn and online (no badge otherwise); [notWorn]
+ * or [notOnline]'s text for the connection ([shownConn]) else.
+ */
+internal fun monitorContent(conn: Conn, counts: OngoingCounts, worn: Boolean, notWorn: String, notOnline: (Conn) -> String): MonitorContent =
+    when {
+        !worn -> MonitorContent(notWorn, 0)
+        conn is Conn.Online -> MonitorContent(ongoingStatusText(counts), counts.waiting)
+        else -> MonitorContent(notOnline(conn), 0)
+    }
+
+/** The connection as the monitoring card tells it: Offline and Unreachable read "Connecting" too, so they are one state. */
+internal fun shownConn(conn: Conn): Conn = if (conn is Conn.Offline || conn is Conn.Unreachable) Conn.Connecting else conn
+
+/** A drop the monitoring card does not show unless it lasts this long ([settledConn]). */
+internal const val CONN_GRACE_MS = 30_000L
+
+/**
+ * [conn] as [shownConn], a state other than Online or Incompatible only once it has held for
+ * [CONN_GRACE_MS]: a reconnect within it leaves the card (and its place on the Now Bar) as it was.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+internal fun settledConn(conn: Flow<Conn>): Flow<Conn> = conn.map(::shownConn).distinctUntilChanged().transformLatest {
+    if (it !is Conn.Online && it !is Conn.Incompatible) delay(CONN_GRACE_MS)
+    emit(it)
+}
 
 private fun ongoingParts(counts: OngoingCounts, running: (Int) -> String, waiting: (Int) -> String): List<String> = buildList {
     if (counts.running > 0) add(running(counts.running))
@@ -112,7 +140,7 @@ class MonitorService : Service() {
     private val scope = MainScope()
     private var running = false
 
-    /** The Now Bar icon and the waiting count drawn on it, re-rendered only when the count changes. */
+    /** The Now Bar icon ([OngoingIcon]) and the waiting count drawn on it, re-rendered only when the count changes. */
     private var nowBarIcon: Icon? = null
     private var nowBarIconCount = -1
 
@@ -152,28 +180,28 @@ class MonitorService : Service() {
         }
         // Through OpenActivity, not MainActivity: see there why the touch target must not be always-on.
         val open = PendingIntent.getActivity(this, 0, Intent(this, OpenActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        val first = statusText(Bridge.conn.value, Bridge.sessions.value, Bridge.requests.value)
-        val firstWaiting = badgeCount(Bridge.conn.value, Bridge.sessions.value, Bridge.requests.value, worn = true)
-        var shown = first.first
+        val firstCounts = ongoingCounts(Bridge.sessions.value, Bridge.requests.value)
+        val firstConn = shownConn(Bridge.conn.value)
+        var shown = content(firstConn, firstCounts, worn = true)
         val builder = NotificationCompat.Builder(this, Notifier.CHANNEL_MONITOR)
             .setSmallIcon(R.drawable.ic_notification)
             // OngoingActivity (wear-ongoing 1.1.0) has no color of its own; the Now Bar takes this one.
             .setColor(Notifier.COLOR)
             .setColorized(false)
             .setContentTitle(getString(R.string.monitor_title))
-            .setContentText(spoken(first))
+            .setContentText(spoken(shown.text, description(firstConn, firstCounts, worn = true)))
             .setContentIntent(open)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
         val ongoing = if (hasSamsungNowBar()) {
-            builder.addExtras(nowBarExtras(shown, firstWaiting))
+            builder.addExtras(nowBarExtras(shown))
             null
         } else {
             OngoingActivity.Builder(applicationContext, NOTIFICATION_ID, builder)
                 // White on transparent, as the library asks: other surfaces tint it.
                 .setStaticIcon(R.drawable.ic_notification)
                 .setTouchIntent(open)
-                .setStatus(status(shown))
+                .setStatus(status(shown.text))
                 .build()
                 .also { it.apply(applicationContext) }
         }
@@ -196,23 +224,24 @@ class MonitorService : Service() {
         ContextCompat.registerReceiver(this, screenOn, IntentFilter(Intent.ACTION_SCREEN_ON), ContextCompat.RECEIVER_NOT_EXPORTED)
 
         scope.launch {
-            combine(Bridge.conn, Bridge.sessions, Bridge.requests, worn) { conn, sessions, requests, worn ->
-                val status = if (worn) statusText(conn, sessions, requests) else getString(R.string.ongoing_off_body).let { it to it }
-                status to badgeCount(conn, sessions, requests, worn)
+            combine(settledConn(Bridge.conn), Bridge.sessions, Bridge.requests, worn) { conn, sessions, requests, worn ->
+                val counts = ongoingCounts(sessions, requests)
+                content(conn, counts, worn) to description(conn, counts, worn)
             }
-                .distinctUntilChanged()
+                // The description (running counts) alone posts nothing; it goes along with the next change.
+                .distinctUntilChangedBy { it.first }
                 .conflate()
-                .collect { (next, waiting) ->
-                    val text = next.first
-                    if (text == shown) return@collect
-                    shown = text
-                    builder.setContentText(spoken(next))
+                .collect { (next, description) ->
+                    // Back to what is shown within an interval (conflated): nothing to post.
+                    if (next == shown) return@collect
+                    shown = next
+                    builder.setContentText(spoken(next.text, description))
                     // Without the permission the notification is hidden anyway.
                     if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
                         if (ongoing != null) {
-                            ongoing.update(applicationContext, status(text))
+                            ongoing.update(applicationContext, status(next.text))
                         } else {
-                            builder.addExtras(nowBarExtras(text, waiting))
+                            builder.addExtras(nowBarExtras(next))
                             NotificationManagerCompat.from(this@MonitorService).notify(NOTIFICATION_ID, builder.build())
                         }
                     }
@@ -267,28 +296,27 @@ class MonitorService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    /** The status text and how TalkBack reads it. */
-    private fun statusText(conn: Conn, sessions: List<Session>, requests: List<PendingRequest>): Pair<String, String> =
-        when (conn) {
-            Conn.Online -> ongoingCounts(sessions, requests).let { counts ->
-                ongoingStatusText(counts) to ongoingStatusDescription(
-                    counts,
-                    running = { getString(R.string.ongoing_running, it) },
-                    waiting = { getString(R.string.ongoing_waiting, it) },
-                )
-            }
-            is Conn.Incompatible -> getString(R.string.conn_incompatible).let { it to it }
-            else -> getString(R.string.conn_connecting).let { it to it }
+    /** What the card shows ([monitorContent]). */
+    private fun content(conn: Conn, counts: OngoingCounts, worn: Boolean): MonitorContent =
+        monitorContent(conn, counts, worn, getString(R.string.ongoing_off_body)) {
+            getString(if (it is Conn.Incompatible) R.string.conn_incompatible else R.string.conn_connecting)
         }
 
-    /** The waiting count for the Now Bar icon's badge: none while not online or not worn, as the text shows none. */
-    private fun badgeCount(conn: Conn, sessions: List<Session>, requests: List<PendingRequest>, worn: Boolean): Int =
-        if (worn && conn is Conn.Online) ongoingCounts(sessions, requests).waiting else 0
+    /** How TalkBack reads the card's text: the running and waiting counts while it shows them, else the text itself. */
+    private fun description(conn: Conn, counts: OngoingCounts, worn: Boolean): String? =
+        if (worn && conn is Conn.Online) {
+            ongoingStatusDescription(
+                counts,
+                running = { getString(R.string.ongoing_running, it) },
+                waiting = { getString(R.string.ongoing_waiting, it) },
+            )
+        } else {
+            null
+        }
 
-    /** The status text, read out by TalkBack as its description rather than glyph by glyph. */
-    private fun spoken(status: Pair<String, String>): CharSequence {
-        val (text, description) = status
-        if (text == description) return text
+    /** The status text, read out by TalkBack as its [description] rather than glyph by glyph. */
+    private fun spoken(text: String, description: String?): CharSequence {
+        if (description == null || text == description) return text
         return SpannableString(text).apply {
             setSpan(TtsSpan.TextBuilder(description).build(), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
@@ -314,11 +342,12 @@ class MonitorService : Service() {
      * Samsung: Wear OS services pass `extras["customDisplayBundle"]` through and the system UI reads
      * the keys below, the way Samsung's media card is made. Such a card gets no backdrop behind its
      * icon unless it names one ("cardIconBgLeft"), so the full-color [R.drawable.ic_ongoing] shows
-     * bare and fills the icon slot. The icon carries the [waiting] count as a badge
+     * bare and fills the icon slot. The icon carries the waiting count as a badge
      * ([nowBarIcon]), so the card still shows it with the Now Bar set to icons only.
      */
-    private fun nowBarExtras(text: String, waiting: Int): Bundle {
-        val icon = nowBarIcon(waiting)
+    private fun nowBarExtras(content: MonitorContent): Bundle {
+        val text = content.text
+        val icon = nowBarIcon(content.badge)
         val card = Bundle().apply {
             putInt("type", 1)
             putParcelable("cardIconLeft", icon)
@@ -335,34 +364,10 @@ class MonitorService : Service() {
         return Bundle().apply { putBundle("customDisplayBundle", display) }
     }
 
-    /**
-     * [R.drawable.ic_ongoing] as a bitmap with, while [waiting] > 0, a badge at its top right: an
-     * attention-yellow disc (Status.Attention) about 40% of the icon, outlined dark so it reads on
-     * the white squircle, holding the count ([ongoingBadgeText]) in black bold.
-     */
+    /** [OngoingIcon] with the [waiting] count as its badge. */
     private fun nowBarIcon(waiting: Int): Icon {
         nowBarIcon?.takeIf { nowBarIconCount == waiting }?.let { return it }
-        val size = NOW_BAR_ICON_PX
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        ContextCompat.getDrawable(this, R.drawable.ic_ongoing)!!.apply { setBounds(0, 0, size, size) }.draw(canvas)
-        ongoingBadgeText(waiting)?.let { label ->
-            val radius = size * 0.2f
-            val cx = size - radius
-            val cy = radius
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-            paint.color = BADGE_OUTLINE
-            canvas.drawCircle(cx, cy, radius, paint)
-            paint.color = BADGE_FILL
-            canvas.drawCircle(cx, cy, radius - BADGE_OUTLINE_PX, paint)
-            paint.color = BADGE_TEXT
-            paint.typeface = Typeface.DEFAULT_BOLD
-            paint.textAlign = Paint.Align.CENTER
-            paint.textSize = radius * if (label.length == 1) 1.5f else 1.15f
-            val metrics = paint.fontMetrics
-            canvas.drawText(label, cx, cy - (metrics.ascent + metrics.descent) / 2, paint)
-        }
-        return Icon.createWithBitmap(bitmap).also {
+        return Icon.createWithBitmap(OngoingIcon.bitmap(this, waiting)).also {
             nowBarIcon = it
             nowBarIconCount = waiting
         }
@@ -373,11 +378,6 @@ class MonitorService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val STATUS_INTERVAL_MS = 2_000L
         private const val SAMSUNG_SYSUI = "com.samsung.android.wearable.sysui"
-        private const val NOW_BAR_ICON_PX = 96
-        private const val BADGE_OUTLINE_PX = 2f
-        private const val BADGE_FILL = 0xFFFFD60A.toInt() // Status.Attention
-        private const val BADGE_OUTLINE = 0xFF000000.toInt()
-        private const val BADGE_TEXT = 0xFF000000.toInt()
 
         /** The Live Updates this service posts; process-wide, so a swipe-away reaches it ([LiveUpdateDismissReceiver]). */
         internal val liveUpdates = LiveUpdates()

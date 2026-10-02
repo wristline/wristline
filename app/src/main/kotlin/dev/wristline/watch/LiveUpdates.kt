@@ -15,10 +15,18 @@ internal const val LIVE_UPDATE_AFTER_MS = 60_000L
 /** At most one round of Live Update changes per this interval. */
 internal const val LIVE_UPDATE_INTERVAL_MS = 2_000L
 
+/** The longest status chip text ([liveUpdateChip]); the Now Bar chip has room for about this much. */
+internal const val LIVE_CHIP_MAX = 7
+
+/** The most minutes [LiveUpdate.minutes] counts, so its chip `▶ 9999m` stays within [LIVE_CHIP_MAX]. */
+private const val LIVE_MINUTES_MAX = 9_999
+
 /**
  * What one session's Live Update shows. [turn] is the session's turnStartedAt as sent (empty when
  * the bridge sent none), [startedAt] the same in millis, for the chronometer; [waiting] while the
- * session needs input.
+ * session needs input. [minutes] is the whole minutes since the turn started, for the chip, while
+ * it runs without a task list (null otherwise, or without a start): the Now Bar draws no
+ * chronometer counting up, so a new minute is a change to post ([LiveUpdates.nextDueAt]).
  */
 internal data class LiveUpdate(
     val sessionId: String,
@@ -27,6 +35,7 @@ internal data class LiveUpdate(
     val title: String,
     val progress: TaskProgress?,
     val waiting: Boolean,
+    val minutes: Int? = null,
 )
 
 internal sealed interface LiveChange {
@@ -47,10 +56,18 @@ internal fun liveUpdateDue(session: Session, now: Long): Boolean {
 internal fun liveProgress(update: LiveUpdate): TaskProgress? =
     update.progress?.takeIf { it.total > 0 }?.let { it.copy(done = it.done.coerceIn(0, it.total)) }
 
-/** The status chip's text: `✋` while waiting, `3/7` with a task list, else `▶`. */
-internal fun liveUpdateChip(update: LiveUpdate): String = when {
-    update.waiting -> "✋"
-    else -> liveProgress(update)?.let { "${it.done}/${it.total}" } ?: "▶"
+/**
+ * The status chip's text, also the first line of the Now Bar's expanded card: `✋` while waiting,
+ * `▶ 3/7` with a task list, else `▶ 12m` since the turn started (`▶` without a start). Never longer
+ * than [LIVE_CHIP_MAX]: a task count too long for it goes without the `▶`, or is left out.
+ */
+internal fun liveUpdateChip(update: LiveUpdate): String {
+    if (update.waiting) return "✋"
+    liveProgress(update)?.let { progress ->
+        val count = "${progress.done}/${progress.total}"
+        return listOf("▶ $count", count).firstOrNull { it.length <= LIVE_CHIP_MAX } ?: "▶"
+    }
+    return update.minutes?.let { "▶ ${it}m" } ?: "▶"
 }
 
 /** The text under the title: `✋ waiting`, `▶ 3/7` or `▶ running`. */
@@ -87,20 +104,30 @@ internal class LiveUpdates {
                 val turn = session.turnStartedAt.orEmpty()
                 val keep = before != null && before.turn == turn
                 if (dismissed[session.id] == turn || !(keep || liveUpdateDue(session, now))) return null
-                LiveUpdate(session.id, turn, isoToMillis(session.turnStartedAt), session.title, session.progress, waiting = false)
+                val startedAt = isoToMillis(session.turnStartedAt)
+                val update = LiveUpdate(session.id, turn, startedAt, session.title, session.progress, waiting = false)
+                if (liveProgress(update) != null || startedAt == null) return update
+                update.copy(minutes = ((now - startedAt) / MINUTE_MS).coerceIn(0, LIVE_MINUTES_MAX.toLong()).toInt())
             }
             // turnStartedAt is sent only while running: the waiting turn is the one shown.
-            SessionStatus.NEEDS_INPUT -> before?.copy(title = session.title, progress = session.progress ?: before.progress, waiting = true)
+            SessionStatus.NEEDS_INPUT -> before?.copy(title = session.title, progress = session.progress ?: before.progress, waiting = true, minutes = null)
             else -> null
         }
     }
 
-    /** When a running session not shown yet becomes [liveUpdateDue] by age alone; null when none will. */
-    fun nextDueAt(sessions: List<Session>, now: Long): Long? =
-        sessions.filter { it.status == SessionStatus.RUNNING && it.id !in shown && dismissed[it.id] != it.turnStartedAt.orEmpty() }
+    /**
+     * When the next [plan] has something to post by time alone: a running session not shown yet
+     * becomes [liveUpdateDue] by age, or a shown one's [LiveUpdate.minutes] goes up. Null when none will.
+     */
+    fun nextDueAt(sessions: List<Session>, now: Long): Long? {
+        val due = sessions.filter { it.status == SessionStatus.RUNNING && it.id !in shown && dismissed[it.id] != it.turnStartedAt.orEmpty() }
             .mapNotNull { isoToMillis(it.turnStartedAt)?.plus(LIVE_UPDATE_AFTER_MS) }
-            .filter { it > now }
-            .minOrNull()
+        val minutes = shown.values.mapNotNull { update ->
+            val startedAt = update.startedAt ?: return@mapNotNull null
+            update.minutes?.takeIf { it < LIVE_MINUTES_MAX }?.let { startedAt + (it + 1) * MINUTE_MS }
+        }
+        return (due + minutes).filter { it > now }.minOrNull()
+    }
 
     /** The user swiped [sessionId]'s Live Update for [turn] away: it is not posted again for that turn. */
     fun dismiss(sessionId: String, turn: String) {
@@ -116,6 +143,8 @@ internal class LiveUpdates {
     private companion object {
         /** The statuses a turn is still going in. */
         val TURN = setOf(SessionStatus.RUNNING, SessionStatus.NEEDS_INPUT)
+
+        const val MINUTE_MS = 60_000L
     }
 }
 
