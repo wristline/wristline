@@ -12,6 +12,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
@@ -41,9 +43,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -53,6 +59,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -138,9 +145,11 @@ private val ACTIONS_BOTTOM = 6.dp
 // The list's end padding as a share of the screen height: at rest the newest short card ends about
 // 70% down the screen, a little above the actions.
 private const val END_PADDING_FRACTION = 0.3f
-// The jump to the newest message, centered just above the actions' touch targets (48dp): clear of
-// the gauges' glyphs on the round edge.
-private val JUMP_BOTTOM = ACTIONS_BOTTOM + 48.dp
+// The jump to the newest message: a bare chevron over the gap between the actions, its strokes
+// just above their tops, inside the scrim where content already fades. Its 48dp touch target
+// reaches 18dp down between the actions, which are drawn after it and keep their own touches.
+private val JUMP_BOTTOM = ACTIONS_BOTTOM + ACTION_SIZE - 18.dp
+private val JUMP_GLYPH = 20.dp
 // Behind the actions, rising well above them: content scrolling under them fades out.
 private val SCRIM_HEIGHT = 72.dp
 // The working indicator under the newest item: smaller than the usual spinner, low-key.
@@ -496,26 +505,39 @@ internal fun SessionDetailContent(
         if (session != null) {
             EdgeGauges(gaugesShown, session.context, limit, fillIn = !gaugesFilled, onFillStarted = { gaugesFilled = true })
         }
-        // Scrolled back toward older messages: a way back to the newest, centered above the actions.
+        // Scrolled back toward older messages: a way back to the newest, a bare chevron over the gap
+        // between the actions. No disc, so it hides nothing; a 1px dark outline reads over text.
         AnimatedVisibility(
             showJumpToLatest(atEnd = atBottom, loading = !placed, confirming = confirming),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = JUMP_BOTTOM),
             enter = CalmFadeIn,
             exit = CalmFadeOut,
         ) {
-            FilledTonalIconButton(
-                onClick = {
-                    touch(Haptic.SEGMENT)
-                    scope.launch {
-                        listState.animateScrollToItem(0)
-                        listState.animateScrollBy(-screenHeight.toFloat())
-                    }
-                },
-                modifier = Modifier.touchTargetAwareSize(ACTION_SIZE),
-                // Gray and a little see-through over the cards: it steps back behind the actions.
-                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.surfaceContainer.copy(alpha = 0.9f)),
+            val chevron = painterResource(R.drawable.ic_arrow_down)
+            Box(
+                Modifier
+                    .size(ACTION_SIZE)
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button) {
+                        touch(Haptic.SEGMENT)
+                        scope.launch {
+                            listState.animateScrollToItem(0)
+                            listState.animateScrollBy(-screenHeight.toFloat())
+                        }
+                    },
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(painterResource(R.drawable.ic_arrow_down), stringResource(R.string.detail_jump_latest))
+                Icon(
+                    chevron,
+                    stringResource(R.string.detail_jump_latest),
+                    Modifier.size(JUMP_GLYPH).drawBehind {
+                        val outline = ColorFilter.tint(colors.background)
+                        for (dx in -1..1) for (dy in -1..1) {
+                            if (dx != 0 || dy != 0) translate(dx.toFloat(), dy.toFloat()) { with(chevron) { draw(size, colorFilter = outline) } }
+                        }
+                    },
+                    tint = colors.onSurfaceVariant,
+                )
             }
         }
         // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
