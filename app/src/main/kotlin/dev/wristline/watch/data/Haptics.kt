@@ -28,7 +28,7 @@ enum class Haptic {
     /** A request was denied: a falling tap. */
     REJECT,
 
-    /** A switch between two choices (the Quick Ask provider): a light tick. */
+    /** A switch between two choices (the Quick Ask provider), or the jump to the newest message: a light tick. */
     SEGMENT,
 }
 

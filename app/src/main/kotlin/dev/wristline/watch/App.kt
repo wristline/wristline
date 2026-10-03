@@ -5,7 +5,10 @@ import android.content.pm.PackageManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
@@ -134,6 +137,8 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
             )
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
+            // Notification taps so far: one opening the session already on screen starts a new visit of it.
+            var opens by remember { mutableIntStateOf(0) }
 
             NavDisplay(
                 backStack = backStack,
@@ -179,7 +184,7 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
                         )
                     }
                     entry<Route.Session> { key ->
-                        SessionDetailScreen(sessionId = key.id, onRespond = { backStack.add(Route.Request(it)) })
+                        SessionDetailScreen(sessionId = key.id, visit = opens, onRespond = { backStack.add(Route.Request(it)) })
                     }
                     entry<Route.Request> { key ->
                         // This entry, not whatever is on top: a notification may have opened a screen over it.
@@ -212,7 +217,10 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
 
             LaunchedEffect(openTarget) {
                 if (openTarget == null) return@LaunchedEffect
-                if (Bridge.prefs.isPaired) backStack.replaceWith(notificationStack(backStack, openTarget))
+                if (Bridge.prefs.isPaired) {
+                    backStack.replaceWith(notificationStack(backStack, openTarget))
+                    opens++
+                }
                 onOpened()
             }
         }

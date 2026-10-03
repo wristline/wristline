@@ -118,6 +118,7 @@
     <string name="detail_respond">Respond</string>
     <string name="detail_speak">Speak</string>
     <string name="detail_type">Type</string>
+    <string name="detail_jump_latest">Jump to latest</string>
     <string name="detail_retry">Retry</string>
     <string name="detail_prompt_label">Message to the agent</string>
     <string name="detail_confirm_title">Send this?</string>

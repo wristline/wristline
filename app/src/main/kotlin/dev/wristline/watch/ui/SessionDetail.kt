@@ -96,6 +96,7 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.ContextUsage
+import dev.wristline.watch.data.Haptic
 import dev.wristline.watch.data.Item
 import dev.wristline.watch.data.ItemKind
 import dev.wristline.watch.data.LimitKind
@@ -137,6 +138,9 @@ private val ACTIONS_BOTTOM = 6.dp
 // The list's end padding as a share of the screen height: at rest the newest short card ends about
 // 70% down the screen, a little above the actions.
 private const val END_PADDING_FRACTION = 0.3f
+// The jump to the newest message, centered just above the actions' touch targets (48dp): clear of
+// the gauges' glyphs on the round edge.
+private val JUMP_BOTTOM = ACTIONS_BOTTOM + 48.dp
 // Behind the actions, rising well above them: content scrolling under them fades out.
 private val SCRIM_HEIGHT = 72.dp
 // The working indicator under the newest item: smaller than the usual spinner, low-key.
@@ -181,8 +185,12 @@ private class OpenedSession(val id: String) : RememberObserver {
     override fun onAbandoned() = Bridge.closeSession(id)
 }
 
+/**
+ * [visit] changes when a notification opens this session again while it is on screen: the list goes
+ * back to the newest message as on entering it.
+ */
 @Composable
-internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit) {
+internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (String) -> Unit) {
     val opened = remember(sessionId) { OpenedSession(sessionId) }
     // Live items only while started: with the screen off, or another activity in front, nothing
     // streams; coming back reloads the newest page.
@@ -248,6 +256,8 @@ internal fun SessionDetailScreen(sessionId: String, onRespond: (String) -> Unit)
         onEarlier = { Bridge.loadEarlier(sessionId) },
         onAction = { if (request != null) onRespond(request.id) else speak() },
         onType = type,
+        visit = visit,
+        confirming = confirming,
     )
 
     AlertDialog(
@@ -298,6 +308,10 @@ internal fun SessionDetailContent(
     onEarlier: () -> Unit,
     onAction: () -> Unit,
     onType: () -> Unit,
+    /** A new visit of the screen ([SessionDetailScreen]): the list starts at the newest message again. */
+    visit: Int = 0,
+    /** The send confirmation is up: the jump to the newest message hides under it. */
+    confirming: Boolean = false,
 ) {
     val listState = rememberTransformingLazyColumnState()
     val spec = rememberTransformationSpec()
@@ -323,19 +337,32 @@ internal fun SessionDetailContent(
     // which is exactly "was the user at the bottom".
     val atBottom = !listState.canScrollBackward
     val lastSeq = items.lastOrNull()?.seq
-    var placed by remember { mutableStateOf(false) }
-    LaunchedEffect(lastSeq, footers) {
-        if (lastSeq == null || !atBottom) return@LaunchedEffect
-        if (placed) {
-            // The list may hold the card the user saw in place, leaving the new one under the chin;
-            // a screen toward the bottom stops at the end.
-            listState.animateScrollBy(-screenHeight.toFloat())
-        } else {
-            // First page: the list held the header or the spinner in place as the items came in
-            // under it, possibly screens away. Back to the newest without animating.
-            listState.scrollToItem(0)
-            listState.scrollBy(-screenHeight.toFloat())
-            placed = true
+    // Placed at the newest message in this visit. Until then the list may stand anywhere: holding
+    // the header or the spinner in place as the first page came in under it, or at the position
+    // saved when the screen was last left (the saveable list state), or where the user left it
+    // before a notification opened it again.
+    var placed by remember(visit) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val touch = rememberTouchHaptics()
+    suspend fun toEnd() {
+        listState.scrollToItem(0)
+        listState.scrollBy(-screenHeight.toFloat())
+    }
+    LaunchedEffect(lastSeq, footers, visit) {
+        when (endScroll(hasItems = lastSeq != null, placed = placed, atEnd = atBottom)) {
+            // Back to the newest without animating.
+            EndScroll.JUMP -> {
+                toEnd()
+                placed = true
+            }
+            EndScroll.FOLLOW -> {
+                // The list may hold the card the user saw in place, leaving the new one under the
+                // chin; a screen toward the bottom stops at the end.
+                listState.animateScrollBy(-screenHeight.toFloat())
+                // More than a screen came in (the newest page after a while away): straight to it.
+                if (listState.canScrollBackward) toEnd()
+            }
+            EndScroll.NONE -> Unit
         }
     }
 
@@ -469,6 +496,28 @@ internal fun SessionDetailContent(
         if (session != null) {
             EdgeGauges(gaugesShown, session.context, limit, fillIn = !gaugesFilled, onFillStarted = { gaugesFilled = true })
         }
+        // Scrolled back toward older messages: a way back to the newest, centered above the actions.
+        AnimatedVisibility(
+            showJumpToLatest(atEnd = atBottom, loading = !placed, confirming = confirming),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = JUMP_BOTTOM),
+            enter = CalmFadeIn,
+            exit = CalmFadeOut,
+        ) {
+            FilledTonalIconButton(
+                onClick = {
+                    touch(Haptic.SEGMENT)
+                    scope.launch {
+                        listState.animateScrollToItem(0)
+                        listState.animateScrollBy(-screenHeight.toFloat())
+                    }
+                },
+                modifier = Modifier.touchTargetAwareSize(ACTION_SIZE),
+                // Gray and a little see-through over the cards: it steps back behind the actions.
+                colors = IconButtonDefaults.filledTonalIconButtonColors(containerColor = colors.surfaceContainer.copy(alpha = 0.9f)),
+            ) {
+                Icon(painterResource(R.drawable.ic_arrow_down), stringResource(R.string.detail_jump_latest))
+            }
+        }
         // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
         val actions = Modifier.align(Alignment.BottomCenter).padding(bottom = ACTIONS_BOTTOM)
         if (hasRequest) {
@@ -502,6 +551,28 @@ internal fun SessionDetailContent(
 }
 
 private enum class SpeakState { MIC, SENDING, SENT }
+
+/** What the detail list does when its newest item or its footers change ([endScroll]). */
+internal enum class EndScroll { NONE, JUMP, FOLLOW }
+
+/**
+ * Entering the screen (a new visit, not yet [placed] at the newest message), the list jumps to the
+ * newest as soon as it has items, wherever it stands; afterwards it follows new items only when it
+ * was [atEnd], and stays where the user scrolled to otherwise.
+ */
+internal fun endScroll(hasItems: Boolean, placed: Boolean, atEnd: Boolean): EndScroll = when {
+    !hasItems -> EndScroll.NONE
+    !placed -> EndScroll.JUMP
+    atEnd -> EndScroll.FOLLOW
+    else -> EndScroll.NONE
+}
+
+/**
+ * The jump to the newest message shows while the list is scrolled back from it, not while the
+ * first page is [loading] (not yet placed at the newest) or the send confirmation is up.
+ */
+internal fun showJumpToLatest(atEnd: Boolean, loading: Boolean, confirming: Boolean): Boolean =
+    !atEnd && !loading && !confirming
 
 /** The speak button's mic, its spinner while a prompt is sent, then a check that pops in. */
 @Composable
