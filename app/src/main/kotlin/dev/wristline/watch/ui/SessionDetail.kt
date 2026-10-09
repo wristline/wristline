@@ -623,13 +623,17 @@ private fun SpeakIcon(state: SpeakState) {
 
 /**
  * The window a session's gauge shows: the 5-hour window (`5h`) of the usage entry under the
- * session's account for Claude Code, the primary window for other providers. A session without a
- * matching account entry falls back to its provider's only entry; null when there is none or the
- * choice would be a guess.
+ * session's account for Claude Code, the primary window for other providers. A session without an
+ * account, or whose account has no entry (no longer logged in), falls back to its provider's entry
+ * of the primary home ([Account.primary]), else its provider's only entry; null when there is none
+ * or the choice would be a guess.
  */
 internal fun sessionLimit(session: Session, usage: List<Usage>): UsageWindow? {
     val entries = usage.filter { it.provider == session.provider }
-    val entry = entries.firstOrNull { it.account?.id == session.account?.id } ?: entries.singleOrNull() ?: return null
+    val entry = entries.firstOrNull { it.account?.id == session.account?.id }
+        ?: entries.firstOrNull { it.account?.primary == true }
+        ?: entries.singleOrNull()
+        ?: return null
     return if (session.provider == ProviderId.CLAUDE_CODE) {
         entry.windows.firstOrNull { it.id == "5h" }
     } else {
@@ -649,10 +653,11 @@ internal sealed interface LimitEnd {
 /**
  * When the usage limit of an error item or `limit` alert ends: its [resetsAt] when the bridge sent
  * one ([estimated] as the bridge marks it). Else, for a usage limit ([limitKind] set), from the
- * windows of [session]'s usage entry in [usage] (as [sessionLimit] picks the entry) that reset after
- * [now]: the latest reset of those at 100% (the one that blocks; Codex reports a used-up weekly
- * window as credits running out too); else [LimitEnd.Credits] for a credits limit; else the reset of
- * the fullest window from [AT_LIMIT_PERCENT], estimated; else null rather than a misleading time.
+ * windows of [session]'s usage entry in [usage] (its account's, else its provider's only one) that
+ * reset after [now]: the latest reset of those at 100% (the one that blocks; Codex reports a used-up
+ * weekly window as credits running out too); else [LimitEnd.Credits] for a credits limit; else the
+ * reset of the fullest window from [AT_LIMIT_PERCENT], estimated; else null rather than a misleading
+ * time.
  */
 internal fun limitEnd(limitKind: String?, resetsAt: String?, estimated: Boolean, session: Session?, usage: List<Usage>, now: Long): LimitEnd? {
     isoToMillis(resetsAt)?.let { return LimitEnd.At(it, estimated) }

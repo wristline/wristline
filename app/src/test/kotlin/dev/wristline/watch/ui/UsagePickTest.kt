@@ -215,6 +215,32 @@ class UsagePickTest {
     }
 
     @Test
+    fun sessionWithoutAccountTakesThePrimaryHomesEntry() {
+        // As the bridge sent them: a Codex thread that names no account, beside two logged-in homes'
+        // entries, the primary home's with only its weekly window left.
+        val work = Account("3d4a3554", "Work", primary = true)
+        val usage = listOf(codex(pro, 96.0), Usage(ProviderId.CODEX, at, listOf(UsageWindow("secondary", 7.0)), work))
+        assertEquals(UsageWindow("secondary", 7.0), sessionLimit(session(ProviderId.CODEX, null), usage))
+        // The same for Claude Code.
+        assertEquals(UsageWindow("5h", 20.0), sessionLimit(session(ProviderId.CLAUDE_CODE, null), listOf(claude(school, 70.0, 5.0), claude(me.copy(primary = true), 20.0, 5.0))))
+    }
+
+    @Test
+    fun sessionOfAnAccountWithoutUsageTakesThePrimaryHomesEntry() {
+        // A thread still attributed to an account no home is logged into now: its entry is gone.
+        val gone = Account("sisolab", "sisolab")
+        val usage = listOf(claude(school, 70.0, 5.0), claude(me.copy(primary = true), 20.0, 5.0))
+        assertEquals(UsageWindow("5h", 20.0), sessionLimit(session(ProviderId.CLAUDE_CODE, gone), usage))
+        // Its own entry, when there is one, wins over the primary.
+        assertEquals(UsageWindow("5h", 70.0), sessionLimit(session(ProviderId.CLAUDE_CODE, school), usage))
+        // Without a primary entry, the provider's only one; with several and none primary, no guess.
+        assertEquals(UsageWindow("5h", 70.0), sessionLimit(session(ProviderId.CLAUDE_CODE, gone), usage.take(1)))
+        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, gone), listOf(claude(school, 70.0, 5.0), claude(me, 20.0, 5.0))))
+        // Another provider's primary entry is never taken.
+        assertNull(sessionLimit(session(ProviderId.CODEX, gone), usage))
+    }
+
+    @Test
     fun codexLimitIsThePrimaryWindow() {
         val usage = listOf(claude(me, 14.0, 40.0), codex(me, 12.0, 40.0))
         assertEquals(UsageWindow("primary", 12.0), sessionLimit(session(ProviderId.CODEX, me), usage))
