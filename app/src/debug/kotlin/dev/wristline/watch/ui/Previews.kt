@@ -399,6 +399,17 @@ private fun SessionDetailFullGaugesPreview() = Frame {
     )
 }
 
+// A Claude session with no usage (its 5-hour window reset while idle): the right arc is still there,
+// empty, the track and the meter glyph alone.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun SessionDetailNoUsagePreview() = Frame {
+    SessionDetailContent(
+        sessions[0], gone = false, limit = null, state = items, hasRequest = false, sending = false, outcome = null,
+        onEarlier = {}, onAction = {}, onType = {},
+    )
+}
+
 // The newest page could not be fetched and nothing is held: the caption, not a blank list.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
 @Composable

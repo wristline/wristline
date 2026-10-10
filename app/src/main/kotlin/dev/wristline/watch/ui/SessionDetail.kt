@@ -670,6 +670,9 @@ internal fun limitEnd(limitKind: String?, resetsAt: String?, estimated: Boolean,
     return windows.filter { it.first >= AT_LIMIT_PERCENT }.maxByOrNull { it.first }?.let { LimitEnd.At(it.second, estimated = true) }
 }
 
+/** The share of its arc an edge gauge fills for [percent]: none when unknown (null). */
+internal fun gaugeFraction(percent: Double?): Float = ((percent ?: 0.0) / 100).toFloat().coerceIn(0f, 1f)
+
 /** Context use in percent, or null when unknown. */
 private fun contextPercent(context: ContextUsage?): Double? =
     context?.takeIf { it.window > 0 }?.let { it.used * 100.0 / it.window }
@@ -705,7 +708,9 @@ private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<B
  * Context use (left) and the limit window (right) as bare arcs beside 9 and 3 o'clock, each with a
  * glyph (a page, a meter) on its ring just below its lower end; no numbers: the header reads them
  * out. Both fill upwards. With [fillIn] the arcs composed now fill in from zero, the right one a
- * little after the left; [onFillStarted] follows the first.
+ * little after the left; [onFillStarted] follows the first. The right arc is always there: with no
+ * [limit] (no usage entry, or one without the window, as after it reset while idle) it is empty,
+ * the track and glyph alone, as the list's usage card shows a dash.
  */
 @Composable
 private fun EdgeGauges(
@@ -726,26 +731,24 @@ private fun EdgeGauges(
                 onFillStarted = onFillStarted,
             )
         }
-        if (limit != null) {
-            val color by animateColorAsState(
-                limitColor(limit.usedPercent.roundToInt()),
-                MaterialTheme.motionScheme.defaultEffectsSpec(),
-            )
-            EdgeGauge(
-                limit.usedPercent,
-                color,
-                right = true,
-                glyph = R.drawable.ic_gauge,
-                fillDelayMs = if (fillIn) GAUGE_STAGGER_MS else null,
-                onFillStarted = onFillStarted,
-            )
-        }
+        val color by animateColorAsState(
+            limit?.let { limitColor(it.usedPercent.roundToInt()) } ?: Color.Transparent,
+            MaterialTheme.motionScheme.defaultEffectsSpec(),
+        )
+        EdgeGauge(
+            limit?.usedPercent,
+            color,
+            right = true,
+            glyph = R.drawable.ic_gauge,
+            fillDelayMs = if (fillIn && limit != null) GAUGE_STAGGER_MS else null,
+            onFillStarted = onFillStarted,
+        )
     }
 }
 
 @Composable
 private fun EdgeGauge(
-    percent: Double,
+    percent: Double?,
     color: Color,
     right: Boolean,
     glyph: Int,
@@ -753,7 +756,7 @@ private fun EdgeGauge(
     onFillStarted: () -> Unit,
 ) {
     // As in PercentRing: the indicator observes only the State its first progress lambda reads.
-    val progress by rememberFillIn((percent / 100).toFloat().coerceIn(0f, 1f), fillDelayMs, onFillStarted)
+    val progress by rememberFillIn(gaugeFraction(percent), fillDelayMs, onFillStarted)
     val edge = CircularProgressIndicatorDefaults.FullScreenPadding
     CircularProgressIndicator(
         progress = { progress },
@@ -813,7 +816,7 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
         progress?.let { pluralStringResource(progressDoneRes(it), it.total, it.done, it.total) },
         progress?.let { detailCurrent(it) },
         contextPercent(session.context)?.let { stringResource(R.string.detail_context_description, it.roundToInt()) },
-        limit?.let { "${windowLabel(it)} ${it.usedPercent.roundToInt()}%" },
+        limit?.let { "${windowLabel(it)} ${it.usedPercent.roundToInt()}%" } ?: stringResource(R.string.detail_limit_unknown),
     ).joinToString(", ")
     Column(
         modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = spoken },

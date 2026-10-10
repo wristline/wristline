@@ -241,6 +241,18 @@ class UsagePickTest {
     }
 
     @Test
+    fun claudeSessionAfterItsFiveHourWindowResetHasNoLimitAndAnEmptyGauge() {
+        // Idle past the reset: the bridge drops the expired 5h window, or the whole entry.
+        val weekOnly = Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("7d", 40.0)), me)
+        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, me), listOf(weekOnly)))
+        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, me), emptyList()))
+        // The arc is still drawn, empty: 0%.
+        assertEquals(0f, gaugeFraction(null))
+        assertEquals(0.14f, gaugeFraction(14.0), 1e-6f)
+        assertEquals(1f, gaugeFraction(130.0))
+    }
+
+    @Test
     fun codexLimitIsThePrimaryWindow() {
         val usage = listOf(claude(me, 14.0, 40.0), codex(me, 12.0, 40.0))
         assertEquals(UsageWindow("primary", 12.0), sessionLimit(session(ProviderId.CODEX, me), usage))
