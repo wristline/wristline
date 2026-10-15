@@ -65,7 +65,7 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         Bridge.acquire(Holder.ACTIVITY)
-        // Restarts monitoring after a reboot or after the system stopped it (there is no boot receiver).
+        // Restarts monitoring after the system stopped it (BootReceiver covers reboots and updates).
         MonitorService.sync(this)
     }
 
