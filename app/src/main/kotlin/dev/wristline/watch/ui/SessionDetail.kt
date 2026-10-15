@@ -452,7 +452,7 @@ internal fun SessionDetailContent(
             items(items.asReversed(), key = { it.seq }, contentType = { it.kind }) { item ->
                 ItemRow(
                     item = item,
-                    limitEnd = if (item.error) remember(item, session, usage) { limitEnd(item.limitKind, item.resetsAt, item.resetsEstimated, session, usage, System.currentTimeMillis()) } else null,
+                    limitEnd = if (item.error) remember(item, session, usage) { limitEnd(item.limitKind, item.resetsAt, item.resetsEstimated, isoToMillis(item.ts), session, usage, System.currentTimeMillis()) } else null,
                     expanded = expanded[item.seq] == true,
                     onToggle = { expanded[item.seq] = expanded[item.seq] != true },
                     spec = spec,
@@ -641,8 +641,12 @@ internal fun sessionLimit(session: Session, usage: List<Usage>, now: Long): Usag
 
 /** When a usage limit ends, as its card and notification show it ([limitEnd]). */
 internal sealed interface LimitEnd {
-    /** At [millis]; [estimated] (shown with `~`) when inferred from a window near full rather than known. */
-    data class At(val millis: Long, val estimated: Boolean) : LimitEnd
+    /**
+     * At [millis]; [estimated] (shown with `~`) when inferred from a window near full rather than
+     * known; [long] (a calendar rather than a clock before it) when the window that ends is a day
+     * or longer.
+     */
+    data class At(val millis: Long, val estimated: Boolean, val long: Boolean) : LimitEnd
 
     /** The account's usage credits ran out, and no window is full: no reset time. */
     data object Credits : LimitEnd
@@ -650,22 +654,24 @@ internal sealed interface LimitEnd {
 
 /**
  * When the usage limit of an error item or `limit` alert ends: its [resetsAt] when the bridge sent
- * one ([estimated] as the bridge marks it). Else, for a usage limit ([limitKind] set), from the
- * windows of [session]'s usage entry in [usage] (its account's, else its provider's only one) that
- * reset after [now]: the latest reset of those at 100% (the one that blocks; Codex reports a used-up
- * weekly window as credits running out too); else [LimitEnd.Credits] for a credits limit; else the
- * reset of the fullest window from [AT_LIMIT_PERCENT], estimated; else null rather than a misleading
- * time.
+ * one ([estimated] as the bridge marks it), long when it is a day or more after the limit was
+ * reported, [reportedAt] (else [now]): the bridge names no window. Else, for a usage limit
+ * ([limitKind] set), from the windows of [session]'s usage entry in [usage] (its account's, else its
+ * provider's only one) that reset after [now]: the latest reset of those at 100% (the one that
+ * blocks; Codex reports a used-up weekly window as credits running out too); else
+ * [LimitEnd.Credits] for a credits limit; else the reset of the fullest window from
+ * [AT_LIMIT_PERCENT], estimated; else null rather than a misleading time. Long as the window is
+ * ([isLongWindow]).
  */
-internal fun limitEnd(limitKind: String?, resetsAt: String?, estimated: Boolean, session: Session?, usage: List<Usage>, now: Long): LimitEnd? {
-    isoToMillis(resetsAt)?.let { return LimitEnd.At(it, estimated) }
+internal fun limitEnd(limitKind: String?, resetsAt: String?, estimated: Boolean, reportedAt: Long?, session: Session?, usage: List<Usage>, now: Long): LimitEnd? {
+    isoToMillis(resetsAt)?.let { return LimitEnd.At(it, estimated, long = it - (reportedAt ?: now) >= MINUTES_PER_DAY * 60_000L) }
     if (limitKind == null) return null
     val entries = usage.filter { it.provider == session?.provider }
     val entry = entries.firstOrNull { it.account?.id == session?.account?.id } ?: entries.singleOrNull()
-    val windows = entry?.windows.orEmpty().mapNotNull { w -> isoToMillis(w.resetsAt)?.takeIf { it > now }?.let { w.usedPercent to it } }
-    windows.filter { it.first >= 100 }.maxOfOrNull { it.second }?.let { return LimitEnd.At(it, estimated = false) }
+    val windows = entry?.windows.orEmpty().mapNotNull { w -> isoToMillis(w.resetsAt)?.takeIf { it > now }?.let { w to it } }
+    windows.filter { it.first.usedPercent >= 100 }.maxByOrNull { it.second }?.let { (w, at) -> return LimitEnd.At(at, estimated = false, long = isLongWindow(w)) }
     if (limitKind == LimitKind.CREDITS) return LimitEnd.Credits
-    return windows.filter { it.first >= AT_LIMIT_PERCENT }.maxByOrNull { it.first }?.let { LimitEnd.At(it.second, estimated = true) }
+    return windows.filter { it.first.usedPercent >= AT_LIMIT_PERCENT }.maxByOrNull { it.first.usedPercent }?.let { (w, at) -> LimitEnd.At(at, estimated = true, long = isLongWindow(w)) }
 }
 
 /** The share of its arc an edge gauge fills for [percent]: none when unknown (null). */
@@ -919,7 +925,8 @@ internal fun limitEndClockText(resetsAt: Long, itemAt: Long?, now: Long, zone: Z
 
 /**
  * When the usage limit the error item of [itemTs] reports ends ([limitEnd]): `◷ 07:40 PM`
- * ([limitEndClockText], as of the item's composition), read out as `resets today 7:40 PM`;
+ * ([limitEndClockText], as of the item's composition), a calendar for a long window rather than
+ * the clock ([LimitEnd.At.long]), read out as `resets today 7:40 PM`;
  * `◷ ~07:40 PM` for an estimate, read out as `resets around today 7:40 PM (estimated)`; a coin and
  * `credits` when credits ran out, read out as `credits exhausted`.
  */
@@ -937,7 +944,7 @@ private fun ItemLimitEnd(end: LimitEnd, itemTs: String) {
             val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
             val words = resetClockWords(end.millis, now, zone, LocalConfiguration.current.locales[0], is24Hour, stringResource(R.string.limit_today))
             spoken = stringResource(if (end.estimated) R.string.limit_resets_around else R.string.limit_resets_at, words)
-            glyph = R.drawable.ic_clock
+            glyph = if (end.long) R.drawable.ic_calendar else R.drawable.ic_clock
             text = limitEndClockText(end.millis, isoToMillis(itemTs), now, zone, is24Hour)
         }
         LimitEnd.Credits -> {

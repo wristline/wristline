@@ -24,10 +24,11 @@ class LimitEndTest {
     private fun codex(account: Account?, primary: Double, secondary: Double, primaryResets: String = fiveHour, secondaryResets: String = week) =
         Usage(ProviderId.CODEX, "2026-10-02T02:59:00Z", listOf(UsageWindow("primary", primary, primaryResets, 300), UsageWindow("secondary", secondary, secondaryResets, 10080)), account)
 
-    private fun end(kind: String?, usage: List<Usage>, resetsAt: String? = null, estimated: Boolean = false) =
-        limitEnd(kind, resetsAt, estimated, session, usage, now)
+    private fun end(kind: String?, usage: List<Usage>, resetsAt: String? = null, estimated: Boolean = false, reportedAt: Long? = now) =
+        limitEnd(kind, resetsAt, estimated, reportedAt, session, usage, now)
 
-    private fun at(iso: String, estimated: Boolean = false) = LimitEnd.At(isoToMillis(iso)!!, estimated)
+    // The weekly window (and a bridge time as far off) is long; the 5-hour one and nearer times short.
+    private fun at(iso: String, estimated: Boolean = false) = LimitEnd.At(isoToMillis(iso)!!, estimated, long = iso == week)
 
     @Test
     fun theBridgesResetTimeWins() {
@@ -62,6 +63,29 @@ class LimitEndTest {
         assertEquals(at(week), end(LimitKind.CREDITS, listOf(codex(work, 30.0, 100.0))))
         assertEquals(LimitEnd.Credits, end(LimitKind.CREDITS, listOf(codex(work, 98.0, 22.0))))
         assertEquals(LimitEnd.Credits, end(LimitKind.CREDITS, emptyList()))
+    }
+
+    @Test
+    fun aBridgeResetTimeIsLongFromADayAfterTheLimitWasReported() {
+        val day = 24 * 3_600_000L
+        val reported = isoToMillis("2026-10-01T09:00:00Z")!!
+        assertEquals(false, (end(LimitKind.WINDOW, emptyList(), "2026-10-02T08:59:00Z", reportedAt = reported) as LimitEnd.At).long)
+        assertEquals(true, (end(LimitKind.WINDOW, emptyList(), "2026-10-02T09:00:00Z", reportedAt = reported) as LimitEnd.At).long)
+        // Without the report's time, from now.
+        assertEquals(false, (end(LimitKind.WINDOW, emptyList(), "2026-10-02T10:40:00Z", reportedAt = null) as LimitEnd.At).long)
+        assertEquals(LimitEnd.At(now + day, estimated = false, long = true), limitEnd(LimitKind.WINDOW, "2026-10-03T03:00:00Z", false, null, session, emptyList(), now))
+    }
+
+    @Test
+    fun aResetTimeFromUsageIsLongAsItsWindowIs() {
+        // Codex's windows by their length; Claude Code's by id, a model's weekly one too.
+        assertEquals(true, (end(LimitKind.WINDOW, listOf(codex(work, 100.0, 100.0))) as LimitEnd.At).long)
+        assertEquals(false, (end(LimitKind.WINDOW, listOf(codex(work, 100.0, 40.0))) as LimitEnd.At).long)
+        val claude = Session("claude:1", ProviderId.CLAUDE_CODE, status = SessionStatus.IDLE, lastActivity = "2026-10-02T02:59:00Z")
+        fun claudeEnd(vararg windows: UsageWindow) =
+            limitEnd(LimitKind.WINDOW, null, false, now, claude, listOf(Usage(ProviderId.CLAUDE_CODE, "2026-10-02T02:59:00Z", windows.toList())), now)
+        assertEquals(LimitEnd.At(isoToMillis(week)!!, estimated = false, long = true), claudeEnd(UsageWindow("5h", 40.0, fiveHour), UsageWindow("7d_opus", 100.0, week)))
+        assertEquals(LimitEnd.At(isoToMillis(fiveHour)!!, estimated = true, long = false), claudeEnd(UsageWindow("5h", 97.0, fiveHour), UsageWindow("7d", 60.0, week)))
     }
 
     @Test

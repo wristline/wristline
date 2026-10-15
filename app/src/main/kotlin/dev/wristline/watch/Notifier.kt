@@ -30,6 +30,7 @@ import dev.wristline.watch.data.ServerEvent
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
+import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.look
 import dev.wristline.watch.ui.LimitEnd
 import dev.wristline.watch.ui.basename
@@ -265,7 +266,7 @@ object Notifier {
      */
     fun limit(context: Context, alert: ServerEvent.Alert, session: Session?, usage: List<Usage>): Boolean {
         val now = System.currentTimeMillis()
-        val end = limitEnd(alert.limitKind, alert.resetsAt, alert.resetsEstimated, session, usage, now)
+        val end = limitEnd(alert.limitKind, alert.resetsAt, alert.resetsEstimated, isoToMillis(alert.at), session, usage, now)
         val endText = end?.let { limitEndText(it, now, ZoneId.systemDefault(), DateFormat.is24HourFormat(context)) }
         val line = limitText(sessionTitle(context, session), endText)
         return post(
@@ -282,9 +283,13 @@ object Notifier {
     internal fun limitText(sessionTitle: String, end: String?): String =
         if (end == null) sessionTitle else "$sessionTitle · $end"
 
-    /** When a limit ends, in English as its card shows it: `◷ 07:40 PM`, `◷ ~07:40 PM` (estimated) or `¤ credits` ([resetClockText]). */
+    /**
+     * When a limit ends, in English as its card shows it: `◷ 07:40 PM`, `◷ ~07:40 PM` (estimated),
+     * `🗓 Mon 06:00 PM` for a window of a day or longer ([LimitEnd.At.long]; a
+     * notification's text holds no icons) or `¤ credits` ([resetClockText]).
+     */
     internal fun limitEndText(end: LimitEnd, now: Long, zone: ZoneId, is24Hour: Boolean): String = when (end) {
-        is LimitEnd.At -> "◷ " + (if (end.estimated) "~" else "") + resetClockText(end.millis, now, zone, is24Hour)
+        is LimitEnd.At -> (if (end.long) "🗓" else "◷") + " " + (if (end.estimated) "~" else "") + resetClockText(end.millis, now, zone, is24Hour)
         LimitEnd.Credits -> "¤ credits"
     }
 
