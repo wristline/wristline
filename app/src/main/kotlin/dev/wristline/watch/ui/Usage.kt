@@ -213,7 +213,7 @@ private fun UpdatedText(updatedAt: String, now: () -> Long) {
 /**
  * A window as a card, not clickable: its ring and percentage, then its name ([windowAbbrev]) and,
  * when it has a reset time, the clock time and the time left ([ResetTimes]), left-aligned. From its
- * reset time on the window is over (as on the limit card, see [currentLine]): an empty ring, a dash
+ * reset time on the window is over (as on the limit card, see [bindingWindow]): an empty ring, a dash
  * and `Reset`, until the bridge reports the next one. Read out as one sentence.
  */
 @Composable
@@ -407,7 +407,7 @@ internal fun windowAbbrev(window: UsageWindow): String {
  * with the length (`Spend`) as it is.
  */
 @Composable
-private fun windowWords(window: UsageWindow): String {
+internal fun windowWords(window: UsageWindow): String {
     val rest = labelAfterLength(window) ?: return window.label.orEmpty()
     return windowLabel(window) + rest
 }

@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -108,7 +109,6 @@ import dev.wristline.watch.data.Item
 import dev.wristline.watch.data.ItemKind
 import dev.wristline.watch.data.LimitKind
 import dev.wristline.watch.data.PROGRESS_AGENTS
-import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Sent
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.TaskProgress
@@ -218,7 +218,9 @@ internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (Stri
     var lastLive by remember(sessionId) { mutableStateOf<Session?>(null) }
     SideEffect { if (live != null) lastLive = live }
     val session = live ?: lastLive?.copy(status = SessionStatus.ENDED, promptBlock = "not_live")
-    val limit = remember(session, usage) { session?.let { sessionLimit(it, usage) } }
+    // Chosen again on the minute tick: as a window resets another may be the fuller one.
+    val now = rememberNowState()
+    val limit by remember(session, usage) { derivedStateOf { session?.let { sessionLimit(it, usage, now.value) } } }
     val request = remember(requests, sessionId) { requests.firstOrNull { it.sessionId == sessionId } }
 
     val scope = rememberCoroutineScope()
@@ -622,23 +624,19 @@ private fun SpeakIcon(state: SpeakState) {
 }
 
 /**
- * The window a session's gauge shows: the 5-hour window (`5h`) of the usage entry under the
- * session's account for Claude Code, the primary window for other providers. A session without an
- * account, or whose account has no entry (no longer logged in), falls back to its provider's entry
- * of the primary home ([Account.primary]), else its provider's only entry; null when there is none
- * or the choice would be a guess.
+ * The window a session's gauge shows as of [now]: the [bindingWindow] of the usage entry under the
+ * session's account, as the limit card shows it. A session without an account, or whose account
+ * has no entry (no longer logged in), falls back to its provider's entry of the primary home
+ * ([Account.primary]), else its provider's only entry; null when there is none or the choice would
+ * be a guess.
  */
-internal fun sessionLimit(session: Session, usage: List<Usage>): UsageWindow? {
+internal fun sessionLimit(session: Session, usage: List<Usage>, now: Long): UsageWindow? {
     val entries = usage.filter { it.provider == session.provider }
     val entry = entries.firstOrNull { it.account?.id == session.account?.id }
         ?: entries.firstOrNull { it.account?.primary == true }
         ?: entries.singleOrNull()
         ?: return null
-    return if (session.provider == ProviderId.CLAUDE_CODE) {
-        entry.windows.firstOrNull { it.id == "5h" }
-    } else {
-        entry.windows.firstOrNull { it.id == "primary" } ?: entry.windows.firstOrNull()
-    }
+    return bindingWindow(entry.windows, now)
 }
 
 /** When a usage limit ends, as its card and notification show it ([limitEnd]). */
@@ -709,7 +707,7 @@ private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<B
  * glyph (a page, a meter) on its ring just below its lower end; no numbers: the header reads them
  * out. Both fill upwards. With [fillIn] the arcs composed now fill in from zero, the right one a
  * little after the left; [onFillStarted] follows the first. The right arc is always there: with no
- * [limit] (no usage entry, or one without the window, as after it reset while idle) it is empty,
+ * [limit] (no usage entry, or every window past its reset, as after idling through it) it is empty,
  * the track and glyph alone, as the list's usage card shows a dash.
  */
 @Composable
@@ -816,7 +814,7 @@ private fun DetailHeader(session: Session?, limit: UsageWindow?, gone: Boolean, 
         progress?.let { pluralStringResource(progressDoneRes(it), it.total, it.done, it.total) },
         progress?.let { detailCurrent(it) },
         contextPercent(session.context)?.let { stringResource(R.string.detail_context_description, it.roundToInt()) },
-        limit?.let { "${windowLabel(it)} ${it.usedPercent.roundToInt()}%" } ?: stringResource(R.string.detail_limit_unknown),
+        limit?.let { "${windowWords(it)} ${it.usedPercent.roundToInt()}%" } ?: stringResource(R.string.detail_limit_unknown),
     ).joinToString(", ")
     Column(
         modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = spoken },

@@ -88,6 +88,7 @@
     <string name="status_ended">Ended</string>
     <!-- The limit card: icons and numbers on screen, a sentence per line for TalkBack. -->
     <string name="limit_used">%1$s: %2$d%% used</string>
+    <string name="limit_line_used">%1$s: %2$s %3$d%%</string>
     <string name="limit_unknown">%1$s: usage unknown</string>
     <string name="limit_resets_at">resets %1$s</string>
     <string name="limit_resets_around">resets around %1$s (estimated)</string>

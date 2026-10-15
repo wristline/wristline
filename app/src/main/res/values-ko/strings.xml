@@ -80,6 +80,7 @@
     <string name="status_needs_input">입력 필요</string>
     <string name="status_ended">종료됨</string>
     <string name="limit_used">%1$s: %2$d%% 사용</string>
+    <string name="limit_line_used">%1$s: %2$s %3$d%%</string>
     <string name="limit_unknown">%1$s: 사용량 정보 없음</string>
     <string name="limit_resets_at">%1$s 초기화</string>
     <string name="limit_resets_around">약 %1$s 초기화 예상</string>

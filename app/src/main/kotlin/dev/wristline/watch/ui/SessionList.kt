@@ -70,7 +70,6 @@ import dev.wristline.watch.data.AccountLook
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.PendingRequest
-import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.TaskProgress
@@ -278,10 +277,8 @@ internal const val AT_LIMIT_PERCENT = 95
 /** A line on the limit card: a provider's account, or a provider with sessions but no usage (see [limitLines]). */
 internal data class LimitLine(
     val provider: String,
-    /** The used percentage of its [shortWindow], rounded; null without usage. */
-    val percent: Int?,
-    /** When that window resets, in epoch milliseconds; null when unknown. */
-    val resetsAt: Long?,
+    /** Its usage entry's windows, of which it shows the [bindingWindow]; empty without usage. */
+    val windows: List<UsageWindow>,
     /** Its sessions in the list, which has live ones only. */
     val sessions: Int,
     /** How the account looks when its provider is one of [markedProviders]; else null. */
@@ -300,7 +297,7 @@ internal fun rememberAccountBook(stored: AccountBook, usage: List<Usage>, sessio
 /**
  * The limit card's lines: one per usage entry with windows (the bridge sends the accounts logged in
  * now only), in [usageOrder], and one for a provider with sessions but no usage. A line's numbers
- * are its entry's [shortWindow]; without one it reads as without usage. It counts the provider's
+ * are its entry's [bindingWindow] at the time; without one it reads as without usage. It counts the provider's
  * sessions of its account; the first line of a provider also counts those without an account or of
  * an account without a line. A line of a provider in [marked] has its account's look from [book].
  */
@@ -314,14 +311,13 @@ internal fun limitLines(
     val live = sessions.groupBy { it.provider }
     return (entries.keys + live.keys).sorted().flatMap { provider ->
         val own = live[provider].orEmpty()
-        val accounts = entries[provider] ?: return@flatMap listOf(LimitLine(provider, null, null, own.size))
+        val accounts = entries[provider] ?: return@flatMap listOf(LimitLine(provider, emptyList(), own.size))
         val counts = own.groupingBy { session ->
             accounts.indexOfFirst { it.account != null && it.account.id == session.account?.id }.coerceAtLeast(0)
         }.eachCount()
         accounts.mapIndexed { i, entry ->
-            val window = shortWindow(entry)
             val account = entry.account?.takeIf { provider in marked }?.let { book.look(provider, it) }
-            LimitLine(provider, window?.usedPercent?.roundToInt(), isoToMillis(window?.resetsAt), counts[i] ?: 0, account)
+            LimitLine(provider, entry.windows, counts[i] ?: 0, account)
         }
     }
 }
@@ -338,27 +334,19 @@ internal fun markedProviders(usage: List<Usage>, sessions: List<Session>): Set<S
 }
 
 /**
- * The window a limit line shows: Claude Code's 5-hour window (`5h`), as on a session's gauge
- * ([sessionLimit]), else the shortest (Codex's primary, which may be weekly; of equals the first).
- * Null for a Claude Code entry without one, as when it has reset and no request since has reported
- * the next: the weekly number in its place would read as the 5-hour one.
+ * The window that holds an account back as of [now], shown on the limit card and a session's
+ * gauge ([sessionLimit]): of [windows] still running (a window past its reset time is over and its
+ * percentage old, until the bridge reports again and drops it), the fullest, a model's weekly one
+ * (`7d_opus`) too; of equals the one that resets later, as it blocks longer, one without a reset
+ * time last. Claude Code's `spend` is a budget, not a window that resets: never. Null when none is left.
  */
-internal fun shortWindow(usage: Usage): UsageWindow? =
-    if (usage.provider == ProviderId.CLAUDE_CODE) {
-        usage.windows.firstOrNull { it.id == "5h" }
-    } else {
-        usage.windows.minByOrNull(::windowLength)
-    }
+internal fun bindingWindow(windows: List<UsageWindow>, now: Long): UsageWindow? =
+    windows
+        .filter { it.id != SPEND_WINDOW && !resetPassed(isoToMillis(it.resetsAt), now) }
+        .maxWithOrNull(compareBy<UsageWindow> { it.usedPercent }.thenBy { isoToMillis(it.resetsAt) ?: Long.MIN_VALUE })
 
-/** A window's length to compare by: [windowMinutes], a window of unknown length the longest. */
-private fun windowLength(window: UsageWindow): Int = windowMinutes(window)?.takeIf { it > 0 } ?: Int.MAX_VALUE
-
-/**
- * [line] as of [now]: past its reset time the window is over and its percentage old, so the line
- * reads as without usage until the bridge reports again (it drops such windows then).
- */
-internal fun currentLine(line: LimitLine, now: Long): LimitLine =
-    if (resetPassed(line.resetsAt, now)) line.copy(percent = null, resetsAt = null) else line
+/** Claude Code's spend limit (extra usage), a budget with no reset to show ([bindingWindow]). */
+private const val SPEND_WINDOW = "spend"
 
 /** Whether a window resetting at [resetsAt] is over by [now]: from its reset time on; never without one. */
 internal fun resetPassed(resetsAt: Long?, now: Long): Boolean = resetsAt != null && resetsAt <= now
@@ -429,16 +417,18 @@ private data class ResetClock(val full: String, val compact: String, val words: 
 /**
  * A line's [LIMIT_CELLS] cells, icons and numbers only: `[C] 42%`, `◷ 16:40` (`◷ Fri 4:40 PM`, or
  * compact `◷ Fri 4:40p`), `▣ 3`, the badge marked with the account when its provider has more lines.
- * Without usage (or past the reset time, see [currentLine]) the percentage is a dash and, as without
- * a reset time, the clock cells are empty. Read out as one sentence. Reads [now] only to see the
- * reset pass and the clock text change (at midnight): the minute tick recomposes nothing else.
+ * The numbers are its [bindingWindow]'s, chosen again as a window's reset passes (a full 5-hour
+ * window resets: the weekly one may be the fuller now). Without one (no usage, or every window past
+ * its reset) the percentage is a dash and, as without a reset time, the clock cells are empty. Read
+ * out as one sentence, naming the window. Reads [now] only to see a reset pass and the clock text
+ * change (at midnight): the minute tick recomposes nothing else.
  */
 @Composable
 private fun LimitCells(limit: LimitLine, now: () -> Long) {
     val colors = MaterialTheme.colorScheme
     val style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum")
-    val line by remember(limit, now) { derivedStateOf { currentLine(limit, now()) } }
-    val resetsAt = line.resetsAt
+    val window by remember(limit, now) { derivedStateOf { bindingWindow(limit.windows, now()) } }
+    val resetsAt = remember(window) { isoToMillis(window?.resetsAt) }
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     val today = stringResource(R.string.limit_today)
@@ -458,14 +448,14 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
             }
         }
     }
-    val description = limitDescription(line, clock?.words)
+    val description = limitDescription(limit, window, clock?.words)
     Row(
         Modifier.clearAndSetSemantics { contentDescription = description },
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BadgeWithMark(line.provider, line.account)
-        val percent = line.percent
+        BadgeWithMark(limit.provider, limit.account)
+        val percent = window?.usedPercent?.roundToInt()
         if (percent != null) {
             Text("$percent%", color = limitColor(percent), style = style, maxLines = 1)
         } else {
@@ -482,7 +472,7 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
     }
     Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
         Icon(painterResource(R.drawable.ic_terminal), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
-        Text("${line.sessions}", color = colors.onSurface, style = style, maxLines = 1)
+        Text("${limit.sessions}", color = colors.onSurface, style = style, maxLines = 1)
     }
 }
 
@@ -529,12 +519,18 @@ internal fun BadgeWithMark(provider: String, account: AccountLook?, scale: Float
     }
 }
 
-/** `Codex Pro: 11% used, resets Friday 14:30, 4 active sessions`; the reset as [clock] words. */
+/**
+ * `Codex Pro: Weekly limit 62%, resets Friday 09:00, 4 active sessions`: the [window] named
+ * ([windowWords]), the reset as [clock] words.
+ */
 @Composable
-private fun limitDescription(line: LimitLine, clock: String?): String {
+private fun limitDescription(line: LimitLine, window: UsageWindow?, clock: String?): String {
     val name = providerLabel(line.provider) + (line.account?.let { " " + it.name } ?: "")
     val parts = buildList {
-        add(line.percent?.let { stringResource(R.string.limit_used, name, it) } ?: stringResource(R.string.limit_unknown, name))
+        add(
+            window?.let { stringResource(R.string.limit_line_used, name, windowWords(it), it.usedPercent.roundToInt()) }
+                ?: stringResource(R.string.limit_unknown, name),
+        )
         if (clock != null) add(stringResource(R.string.limit_resets_at, clock))
         add(pluralStringResource(R.plurals.limit_sessions, line.sessions, line.sessions))
     }

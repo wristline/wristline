@@ -15,6 +15,7 @@ import dev.wristline.watch.data.isoToMillis
 import dev.wristline.watch.data.move
 import dev.wristline.watch.data.ordered
 import dev.wristline.watch.data.seen
+import kotlin.math.roundToInt
 import kotlin.random.Random
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -22,6 +23,7 @@ import org.junit.Test
 
 class UsagePickTest {
     private val at = "2026-09-29T00:00:00Z"
+    private val now = isoToMillis(at)!!
     private val me = Account("acc-me", "me@gmail.com")
     private val school = Account("acc-school", "school", estimated = true)
 
@@ -44,12 +46,15 @@ class UsagePickTest {
     private fun session(provider: String, id: Int, account: Account?) =
         Session("$provider:$id", provider, status = SessionStatus.RUNNING, lastActivity = at, account = account)
 
+    /** The percentages the lines show now, as the card rounds them. */
+    private fun percents(lines: List<LimitLine>) = lines.map { bindingWindow(it.windows, now)?.usedPercent?.roundToInt() }
+
     @Test
     fun limitLinesAreOnePerAccountInProviderOrder() {
         val lines = limitLines(listOf(codex(pro, 3.0), codex(basic, 11.0), claude(me, 42.0, 10.0)), emptyList())
         assertEquals(listOf(ProviderId.CLAUDE_CODE, ProviderId.CODEX, ProviderId.CODEX), lines.map { it.provider })
         // The primary home's account first, whatever order the bridge sent them in.
-        assertEquals(listOf(42, 11, 3), lines.map { it.percent })
+        assertEquals(listOf(42, 11, 3), percents(lines))
         assertEquals(listOf(null, AccountLook("1", null, "기본"), AccountLook("P", null, "Pro")), lines.map { it.account })
     }
 
@@ -152,66 +157,57 @@ class UsagePickTest {
     }
 
     @Test
-    fun limitLinesShowTheShortWindow() {
+    fun limitLinesShowTheBindingWindow() {
+        // The fuller window of each entry: Claude's weekly 90% over its 5-hour 14%, Codex's secondary.
         val lines = limitLines(listOf(claude(me, 14.0, 90.0), codex(me, 12.0, 70.0)), emptyList())
-        assertEquals(listOf(14, 12), lines.map { it.percent })
-        // By length when reported: here Codex's secondary is the shorter one.
-        val reported = Usage(ProviderId.CODEX, at, listOf(UsageWindow("primary", 50.0, minutes = 10_080), UsageWindow("secondary", 5.0, minutes = 300)))
-        assertEquals(UsageWindow("secondary", 5.0, minutes = 300), shortWindow(reported))
-        // A 5-hour window of unknown length still counts as five hours.
-        assertEquals(UsageWindow("5h", 14.0), shortWindow(Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("7d", 40.0, minutes = 10_080), UsageWindow("5h", 14.0)))))
-        // Each account its own: a weekly primary on one line, a 5-hour one on the other.
+        assertEquals(listOf(90, 70), percents(lines))
+        // Each account its own: a weekly primary alone on one line, the fuller secondary on the other.
         val weekly = Usage(ProviderId.CODEX, at, listOf(UsageWindow("primary", 11.0, "2026-10-05T09:00:00Z", 10_080)), basic)
         val fiveHour = Usage(
             ProviderId.CODEX, at,
             listOf(UsageWindow("primary", 3.0, "2026-09-29T15:10:00Z", 300), UsageWindow("secondary", 20.0, "2026-10-05T13:00:00Z", 10_080)),
             pro,
         )
-        assertEquals(
-            listOf(
-                LimitLine(ProviderId.CODEX, 11, isoToMillis("2026-10-05T09:00:00Z"), 0, AccountLook("1", null, "기본")),
-                LimitLine(ProviderId.CODEX, 3, isoToMillis("2026-09-29T15:10:00Z"), 0, AccountLook("P", null, "Pro")),
-            ),
-            limitLines(listOf(fiveHour, weekly), emptyList()),
-        )
+        val shown = limitLines(listOf(fiveHour, weekly), emptyList()).map { bindingWindow(it.windows, now) }
+        assertEquals(listOf(weekly.windows[0], fiveHour.windows[1]), shown)
     }
 
     @Test
-    fun claudeLineIsTheFiveHourWindowOnly() {
-        // The 5-hour window gone (reset, the next not reported yet): no percentage, not the weekly 40%.
+    fun claudeLineWithOnlyItsWeeklyWindowShowsTheWeekly() {
+        // The 5-hour window gone (reset, the next not reported yet): the weekly 40% is what binds.
         val weekOnly = Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("7d", 40.0, "2026-10-03T09:00:00Z", 10_080)), me)
-        assertNull(shortWindow(weekOnly))
-        assertEquals(LimitLine(ProviderId.CLAUDE_CODE, null, null, 1), limitLines(listOf(weekOnly), sessions(ProviderId.CLAUDE_CODE, 1)).single())
-        // The account keeps its line without sessions too, as a dash.
-        assertEquals(listOf(LimitLine(ProviderId.CLAUDE_CODE, null, null, 0)), limitLines(listOf(weekOnly), emptyList()))
-        // Beside another account's line it is still its own.
-        assertEquals(listOf(null, 20), limitLines(listOf(weekOnly, claude(school, 20.0, 5.0)), emptyList()).map { it.percent })
+        val line = limitLines(listOf(weekOnly), sessions(ProviderId.CLAUDE_CODE, 1)).single()
+        assertEquals(LimitLine(ProviderId.CLAUDE_CODE, weekOnly.windows, 1), line)
+        assertEquals(listOf(40), percents(listOf(line)))
+        // Beside another account's line each is still its own.
+        assertEquals(listOf(40, 20), percents(limitLines(listOf(weekOnly, claude(school, 20.0, 5.0)), emptyList())))
     }
 
     @Test
     fun limitLinesWithoutUsageOrResetTime() {
         // Sessions without usage: one line per provider, no percentage and no reset time; a provider with neither has no line.
         val lines = limitLines(emptyList(), sessions(ProviderId.CODEX, 2) + sessions("gemini", 1))
-        assertEquals(listOf(LimitLine(ProviderId.CODEX, null, null, 2), LimitLine("gemini", null, null, 1)), lines)
+        assertEquals(listOf(LimitLine(ProviderId.CODEX, emptyList(), 2), LimitLine("gemini", emptyList(), 1)), lines)
+        assertEquals(listOf(null, null), percents(lines))
         assertEquals(emptyList<LimitLine>(), limitLines(emptyList(), emptyList()))
         // Entries without windows count as none (the bridge removes such an entry).
         val empty = Usage(ProviderId.CODEX, at, emptyList(), me)
         assertEquals(emptyList<LimitLine>(), limitLines(listOf(empty), emptyList()))
-        assertEquals(listOf(LimitLine(ProviderId.CODEX, 12, null, 0)), limitLines(listOf(empty, codex(school, 12.0, 40.0)), emptyList()))
-        // Usage without a reset time keeps its percentage.
-        assertEquals(LimitLine(ProviderId.CLAUDE_CODE, 42, null, 0), limitLines(listOf(claude(me, 41.6, 3.0)), emptyList()).single())
+        assertEquals(listOf(40), percents(limitLines(listOf(empty, codex(school, 12.0, 40.0)), emptyList())))
+        // Usage without a reset time keeps its percentage, rounded.
+        assertEquals(listOf(42), percents(limitLines(listOf(claude(me, 41.6, 3.0)), emptyList())))
     }
 
     @Test
-    fun claudeLimitIsTheFiveHourWindowOfTheSessionsAccount() {
+    fun sessionLimitIsTheBindingWindowOfTheSessionsAccount() {
         val usage = listOf(claude(me, 14.0, 40.0), claude(school, 70.0, 5.0))
-        assertEquals(UsageWindow("5h", 14.0), sessionLimit(session(ProviderId.CLAUDE_CODE, me), usage))
-        assertEquals(UsageWindow("5h", 70.0), sessionLimit(session(ProviderId.CLAUDE_CODE, school), usage))
+        assertEquals(UsageWindow("7d", 40.0), sessionLimit(session(ProviderId.CLAUDE_CODE, me), usage, now))
+        assertEquals(UsageWindow("5h", 70.0), sessionLimit(session(ProviderId.CLAUDE_CODE, school), usage, now))
         // Two accounts and none matching: no guess.
-        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, null), usage))
+        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, null), usage, now))
         // One entry for the provider is used even when the accounts are unknown.
-        assertEquals(UsageWindow("5h", 14.0), sessionLimit(session(ProviderId.CLAUDE_CODE, null), usage.take(1)))
-        assertEquals(UsageWindow("5h", 14.0), sessionLimit(session(ProviderId.CLAUDE_CODE, school), listOf(claude(null, 14.0, 40.0))))
+        assertEquals(UsageWindow("7d", 40.0), sessionLimit(session(ProviderId.CLAUDE_CODE, null), usage.take(1), now))
+        assertEquals(UsageWindow("7d", 40.0), sessionLimit(session(ProviderId.CLAUDE_CODE, school), listOf(claude(null, 14.0, 40.0)), now))
     }
 
     @Test
@@ -220,9 +216,9 @@ class UsagePickTest {
         // entries, the primary home's with only its weekly window left.
         val work = Account("3d4a3554", "Work", primary = true)
         val usage = listOf(codex(pro, 96.0), Usage(ProviderId.CODEX, at, listOf(UsageWindow("secondary", 7.0)), work))
-        assertEquals(UsageWindow("secondary", 7.0), sessionLimit(session(ProviderId.CODEX, null), usage))
+        assertEquals(UsageWindow("secondary", 7.0), sessionLimit(session(ProviderId.CODEX, null), usage, now))
         // The same for Claude Code.
-        assertEquals(UsageWindow("5h", 20.0), sessionLimit(session(ProviderId.CLAUDE_CODE, null), listOf(claude(school, 70.0, 5.0), claude(me.copy(primary = true), 20.0, 5.0))))
+        assertEquals(UsageWindow("5h", 20.0), sessionLimit(session(ProviderId.CLAUDE_CODE, null), listOf(claude(school, 70.0, 5.0), claude(me.copy(primary = true), 20.0, 5.0)), now))
     }
 
     @Test
@@ -230,22 +226,22 @@ class UsagePickTest {
         // A thread still attributed to an account no home is logged into now: its entry is gone.
         val gone = Account("sisolab", "sisolab")
         val usage = listOf(claude(school, 70.0, 5.0), claude(me.copy(primary = true), 20.0, 5.0))
-        assertEquals(UsageWindow("5h", 20.0), sessionLimit(session(ProviderId.CLAUDE_CODE, gone), usage))
+        assertEquals(UsageWindow("5h", 20.0), sessionLimit(session(ProviderId.CLAUDE_CODE, gone), usage, now))
         // Its own entry, when there is one, wins over the primary.
-        assertEquals(UsageWindow("5h", 70.0), sessionLimit(session(ProviderId.CLAUDE_CODE, school), usage))
+        assertEquals(UsageWindow("5h", 70.0), sessionLimit(session(ProviderId.CLAUDE_CODE, school), usage, now))
         // Without a primary entry, the provider's only one; with several and none primary, no guess.
-        assertEquals(UsageWindow("5h", 70.0), sessionLimit(session(ProviderId.CLAUDE_CODE, gone), usage.take(1)))
-        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, gone), listOf(claude(school, 70.0, 5.0), claude(me, 20.0, 5.0))))
+        assertEquals(UsageWindow("5h", 70.0), sessionLimit(session(ProviderId.CLAUDE_CODE, gone), usage.take(1), now))
+        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, gone), listOf(claude(school, 70.0, 5.0), claude(me, 20.0, 5.0)), now))
         // Another provider's primary entry is never taken.
-        assertNull(sessionLimit(session(ProviderId.CODEX, gone), usage))
+        assertNull(sessionLimit(session(ProviderId.CODEX, gone), usage, now))
     }
 
     @Test
-    fun claudeSessionAfterItsFiveHourWindowResetHasNoLimitAndAnEmptyGauge() {
-        // Idle past the reset: the bridge drops the expired 5h window, or the whole entry.
-        val weekOnly = Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("7d", 40.0)), me)
-        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, me), listOf(weekOnly)))
-        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, me), emptyList()))
+    fun sessionWithoutAnyCurrentWindowHasAnEmptyGauge() {
+        // Idle past every reset, or no entry at all: no limit.
+        val expired = Usage(ProviderId.CLAUDE_CODE, at, listOf(UsageWindow("5h", 100.0, "2026-09-28T23:00:00Z", 300)), me)
+        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, me), listOf(expired), now))
+        assertNull(sessionLimit(session(ProviderId.CLAUDE_CODE, me), emptyList(), now))
         // The arc is still drawn, empty: 0%.
         assertEquals(0f, gaugeFraction(null))
         assertEquals(0.14f, gaugeFraction(14.0), 1e-6f)
@@ -253,9 +249,9 @@ class UsagePickTest {
     }
 
     @Test
-    fun codexLimitIsThePrimaryWindow() {
+    fun codexLimitIsItsFullerWindow() {
         val usage = listOf(claude(me, 14.0, 40.0), codex(me, 12.0, 40.0))
-        assertEquals(UsageWindow("primary", 12.0), sessionLimit(session(ProviderId.CODEX, me), usage))
-        assertNull(sessionLimit(session(ProviderId.CODEX, me), usage.take(1)))
+        assertEquals(UsageWindow("secondary", 40.0), sessionLimit(session(ProviderId.CODEX, me), usage, now))
+        assertNull(sessionLimit(session(ProviderId.CODEX, me), usage.take(1), now))
     }
 }
