@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- When a weekly limit resets: a calendar page, its header bar solid and two binder rings above it, unlike the round clock of a short window (drawn for 12dp: 2.5 strokes, tinted by the icon). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M3.75,10.5V7.5a2,2 0,0 1,2 -2h12.5a2,2 0,0 1,2 2v3z"
+        android:fillColor="#FFFFFFFF" />
+    <path
+        android:pathData="M5.75,5.5h12.5a2,2 0,0 1,2 2v11.25a2,2 0,0 1,-2 2h-12.5a2,2 0,0 1,-2 -2v-11.25a2,2 0,0 1,2 -2z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M8,1.75v3.75M16,1.75v3.75"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round" />
+</vector>

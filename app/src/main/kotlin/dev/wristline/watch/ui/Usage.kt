@@ -253,7 +253,7 @@ private fun WindowCard(
                 )
                 when {
                     passed -> Text("Reset", Modifier.clearAndSetSemantics {}, color = muted, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                    resetsAt != null -> ResetTimes(resetsAt, now)
+                    resetsAt != null -> ResetTimes(resetsAt, windowGlyph(window), now)
                 }
             }
         }
@@ -262,11 +262,12 @@ private fun WindowCard(
 
 /**
  * `◷ Fri 14:30` over `in 2h 13m`: the clock time [resetsAt] falls on ([resetClockText]), in the
- * watch's 12 or 24-hour setting, and the time left to it ([remainingIn]); read out as `resets Friday
- * 14:30, 2 hours 13 minutes left`. Reads [now] itself: the minute tick recomposes these two lines only.
+ * watch's 12 or 24-hour setting, after the window's [glyph] (a calendar for a weekly one,
+ * [windowGlyph]), and the time left to it ([remainingIn]); read out as `resets Friday 14:30, 2 hours
+ * 13 minutes left`. Reads [now] itself: the minute tick recomposes these two lines only.
  */
 @Composable
-private fun ResetTimes(resetsAt: Long, now: () -> Long) {
+private fun ResetTimes(resetsAt: Long, glyph: Int, now: () -> Long) {
     val colors = MaterialTheme.colorScheme
     val at = now()
     val left = minutesLeft(resetsAt, at)
@@ -276,7 +277,7 @@ private fun ResetTimes(resetsAt: Long, now: () -> Long) {
     val spoken = stringResource(R.string.limit_resets_at, words) + ", " + stringResource(R.string.limit_left, durationWords(left))
     Column(Modifier.clearAndSetSemantics { contentDescription = spoken }) {
         Row(horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
-            Icon(painterResource(R.drawable.ic_clock), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
+            Icon(painterResource(glyph), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
             Text(
                 resetClockText(resetsAt, at, zone, is24Hour),
                 color = colors.onSurface,
@@ -386,6 +387,16 @@ internal fun windowMinutes(window: UsageWindow): Int? = window.minutes ?: when (
     "7d" -> 10_080
     else -> null
 }
+
+/**
+ * Whether a window is a day or longer (`7d`, `7d_opus`, Codex's weekly), shown with a calendar
+ * rather than a clock ([windowGlyph]): by its length, else a model's weekly id; unknown is short.
+ */
+internal fun isLongWindow(window: UsageWindow): Boolean =
+    (windowMinutes(window) ?: if (window.id.startsWith("7d_")) 10_080 else null)?.let { it >= MINUTES_PER_DAY } ?: false
+
+/** The glyph before a window's reset time: a calendar for a day or longer ([isLongWindow]), else a clock. */
+internal fun windowGlyph(window: UsageWindow): Int = if (isLongWindow(window)) R.drawable.ic_calendar else R.drawable.ic_clock
 
 /**
  * A window's name on screen, short and in English: the bridge's label (`5h`, `7d Opus`), else its

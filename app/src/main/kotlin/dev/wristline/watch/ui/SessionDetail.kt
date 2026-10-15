@@ -704,7 +704,8 @@ private fun rememberGaugesShown(listState: TransformingLazyColumnState): State<B
 
 /**
  * Context use (left) and the limit window (right) as bare arcs beside 9 and 3 o'clock, each with a
- * glyph (a page, a meter) on its ring just below its lower end; no numbers: the header reads them
+ * glyph (a page; the window's clock or calendar, [windowGlyph], else a meter) on its ring just below
+ * its lower end; no numbers: the header reads them
  * out. Both fill upwards. With [fillIn] the arcs composed now fill in from zero, the right one a
  * little after the left; [onFillStarted] follows the first. The right arc is always there: with no
  * [limit] (no usage entry, or every window past its reset, as after idling through it) it is empty,
@@ -737,7 +738,7 @@ private fun EdgeGauges(
             limit?.usedPercent,
             color,
             right = true,
-            glyph = R.drawable.ic_gauge,
+            glyph = limit?.let { windowGlyph(it) } ?: R.drawable.ic_gauge,
             fillDelayMs = if (fillIn && limit != null) GAUGE_STAGGER_MS else null,
             onFillStarted = onFillStarted,
         )

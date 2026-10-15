@@ -418,8 +418,9 @@ private data class ResetClock(val full: String, val compact: String, val words: 
  * A line's [LIMIT_CELLS] cells, icons and numbers only: `[C] 42%`, `◷ 16:40` (`◷ Fri 4:40 PM`, or
  * compact `◷ Fri 4:40p`), `▣ 3`, the badge marked with the account when its provider has more lines.
  * The numbers are its [bindingWindow]'s, chosen again as a window's reset passes (a full 5-hour
- * window resets: the weekly one may be the fuller now). Without one (no usage, or every window past
- * its reset) the percentage is a dash and, as without a reset time, the clock cells are empty. Read
+ * window resets: the weekly one may be the fuller now); the clock is a calendar for a weekly window
+ * ([windowGlyph]), and stands alone for a window without a reset time. Without one (no usage, or
+ * every window past its reset) the percentage is a dash and the clock cells are empty. Read
  * out as one sentence, naming the window. Reads [now] only to see a reset pass and the clock text
  * change (at midnight): the minute tick recomposes nothing else.
  */
@@ -464,10 +465,8 @@ private fun LimitCells(limit: LimitLine, now: () -> Long) {
     }
     for (text in listOf(clock?.full, clock?.compact)) {
         Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {
-            if (text != null) {
-                Icon(painterResource(R.drawable.ic_clock), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant)
-                Text(text, color = colors.onSurface, style = style, maxLines = 1)
-            }
+            window?.let { Icon(painterResource(windowGlyph(it)), null, Modifier.size(LIMIT_GLYPH), tint = colors.onSurfaceVariant) }
+            if (text != null) Text(text, color = colors.onSurface, style = style, maxLines = 1)
         }
     }
     Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(LIMIT_GLYPH_GAP), verticalAlignment = Alignment.CenterVertically) {

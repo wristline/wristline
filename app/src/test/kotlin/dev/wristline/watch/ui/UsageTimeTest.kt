@@ -1,5 +1,6 @@
 package dev.wristline.watch.ui
 
+import dev.wristline.watch.R
 import dev.wristline.watch.data.UsageWindow
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -134,6 +135,25 @@ class UsageTimeTest {
         assertEquals("7d Opus", windowAbbrev(UsageWindow("7d_opus", 30.0, label = "7d Opus")))
         // Unknown length: the id.
         assertEquals("primary", windowAbbrev(UsageWindow("primary", 20.0)))
+    }
+
+    @Test
+    fun aDayOrLongerWindowIsMarkedByACalendarElseAClock() {
+        assertFalse(isLongWindow(UsageWindow("5h", 40.0)))
+        assertTrue(isLongWindow(UsageWindow("7d", 40.0)))
+        assertTrue(isLongWindow(UsageWindow("7d_opus", 40.0, minutes = 10_080, label = "7d Opus")))
+        // A model's weekly window from a bridge that sends no length.
+        assertTrue(isLongWindow(UsageWindow("7d_opus", 40.0)))
+        // Codex by its length.
+        assertTrue(isLongWindow(UsageWindow("primary", 40.0, minutes = 10_080)))
+        assertTrue(isLongWindow(UsageWindow("primary", 40.0, minutes = 1_440)))
+        assertFalse(isLongWindow(UsageWindow("primary", 40.0, minutes = 300)))
+        assertFalse(isLongWindow(UsageWindow("primary", 40.0, minutes = 1_439)))
+        // Unknown length: a clock.
+        assertFalse(isLongWindow(UsageWindow("primary", 40.0)))
+        assertFalse(isLongWindow(UsageWindow("weird", 40.0)))
+        assertEquals(R.drawable.ic_clock, windowGlyph(UsageWindow("5h", 40.0)))
+        assertEquals(R.drawable.ic_calendar, windowGlyph(UsageWindow("7d", 40.0)))
     }
 
     @Test
