@@ -148,8 +148,10 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
             )
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
-            // Notification taps so far: one opening the session already on screen starts a new visit of it.
-            var opens by remember { mutableIntStateOf(0) }
+            // New visits of the session screen: a notification tap opening the session already there, or
+            // coming back to it from a quick reply or an answer sent. Each puts its list at the newest item;
+            // coming back without sending leaves it where it was.
+            var visits by remember { mutableIntStateOf(0) }
 
             NavDisplay(
                 backStack = backStack,
@@ -197,18 +199,30 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
                     entry<Route.Session> { key ->
                         SessionDetailScreen(
                             sessionId = key.id,
-                            visit = opens,
+                            visit = visits,
                             onRespond = { backStack.add(Route.Request(it)) },
                             onQuickReplies = { backStack.add(Route.QuickReplies(key.id)) },
                         )
                     }
                     entry<Route.QuickReplies> { key ->
                         // This entry, not whatever is on top: a notification may have opened a screen over it.
-                        QuickRepliesScreen(sessionId = key.id, onSent = { backStack.remove(key) })
+                        QuickRepliesScreen(
+                            sessionId = key.id,
+                            onSent = {
+                                backStack.remove(key)
+                                visits++
+                            },
+                        )
                     }
                     entry<Route.Request> { key ->
                         // This entry, not whatever is on top: a notification may have opened a screen over it.
-                        RequestScreen(requestId = key.id, onDone = { backStack.remove(key) })
+                        RequestScreen(
+                            requestId = key.id,
+                            onDone = {
+                                backStack.remove(key)
+                                visits++
+                            },
+                        )
                     }
                     entry<Route.Usage> { UsageScreen() }
                     entry<Route.Ask> { key ->
@@ -241,7 +255,7 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
                 if (openTarget == null) return@LaunchedEffect
                 if (Bridge.prefs.isPaired) {
                     backStack.replaceWith(notificationStack(backStack, openTarget))
-                    opens++
+                    visits++
                 }
                 onOpened()
             }

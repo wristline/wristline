@@ -37,6 +37,15 @@ class DetailScrollTest {
     }
 
     @Test
+    fun comingBackInTheSameVisitStaysWhereItWasLeft() {
+        // Back from the quick replies without sending: neither jumped nor followed, even at the end.
+        assertEquals(EndScroll.NONE, endScroll(hasItems = true, placed = true, atEnd = false, returned = true))
+        assertEquals(EndScroll.NONE, endScroll(hasItems = true, placed = true, atEnd = true, returned = true))
+        // Back after sending (a new visit): to the newest.
+        assertEquals(EndScroll.JUMP, endScroll(hasItems = true, placed = false, atEnd = false, returned = false))
+    }
+
+    @Test
     fun jumpButtonShowsOnlyScrolledBack() {
         assertTrue(showJumpToLatest(atEnd = false, loading = false, confirming = false))
         assertFalse(showJumpToLatest(atEnd = true, loading = false, confirming = false))

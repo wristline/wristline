@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
@@ -40,6 +39,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -70,8 +70,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.LocalReduceMotion
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumnItemScope
@@ -189,24 +191,25 @@ private const val HEADER_KEY = "header"
 private val CalmFadeIn = fadeIn(CalmMotion.defaultEffectsSpec())
 private val CalmFadeOut = fadeOut(CalmMotion.defaultEffectsSpec())
 
-/** Holds the session open (its items) exactly as long as the screen is composed. */
-private class OpenedSession(val id: String) : RememberObserver {
+/**
+ * Holds the session open (its items) as long as the screen's back-stack entry: kept while a screen
+ * opened over it (quick replies, a request) covers it, so coming back finds the items the list's
+ * saved position refers to; released once the entry is popped and its ViewModels are cleared.
+ */
+private class OpenedSession(val id: String) : ViewModel() {
     val items = Bridge.openSession(id)
 
-    override fun onRemembered() = Unit
-
-    override fun onForgotten() = Bridge.closeSession(id)
-
-    override fun onAbandoned() = Bridge.closeSession(id)
+    override fun onCleared() = Bridge.closeSession(id)
 }
 
 /**
- * [visit] changes when a notification opens this session again while it is on screen: the list goes
- * back to the newest message as on entering it.
+ * [visit] changes when a notification opens this session again while it is on screen, or a quick
+ * reply or an answer sent from a screen opened over it returns here: the list goes back to the
+ * newest message as on entering it. Coming back without sending keeps the list where it was.
  */
 @Composable
 internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (String) -> Unit, onQuickReplies: () -> Unit) {
-    val opened = remember(sessionId) { OpenedSession(sessionId) }
+    val opened = viewModel { OpenedSession(sessionId) }
     // Live items only while started: with the screen off, or another activity in front, nothing
     // streams; coming back reloads the newest page.
     LifecycleStartEffect(sessionId) {
@@ -357,11 +360,15 @@ internal fun SessionDetailContent(
     // which is exactly "was the user at the bottom".
     val atBottom = !listState.canScrollBackward
     val lastSeq = items.lastOrNull()?.seq
-    // Placed at the newest message in this visit. Until then the list may stand anywhere: holding
-    // the header or the spinner in place as the first page came in under it, or at the position
-    // saved when the screen was last left (the saveable list state), or where the user left it
-    // before a notification opened it again.
-    var placed by remember(visit) { mutableStateOf(false) }
+    // The visit in which the list was placed at the newest message. Until then the list may stand
+    // anywhere: holding the header or the spinner in place as the first page came in under it, or
+    // where the user left it before a notification opened it again. Saved, as the list's position
+    // is, so coming back from a screen opened over this one in the same visit keeps both.
+    var placedIn by rememberSaveable { mutableStateOf<Int?>(null) }
+    val placed = placedIn == visit
+    // Back from such a screen: the list stands where it was left, and the effect below starting
+    // again is no change to follow.
+    var returned by remember { mutableStateOf(placed) }
     val scope = rememberCoroutineScope()
     val touch = rememberTouchHaptics()
     suspend fun toEnd() {
@@ -369,11 +376,13 @@ internal fun SessionDetailContent(
         listState.scrollBy(-screenHeight.toFloat())
     }
     LaunchedEffect(lastSeq, footers, visit) {
-        when (endScroll(hasItems = lastSeq != null, placed = placed, atEnd = atBottom)) {
+        val step = endScroll(hasItems = lastSeq != null, placed = placed, atEnd = atBottom, returned = returned)
+        returned = false
+        when (step) {
             // Back to the newest without animating.
             EndScroll.JUMP -> {
                 toEnd()
-                placed = true
+                placedIn = visit
             }
             EndScroll.FOLLOW -> {
                 // The list may hold the card the user saw in place, leaving the new one under the
@@ -614,11 +623,13 @@ internal enum class EndScroll { NONE, JUMP, FOLLOW }
 /**
  * Entering the screen (a new visit, not yet [placed] at the newest message), the list jumps to the
  * newest as soon as it has items, wherever it stands; afterwards it follows new items only when it
- * was [atEnd], and stays where the user scrolled to otherwise.
+ * was [atEnd], and stays where the user scrolled to otherwise. Just [returned] from a screen opened
+ * over it in the same visit, it stays where it was left: nothing new came in to follow.
  */
-internal fun endScroll(hasItems: Boolean, placed: Boolean, atEnd: Boolean): EndScroll = when {
+internal fun endScroll(hasItems: Boolean, placed: Boolean, atEnd: Boolean, returned: Boolean = false): EndScroll = when {
     !hasItems -> EndScroll.NONE
     !placed -> EndScroll.JUMP
+    returned -> EndScroll.NONE
     atEnd -> EndScroll.FOLLOW
     else -> EndScroll.NONE
 }
