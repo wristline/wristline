@@ -154,8 +154,10 @@ private const val END_PADDING_FRACTION = 0.3f
 // and keeps its own touches.
 private val JUMP_BOTTOM = ACTIONS_BOTTOM + ACTION_SIZE - 12.dp
 private val JUMP_GLYPH = 20.dp
-// Behind the actions, rising well above them: content scrolling under them fades out.
-private val SCRIM_HEIGHT = 72.dp
+// Behind the actions, rising well above them: content scrolling under them fades out. The linear
+// fade is clear at its top, so it rises about 35dp past the chevron's strokes (about 62 to 69dp up)
+// to have them over a third dark and the text a dozen dp above them already dimmed.
+private val SCRIM_HEIGHT = 104.dp
 // The working indicator under the newest item: smaller than the usual spinner, low-key.
 private val WORKING_SPINNER = 12.dp
 // The page glyph beside a plan's time, the time's height.
