@@ -124,6 +124,14 @@ class ProtocolTest {
     }
 
     @Test
+    fun idleSessionCarriesTheSuggestionAndOthersDefaultToNone() {
+        val idle = parseServerEvent(File(dir, "event-session-suggestion.json").readText()) as ServerEvent.SessionChanged
+        assertEquals(SessionStatus.IDLE, idle.session.status)
+        assertEquals("Run the tests again", idle.session.suggestion)
+        assertNull((parseServerEvent(File(dir, "event-session.json").readText()) as ServerEvent.SessionChanged).session.suggestion)
+    }
+
+    @Test
     fun unknownEventTypeIsIgnored() {
         assertNull(parseServerEvent("""{"type":"future_event","payload":{"x":[1,2]}}"""))
         assertNull(parseServerEvent("""{"type":7}"""))

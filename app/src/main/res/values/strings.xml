@@ -240,6 +240,10 @@
         <item quantity="other">Up to %1$d characters.</item>
     </plurals>
     <string name="quick_replies_empty">Add replies in Settings.</string>
+    <!-- TalkBack: the mark on the agent's suggested next prompt, first in the quick replies -->
+    <string name="quick_replies_suggested">Suggested</string>
+    <!-- TalkBack: the session screen's quick replies button while the agent has a suggested prompt -->
+    <string name="detail_quick_suggested">Quick replies, with a suggestion</string>
 
     <!-- Accounts: how each account is marked and named on the watch -->
     <string name="accounts_primary">Default</string>

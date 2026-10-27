@@ -591,7 +591,12 @@ internal fun SessionDetailContent(
                     Icon(painterResource(R.drawable.ic_keyboard), stringResource(R.string.detail_type))
                 }
                 FilledTonalIconButton(onClick = onQuick, enabled = canSend, modifier = side, shapes = shapes) {
-                    Icon(painterResource(R.drawable.ic_quick), stringResource(R.string.settings_quick_replies))
+                    // A small ✦ on the bolt while the agent has a suggested prompt (first in the quick replies).
+                    if (session.suggestion.isNullOrBlank()) {
+                        Icon(painterResource(R.drawable.ic_quick), stringResource(R.string.settings_quick_replies))
+                    } else {
+                        Icon(painterResource(R.drawable.ic_quick_suggest), stringResource(R.string.detail_quick_suggested))
+                    }
                 }
             }
         }

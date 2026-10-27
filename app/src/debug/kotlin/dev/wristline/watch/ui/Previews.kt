@@ -420,6 +420,34 @@ private fun SessionDetailFailedPreview() = Frame {
     )
 }
 
+// The agent has a suggested next prompt: a small ✦ on the quick replies bolt.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun SessionDetailSuggestionPreview() = Frame {
+    SessionDetailContent(
+        sessions[0].copy(status = SessionStatus.IDLE, promptBlock = null, suggestion = "Run the tests again"),
+        gone = false, limit = null, state = items, hasRequest = false, sending = false, outcome = null,
+        onEarlier = {}, onAction = {}, onType = {}, onQuick = {},
+    )
+}
+
+// The agent's suggestion first, marked ✦, above the user's replies (its copy among them left out).
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
+@Composable
+private fun QuickRepliesSuggestionPreview() = Frame {
+    QuickRepliesContent(
+        suggestion = "Run the tests again", replies = listOf("Continue", "Run the tests again", "Commit and push"),
+        blockCode = null, sending = null, error = null, onSend = {},
+    )
+}
+
+// A suggestion and no replies of the user's own: it alone, the Settings caption under it.
+@Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true, locale = "ko")
+@Composable
+private fun QuickRepliesSuggestionAloneKoPreview() = Frame {
+    QuickRepliesContent(suggestion = "테스트 다시 실행해줘", replies = emptyList(), blockCode = null, sending = null, error = null, onSend = {})
+}
+
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun PermissionPreview() = Frame {

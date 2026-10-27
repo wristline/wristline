@@ -143,6 +143,8 @@ data class Session(
     val turnStartedAt: String? = null,
     /** The agent's task list, while it has one; absent otherwise and from older bridges. */
     val progress: TaskProgress? = null,
+    /** The agent's suggested next prompt, while the session is idle with no request open; absent otherwise and from older bridges. */
+    val suggestion: String? = null,
 )
 
 @Immutable

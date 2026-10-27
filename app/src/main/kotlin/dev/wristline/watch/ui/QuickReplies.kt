@@ -15,10 +15,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
@@ -28,6 +30,7 @@ import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ConfirmationDialogDefaults
 import androidx.wear.compose.material3.FilledTonalButton
+import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SuccessConfirmationDialog
@@ -45,10 +48,24 @@ import dev.wristline.watch.data.quickRepliesOf
 import dev.wristline.watch.data.sentHaptic
 import kotlinx.coroutines.launch
 
+/** One entry of the quick replies screen: [text] to send, [suggested] when it is the agent's suggested next prompt. */
+internal data class QuickReply(val text: String, val suggested: Boolean = false)
+
 /**
- * The quick replies for session [sessionId]: a tap sends one as the voice prompt goes out (no
- * confirm step: the phrase is already known), then "Sent" for [CONFIRMATION_MS] and [onSent]
- * closes the screen. A blocked session shows why instead of the replies.
+ * The quick replies screen's entries: the agent's [suggestion] first (trimmed; none when blank),
+ * then the user's [replies] in order, less one identical to the suggestion.
+ */
+internal fun quickReplyEntries(suggestion: String?, replies: List<String>): List<QuickReply> {
+    val suggested = suggestion?.trim().orEmpty()
+    if (suggested.isEmpty()) return replies.map { QuickReply(it) }
+    return listOf(QuickReply(suggested, suggested = true)) + replies.filter { it != suggested }.map { QuickReply(it) }
+}
+
+/**
+ * The quick replies for session [sessionId], the agent's suggestion first while it has one: a tap
+ * sends one as the voice prompt goes out (no confirm step: the phrase is already known), then
+ * "Sent" for [CONFIRMATION_MS] and [onSent] closes the screen. A blocked session shows why instead
+ * of the replies.
  */
 @Composable
 internal fun QuickRepliesScreen(sessionId: String, onSent: () -> Unit) {
@@ -62,6 +79,8 @@ internal fun QuickRepliesScreen(sessionId: String, onSent: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var sent by remember { mutableStateOf(false) }
     QuickRepliesContent(
+        // The session as it changes: a suggestion comes and goes while the list is open.
+        suggestion = session?.suggestion,
         replies = replies,
         // A session gone from the list is blocked as the session screen blocks it.
         blockCode = if (session == null) "not_live" else session.promptBlock,
@@ -102,6 +121,8 @@ internal fun QuickRepliesScreen(sessionId: String, onSent: () -> Unit) {
 
 @Composable
 internal fun QuickRepliesContent(
+    /** The agent's suggested next prompt, if any: first, marked ([quickReplyEntries]). */
+    suggestion: String?,
     replies: List<String>,
     /** The session's prompt block, if any: shown in place of the replies. */
     blockCode: String?,
@@ -130,19 +151,26 @@ internal fun QuickRepliesContent(
                     CaptionText(errorMessage(error), Modifier.edgeTransform(this, spec).animateItemCalmly(this).minListItemHeight().announced(), color = colors.error)
                 }
             }
-            if (replies.isEmpty()) {
-                item(key = "empty") { CaptionText(stringResource(R.string.quick_replies_empty), Modifier.edgeTransform(this, spec).minListItemHeight()) }
-            }
-            replies.forEachIndexed { i, reply ->
-                item(key = "reply/$i") {
+            quickReplyEntries(suggestion, replies).forEachIndexed { i, reply ->
+                item(key = if (reply.suggested) "suggestion" else "reply/$i") {
                     FilledTonalButton(
-                        onClick = { onSend(reply) },
+                        onClick = { onSend(reply.text) },
                         enabled = sending == null,
                         modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
                         transformation = SurfaceTransformation(spec),
-                        label = { if (sending == reply) SmallSpinner() else Text(reply, maxLines = 3) },
+                        icon = if (reply.suggested) {
+                            { Icon(painterResource(R.drawable.ic_suggest), stringResource(R.string.quick_replies_suggested)) }
+                        } else {
+                            null
+                        },
+                        // Ellipsized: a suggestion has no length limit, and a cut must show.
+                        label = { if (sending == reply.text) SmallSpinner() else Text(reply.text, maxLines = 3, overflow = TextOverflow.Ellipsis) },
                     )
                 }
+            }
+            // Below a lone suggestion too: the user's own replies are what is missing.
+            if (replies.isEmpty()) {
+                item(key = "empty") { CaptionText(stringResource(R.string.quick_replies_empty), Modifier.edgeTransform(this, spec).minListItemHeight()) }
             }
             item(key = "end") { EndSpace(spec) }
         }
