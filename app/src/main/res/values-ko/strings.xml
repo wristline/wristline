@@ -160,6 +160,7 @@
     <string name="ask_read_aloud">읽어주기</string>
     <string name="ask_stop_reading">읽기 중지</string>
     <string name="ask_follow_up">이어서 묻기</string>
+    <string name="ask_location_included">위치 포함됨</string>
     <plurals name="ask_thread_count">
         <item quantity="other">질문 %d개</item>
     </plurals>
@@ -181,6 +182,9 @@
     <string name="settings_tool_calls_detail">명령 실행, 파일 수정과 시스템 메시지도 보여 줍니다</string>
     <string name="settings_watch_colors">시계 테마 색 따르기</string>
     <string name="settings_ask_provider">물어보기 제공자</string>
+    <string name="settings_ask_location">질문에 위치 포함</string>
+    <string name="settings_ask_location_denied">위치 권한이 없어 질문에 위치를 넣지 않습니다.</string>
+    <string name="settings_ask_search">웹 검색 사용</string>
     <string name="settings_monitoring">백그라운드 알림</string>
     <string name="settings_monitoring_detail">앱을 닫아도 연결을 유지해 배터리를 더 씁니다</string>
     <string name="settings_live_updates">진행 상황 Live Update</string>

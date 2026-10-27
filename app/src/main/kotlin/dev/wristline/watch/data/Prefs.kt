@@ -1,6 +1,7 @@
 package dev.wristline.watch.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,10 +12,11 @@ import kotlinx.coroutines.flow.asStateFlow
  * Pairing and user settings. Stored in app-private SharedPreferences, which are excluded from
  * backup and device transfer (see res/xml/data_extraction_rules.xml).
  */
-class Prefs(context: Context) {
-    private val sp = context.getSharedPreferences("wristline", Context.MODE_PRIVATE)
-    private val defaultDeviceName =
-        Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL
+class Prefs internal constructor(private val sp: SharedPreferences, private val defaultDeviceName: String) {
+    constructor(context: Context) : this(
+        context.getSharedPreferences("wristline", Context.MODE_PRIVATE),
+        Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL,
+    )
 
     /**
      * `https://host[:port]`, set once an address has been entered before pairing; while paired it
@@ -72,6 +74,19 @@ class Prefs(context: Context) {
     var askProvider: String
         get() = sp.getString(KEY_ASK_PROVIDER, null) ?: ProviderId.CLAUDE_CODE
         set(value) = sp.edit().putString(KEY_ASK_PROVIDER, value).apply()
+
+    /**
+     * Quick Ask sends the watch's location and place name; off by default. Turned on only once a
+     * location permission is granted (Settings), and used only while it still is.
+     */
+    var askLocation: Boolean
+        get() = sp.getBoolean(KEY_ASK_LOCATION, false)
+        set(value) = sp.edit().putBoolean(KEY_ASK_LOCATION, value).apply()
+
+    /** Quick Ask lets the CLI search the web; on by default. */
+    var askSearch: Boolean
+        get() = sp.getBoolean(KEY_ASK_SEARCH, true)
+        set(value) = sp.edit().putBoolean(KEY_ASK_SEARCH, value).apply()
 
     private val accountsFlow = MutableStateFlow(readAccounts())
 
@@ -131,6 +146,8 @@ class Prefs(context: Context) {
         const val KEY_DEMO = "demo"
         const val KEY_SHOW_TOOL_CALLS = "showToolCalls"
         const val KEY_ASK_PROVIDER = "askProvider"
+        const val KEY_ASK_LOCATION = "askLocation"
+        const val KEY_ASK_SEARCH = "askSearch"
         const val KEY_WATCH_COLORS = "watchColors"
         const val KEY_ACCOUNTS = "accounts"
     }

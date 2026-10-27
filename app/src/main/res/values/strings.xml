@@ -180,6 +180,7 @@
     <string name="ask_read_aloud">Read aloud</string>
     <string name="ask_stop_reading">Stop reading</string>
     <string name="ask_follow_up">Follow-up question</string>
+    <string name="ask_location_included">Location included</string>
     <plurals name="ask_thread_count">
         <item quantity="one">%d question</item>
         <item quantity="other">%d questions</item>
@@ -202,6 +203,9 @@
     <string name="settings_tool_calls_detail">Also list commands, file edits and system notices</string>
     <string name="settings_watch_colors">Use watch theme colors</string>
     <string name="settings_ask_provider">Quick Ask provider</string>
+    <string name="settings_ask_location">Include location in questions</string>
+    <string name="settings_ask_location_denied">Without location permission, questions are sent without location.</string>
+    <string name="settings_ask_search">Use web search</string>
     <string name="settings_monitoring">Background alerts</string>
     <string name="settings_monitoring_detail">Stays connected when closed; uses more battery</string>
     <string name="settings_live_updates">Live Updates for long turns</string>

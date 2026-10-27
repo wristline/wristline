@@ -51,6 +51,7 @@ import dev.wristline.watch.R
 import dev.wristline.watch.data.Bridge
 import dev.wristline.watch.data.Conn
 import dev.wristline.watch.data.askProviders
+import dev.wristline.watch.data.hasLocationPermission
 import kotlinx.coroutines.launch
 
 @Composable
@@ -77,6 +78,9 @@ internal fun SettingsScreen(
     // Only the providers installed on the PC, once the bridge has said which.
     val available by Bridge.providers.collectAsStateWithLifecycle()
     val askChoices = askProviders(available)
+    // Shown on only while the permission still is: it may have been revoked in the system settings.
+    var askLocation by remember { mutableStateOf(prefs.askLocation && hasLocationPermission(context)) }
+    var askSearch by remember { mutableStateOf(prefs.askSearch) }
     // The service turns the setting off itself when the pairing is gone.
     val monitoring by prefs.monitoringState.collectAsStateWithLifecycle()
     val liveUpdates by prefs.liveUpdatesState.collectAsStateWithLifecycle()
@@ -84,6 +88,7 @@ internal fun SettingsScreen(
     var notificationsOn by remember { mutableStateOf(Notifier.enabled(context)) }
     LifecycleResumeEffect(Unit) {
         notificationsOn = Notifier.enabled(context)
+        askLocation = prefs.askLocation && hasLocationPermission(context)
         onPauseOrDispose {}
     }
     val setMonitoring = { on: Boolean ->
@@ -93,6 +98,13 @@ internal fun SettingsScreen(
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         notificationsOn = Notifier.enabled(context)
         if (notificationsOn) setMonitoring(true)
+    }
+    val locationDenied = stringResource(R.string.settings_ask_location_denied)
+    // Either is enough: a user who picks "approximate" grants only the coarse one.
+    val askLocationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        askLocation = hasLocationPermission(context)
+        prefs.askLocation = askLocation
+        if (!askLocation) Failure.show(locationDenied)
     }
     var tokenNeedsAddress by remember { mutableStateOf(false) }
     var confirmDisconnect by remember { mutableStateOf(false) }
@@ -116,6 +128,8 @@ internal fun SettingsScreen(
         watchColors = watchColors.takeIf { hasWatchColors },
         askProvider = askProvider.takeIf { it in askChoices } ?: askChoices.first(),
         canChangeAskProvider = askChoices.size > 1,
+        askLocation = askLocation,
+        askSearch = askSearch,
         monitoring = monitoring,
         canMonitor = prefs.isPaired && conn !is Conn.Unauthorized,
         liveUpdates = liveUpdates.takeIf { Notifier.liveUpdatesSupported() },
@@ -133,6 +147,18 @@ internal fun SettingsScreen(
         onAskProvider = {
             askProvider = otherProvider(askProvider).takeIf { it in askChoices } ?: askChoices.first()
             prefs.askProvider = askProvider
+        },
+        onAskLocation = { on ->
+            if (on && !hasLocationPermission(context)) {
+                askLocationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+            } else {
+                askLocation = on
+                prefs.askLocation = on
+            }
+        },
+        onAskSearch = {
+            askSearch = it
+            prefs.askSearch = it
         },
         onMonitoring = { on ->
             when {
@@ -191,6 +217,10 @@ internal fun SettingsContent(
     askProvider: String,
     /** More than one provider is installed: the Quick Ask row toggles between them. */
     canChangeAskProvider: Boolean,
+    /** Quick Ask sends the watch's location (and the permission is granted). */
+    askLocation: Boolean,
+    /** Quick Ask lets the CLI search the web. */
+    askSearch: Boolean,
     monitoring: Boolean,
     canMonitor: Boolean,
     /** Null where the watch has no Live Updates: the row is left out. Needs [monitoring]. */
@@ -204,6 +234,8 @@ internal fun SettingsContent(
     onShowToolCalls: (Boolean) -> Unit,
     onWatchColors: (Boolean) -> Unit,
     onAskProvider: () -> Unit,
+    onAskLocation: (Boolean) -> Unit,
+    onAskSearch: (Boolean) -> Unit,
     onMonitoring: (Boolean) -> Unit,
     onLiveUpdates: (Boolean) -> Unit,
     onNotificationSettings: () -> Unit,
@@ -306,6 +338,24 @@ internal fun SettingsContent(
                     transformation = SurfaceTransformation(spec),
                     label = { Text(stringResource(R.string.settings_ask_provider)) },
                     secondaryLabel = { Text(providerLabel(askProvider)) },
+                )
+            }
+            item(key = "askLocation") {
+                SwitchButton(
+                    checked = askLocation,
+                    onCheckedChange = onAskLocation,
+                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                    label = { Text(stringResource(R.string.settings_ask_location), maxLines = 2) },
+                )
+            }
+            item(key = "askSearch") {
+                SwitchButton(
+                    checked = askSearch,
+                    onCheckedChange = onAskSearch,
+                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                    label = { Text(stringResource(R.string.settings_ask_search), maxLines = 2) },
                 )
             }
             if (!demo) {

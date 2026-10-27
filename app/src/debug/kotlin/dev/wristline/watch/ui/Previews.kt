@@ -312,13 +312,13 @@ private fun SessionListUnreachablePreview() = Frame {
 }
 
 @Composable
-private fun AskFrame(thread: List<Ask>?, speaking: Boolean = false) = Frame {
-    AskContent(thread, sending = false, speaking = speaking, onCancel = {}, onAgain = {}, other = thread?.lastOrNull()?.let { otherProvider(it.provider) }, onOther = {}, onSpeak = {}, onFollowUp = {})
+private fun AskFrame(thread: List<Ask>?, speaking: Boolean = false, located: Boolean = false) = Frame {
+    AskContent(thread, sending = false, speaking = speaking, located = located, onCancel = {}, onAgain = {}, other = thread?.lastOrNull()?.let { otherProvider(it.provider) }, onOther = {}, onSpeak = {}, onFollowUp = {})
 }
 
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
-private fun AskRunningPreview() = AskFrame(listOf(asks[1]))
+private fun AskRunningPreview() = AskFrame(listOf(asks[1]), located = true)
 
 // The answer, then the icon row: ask again, ask Codex, read aloud, follow-up.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
@@ -476,9 +476,9 @@ private fun AccountKoPreview() = Frame { AccountContent(customAccounts, "codex:c
 private fun SettingsPreview() = Frame {
     SettingsContent(
         demo = false, address = "https://example.tail0000.ts.net", paired = true, deviceName = "Galaxy Watch Ultra", accounts = true,
-        showToolCalls = false, watchColors = false, askProvider = ProviderId.CLAUDE_CODE, canChangeAskProvider = true, monitoring = false, canMonitor = true, liveUpdates = true, notificationsOff = true,
+        showToolCalls = false, watchColors = false, askProvider = ProviderId.CLAUDE_CODE, canChangeAskProvider = true, askLocation = false, askSearch = true, monitoring = false, canMonitor = true, liveUpdates = true, notificationsOff = true,
         busy = false, tokenNeedsAddress = false,
-        onAddress = {}, onDeviceName = {}, onAccounts = {}, onShowToolCalls = {}, onWatchColors = {}, onAskProvider = {}, onMonitoring = {}, onLiveUpdates = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
+        onAddress = {}, onDeviceName = {}, onAccounts = {}, onShowToolCalls = {}, onWatchColors = {}, onAskProvider = {}, onAskLocation = {}, onAskSearch = {}, onMonitoring = {}, onLiveUpdates = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
         onDisconnect = {}, onExitDemo = {},
     )
 }

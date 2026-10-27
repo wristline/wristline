@@ -4,12 +4,15 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import dev.wristline.watch.Notifier
 import dev.wristline.watch.R
 import java.io.IOException
 import java.time.Instant
+import java.time.ZoneId
+import java.util.Locale
 import java.util.TreeMap
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -18,10 +21,12 @@ import kotlin.math.roundToLong
 import kotlin.random.Random
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -378,6 +383,9 @@ object Bridge {
 
     /** How long the requests on screen stay unposted while the user types or dictates; see [toBackground]. */
     private const val INPUT_GRACE_MS = 60_000L
+
+    /** A location [prepareAsk] found is used for an ask confirmed within this. */
+    private const val LOCATION_REUSE_MS = 120_000L
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     private val dispatcher = Dispatchers.Default.limitedParallelism(1)
@@ -403,6 +411,13 @@ object Bridge {
     /** This device's Quick Asks, newest first (the bridge keeps them in memory only). */
     private val _asks = MutableStateFlow<List<Ask>>(emptyList())
     val asks: StateFlow<List<Ask>> = _asks.asStateFlow()
+
+    /** The asks sent with the watch's location, for the Ask screen's mark. */
+    private val _locatedAsks = MutableStateFlow<Set<String>>(emptySet())
+    val locatedAsks: StateFlow<Set<String>> = _locatedAsks.asStateFlow()
+
+    /** The location [prepareAsk] started finding, and when (elapsed realtime); confined to [dispatcher]. */
+    private var locating: Pair<Long, Deferred<Located?>>? = null
 
     // Items exist only for sessions a screen shows; the last closeSession() drops them.
     private val lock = Any()
@@ -1108,7 +1123,12 @@ object Bridge {
      */
     suspend fun ask(provider: String, text: String, threadId: String? = null): AskSent = withContext(dispatcher + NonCancellable) {
         if (demo != null) return@withContext AskSent.Started(demoAsk(provider, text, threadId))
-        val body = WireJson.encodeToString(AskBody.serializer(), AskBody(provider, text, threadId = threadId))
+        val where = askLocation()
+        val context = askContext(Instant.now(), ZoneId.systemDefault(), Locale.getDefault(), where)
+        val body = WireJson.encodeToString(
+            AskBody.serializer(),
+            AskBody(provider, text, threadId = threadId, context = context, search = prefs.askSearch),
+        )
         val result = send(authed(apiUrl(prefs.baseUrl, "ask")).post(body.toRequestBody(jsonType)).build())
             ?: return@withContext AskSent.Unreachable
         when (result.code) {
@@ -1120,6 +1140,7 @@ object Bridge {
                     createdAt = Instant.now().toString(), threadId = threadId ?: accepted.askId,
                 )
                 _asks.update { it.withAccepted(ask) }
+                if (where != null) _locatedAsks.update { it + ask.id }
                 AskSent.Started(ask.id)
             }
             401 -> {
@@ -1127,6 +1148,39 @@ object Bridge {
                 AskSent.Refused("unauthorized")
             }
             else -> AskSent.Refused(errorCode(result))
+        }
+    }
+
+    /**
+     * Starts finding the watch's location while a question is dictated or typed, when Quick Ask
+     * includes it, so that [ask] rarely has to wait for it.
+     */
+    fun prepareAsk() {
+        scope.launch {
+            if (demo != null || !prefs.askLocation || !hasLocationPermission(appContext)) return@launch
+            locating?.second?.cancel()
+            locating = SystemClock.elapsedRealtime() to scope.async { findLocation(appContext) }
+        }
+    }
+
+    /**
+     * The location for an ask, with the setting on and permission granted: the one [prepareAsk]
+     * started (if recent), else a new search. Waits at most [LOCATION_BUDGET_MS]; the ask goes
+     * without location rather than failing.
+     */
+    private suspend fun askLocation(): Located? {
+        val prepared = locating
+        locating = null
+        if (!prefs.askLocation || !hasLocationPermission(appContext)) {
+            prepared?.second?.cancel()
+            return null
+        }
+        val recent = prepared?.takeIf { SystemClock.elapsedRealtime() - it.first < LOCATION_REUSE_MS }?.second
+        if (recent == null) prepared?.second?.cancel()
+        val pending = recent ?: scope.async { findLocation(appContext) }
+        return withTimeoutOrNull(LOCATION_BUDGET_MS) { pending.await() } ?: run {
+            pending.cancel()
+            null
         }
     }
 

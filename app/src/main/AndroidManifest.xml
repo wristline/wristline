@@ -15,6 +15,10 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- One haptic tick when a request arrives while the app is open; notifications vibrate through their channel. -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Quick Ask's optional location (Settings › Include location in questions): asked at runtime
+         when the user turns it on; coarse alone is enough (an approximate position). -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- targetSdk 37 (Android 17) makes every connection to a local network address, HTTPS included,
          need this runtime permission (NEARBY_DEVICES group). Not enforced while targetSdk is 36, and
          not requested yet: see the plan in data/Address.kt before bumping targetSdk.

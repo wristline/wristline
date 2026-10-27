@@ -6,7 +6,7 @@ layout: default
 
 # Wristline Privacy Policy
 
-Effective date: 2026-09-29
+Effective date: 2026-10-27
 
 Wristline is a Wear OS app that lets you follow and control AI coding-agent sessions (Claude Code,
 OpenAI Codex CLI) running on your own computer, through Wristline Bridge, an open-source companion
@@ -23,6 +23,9 @@ A Korean translation follows the English text ([한국어](#ko)).
 - Session lists, transcripts, requests and usage figures are held in memory only and are never
   written to storage; transcripts are released when you leave the session, the rest when the app
   process ends.
+- Location is optional and off by default. With **Include location in questions** on, a Quick Ask
+  question carries the watch's approximate position (about 100 m) and place name, sent only to
+  your bridge and from there to the AI provider you chose for that question.
 - Disconnect in Settings, or uninstalling, removes everything on the watch. The bridge keeps one
   device record (name, hash of the token, pairing time) that you can delete on your computer.
 
@@ -38,6 +41,7 @@ cloud backup and device-to-device transfer.
 | Device id | Id your bridge assigned to this watch at pairing (empty when you typed a token) | Pairing |
 | Watch name | Name the bridge lists this watch under; defaults to the device name in the watch's system settings, or the watch model if that is empty | Settings |
 | Background alerts | On or off | Settings |
+| Quick Ask: include location, use web search | On or off each (location off, web search on by default) | Settings |
 
 Nothing else is written to storage. Session lists, transcripts, pending requests and usage figures
 are held in memory only (at most about 200 transcript items per open session) and disappear when
@@ -63,6 +67,9 @@ Sent to your bridge:
   screen.
 - Your answers to permission prompts and questions: Allow, Always allow, Deny, Answer on PC, or
   the options you pick.
+- Quick Ask questions, only after you confirm them, each with the watch's local time and time zone,
+  its language and measurement units (metric or imperial), whether web search is allowed, and, only
+  with location on, the approximate location (see "Location").
 - When you tap Disconnect: a request to delete this watch's record on the bridge.
 
 Received from your bridge: the session list (title, working folder, status, context size),
@@ -78,10 +85,35 @@ The network path between the watch and the bridge (for example Tailscale Funnel,
 tunnel, or a reverse proxy you set up) is chosen and operated by you. The app only knows the HTTPS
 address.
 
+## Location (optional)
+
+Quick Ask can include where you are, so that questions like "what's the weather" or "a café
+nearby" get a local answer. It is off by default and is turned on in **Settings › Include location
+in questions**, which asks for the location permission at that moment; if you deny it, the switch
+stays off.
+
+- With it on, each Quick Ask question and follow-up carries the watch's position rounded to three
+  decimal places (about 100 m), the accuracy the watch reported, and a coarse place name such as
+  "Seoul Seongbuk-gu Donam-dong" (region, district, neighborhood; no street or house number).
+- The position is read once per question, when you ask. The app does not track location, does
+  not read it in the background, and never stores it on the watch.
+- It is sent only to your bridge, and from there to the AI provider you chose for that question
+  (Anthropic for Claude Code, OpenAI for Codex), as part of the question. What the provider keeps
+  follows its terms, as for the question itself.
+- If no position is found within a few seconds, the question is sent without one.
+- Turn the switch off, or revoke the permission in the watch's settings, and nothing about location
+  is sent again.
+
+## Web search
+
+**Settings › Use web search** (on by default) tells your bridge whether the AI CLI may search the
+web while answering a Quick Ask question. The searches are made by that CLI and its provider on
+your computer's side, not by the watch; the watch only sends the on/off value.
+
 ## Third parties
 
 None. The app shares data with no third party and bundles no third-party SDKs beyond the
-open-source libraries it needs to run (OkHttp, AndroidX, Kotlin). Two things sit outside the app
+open-source libraries it needs to run (OkHttp, AndroidX, Kotlin). Three things sit outside the app
 and follow their own policies:
 
 - **Speech recognition.** "Speak" opens the watch's system speech recognizer (Android
@@ -89,6 +121,11 @@ and follow their own policies:
   microphone and the audio under its maker's privacy policy. Wristline has no microphone
   permission and never records audio; it receives only the recognized text, shows it to you, and
   sends it to your bridge only when you confirm.
+- **Location and place names.** With location on, the position comes from the watch's system
+  location service (on Wear OS this may use the paired phone's location), and the place name from
+  the system geocoder (Android `Geocoder`, usually provided by Google), which receives the rounded
+  position under its maker's privacy policy. Both are part of the watch's operating system; the app
+  includes no location SDK.
 - **Your tunnel or network provider.** If you publish the bridge through Tailscale Funnel or a
   similar service, that provider's terms cover the connection. The bridge README notes that a
   Funnel host name appears in public certificate logs.
@@ -181,7 +218,7 @@ https://github.com/wristline/wristline-bridge
 
 # Wristline 개인정보처리방침
 
-시행일: 2026-09-29
+시행일: 2026-10-27
 
 Wristline은 사용자의 PC에서 실행 중인 AI 코딩 에이전트 세션(Claude Code, OpenAI Codex CLI)을
 워치에서 확인하고 제어하는 Wear OS 앱입니다. 앱은 사용자가 직접 실행하는 오픈소스 서버 Wristline
@@ -196,6 +233,8 @@ Bridge와만 통신합니다. 이 문서는 앱이 무엇을 저장하고, 무�
   가지 값만 저장합니다.
 - 세션 목록, 대화 내용, 요청, 사용량은 메모리에만 있고 저장소에 쓰지 않습니다. 대화 내용은 세션
   화면을 나갈 때, 나머지는 앱 프로세스가 끝날 때 해제됩니다.
+- 위치는 선택 사항이며 기본값은 꺼짐입니다. **질문에 위치 포함**을 켜면 물어보기 질문에 워치의 대략적인
+  위치(약 100 m)와 지명이 함께 가며, 사용자의 브릿지와 그 질문에 고른 AI 제공자에게만 전달됩니다.
 - 설정의 연결 해제 또는 앱 삭제로 워치의 데이터가 모두 지워집니다. 브릿지에는 기기 기록(이름,
   토큰의 해시, 페어링 시각) 하나만 남으며 사용자의 PC에서 삭제할 수 있습니다.
 
@@ -211,6 +250,7 @@ Bridge와만 통신합니다. 이 문서는 앱이 무엇을 저장하고, 무�
 | 기기 ID | 페어링 시 브릿지가 이 워치에 부여한 ID(토큰을 직접 입력한 경우 비어 있음) | 페어링 |
 | 워치 이름 | 브릿지가 이 워치를 표시하는 이름. 기본값은 워치 시스템 설정의 기기 이름(없으면 워치 모델명) | 설정 |
 | 백그라운드 알림 | 켜짐/꺼짐 | 설정 |
+| 물어보기: 위치 포함, 웹 검색 사용 | 각각 켜짐/꺼짐(기본값: 위치 꺼짐, 웹 검색 켜짐) | 설정 |
 
 그 밖에는 아무것도 저장하지 않습니다. 세션 목록, 대화 내용, 대기 중인 요청, 사용량은 메모리에만
 있으며(열린 세션당 최대 약 200개 항목) 화면을 닫거나 앱 프로세스가 끝나면 사라집니다. 앱은 기록을
@@ -230,6 +270,9 @@ Bridge와만 통신합니다. 이 문서는 앱이 무엇을 저장하고, 무�
 - 에이전트에게 입력하거나 음성으로 입력한 메시지. "이 메시지를 보낼까요?" 화면에서 확인한 뒤에만
   보냅니다.
 - 권한 요청과 질문에 대한 응답: 허용, 항상 허용, 거부, PC에서 응답, 또는 선택한 항목.
+- 물어보기 질문. 사용자가 확인한 뒤에만 보내며, 워치의 현지 시각과 시간대, 언어와 단위(미터법 또는
+  야드파운드법), 웹 검색 허용 여부, 그리고 위치를 켠 경우에만 대략적인 위치("위치" 참고)를 함께
+  보냅니다.
 - 연결 해제를 누를 때: 브릿지에서 이 워치의 기록을 삭제해 달라는 요청.
 
 브릿지에서 받는 것: 세션 목록(제목, 작업 폴더, 상태, 컨텍스트 크기), 대화 항목, 대기 중인 요청(예:
@@ -242,16 +285,42 @@ Bridge와만 통신합니다. 이 문서는 앱이 무엇을 저장하고, 무�
 워치와 브릿지 사이의 네트워크 경로(예: Tailscale Funnel, Cloudflare 터널, 직접 구성한 리버스
 프록시)는 사용자가 선택하고 운영합니다. 앱은 HTTPS 주소만 알 뿐입니다.
 
+## 위치(선택)
+
+물어보기는 "날씨 어때?"나 "근처 카페" 같은 질문에 그 지역에 맞는 답을 받도록 현재 위치를 함께 보낼 수
+있습니다. 기본값은 꺼짐이며 **설정 › 질문에 위치 포함**을 켤 때 위치 권한을 요청합니다. 권한을
+거부하면 스위치는 꺼진 채로 남습니다.
+
+- 켜 두면 질문과 이어서 묻기마다 소수점 셋째 자리(약 100 m)로 반올림한 워치의 위치, 워치가 알려 준
+  정확도, 그리고 "서울특별시 성북구 돈암동" 같은 대략적인 지명(시·도, 시·군·구, 동. 도로명과 번지는
+  없음)을 함께 보냅니다.
+- 위치는 질문할 때 한 번 읽습니다. 앱은 위치를 추적하거나 백그라운드에서 읽지 않으며 워치에 저장하지
+  않습니다.
+- 사용자의 브릿지로만 보내고, 브릿지는 질문의 일부로 그 질문에 고른 AI 제공자(Claude Code는
+  Anthropic, Codex는 OpenAI)에게 전달합니다. 제공자가 무엇을 보관하는지는 질문 자체와 마찬가지로 그
+  제공자의 정책을 따릅니다.
+- 몇 초 안에 위치를 찾지 못하면 위치 없이 질문을 보냅니다.
+- 스위치를 끄거나 워치 설정에서 권한을 거두면 위치에 관한 정보는 더 이상 보내지 않습니다.
+
+## 웹 검색
+
+**설정 › 웹 검색 사용**(기본값 켜짐)은 물어보기 질문에 답할 때 AI CLI가 웹을 검색해도 되는지 브릿지에
+알려 줍니다. 검색은 워치가 아니라 PC 쪽의 CLI와 그 제공자가 하며, 워치는 켜짐/꺼짐 값만 보냅니다.
+
 ## 제3자
 
 없습니다. 앱은 어떤 제3자에게도 데이터를 제공하지 않으며, 실행에 필요한 오픈소스 라이브러리(OkHttp,
-AndroidX, Kotlin) 외의 제3자 SDK를 포함하지 않습니다. 다음 두 가지는 앱 밖에 있으며 각자의 정책을
+AndroidX, Kotlin) 외의 제3자 SDK를 포함하지 않습니다. 다음 세 가지는 앱 밖에 있으며 각자의 정책을
 따릅니다.
 
 - **음성 인식.** "말하기"는 워치의 시스템 음성 인식기(Android `RecognizerIntent`, 워치 제조사 또는
   Google 제공)를 엽니다. 마이크와 음성 데이터는 그 인식기가 제작사의 개인정보처리방침에 따라
   처리합니다. Wristline에는 마이크 권한이 없고 음성을 녹음하지 않습니다. 앱은 인식된 텍스트만 받아
   화면에 보여 주고, 사용자가 확인했을 때만 브릿지로 보냅니다.
+- **위치와 지명.** 위치를 켜면 위치는 워치의 시스템 위치 서비스(Wear OS에서는 연결된 휴대전화의
+  위치를 쓸 수 있음)에서, 지명은 시스템 지오코더(Android `Geocoder`, 보통 Google 제공)에서 얻으며,
+  지오코더는 반올림한 위치를 제작사의 개인정보처리방침에 따라 받습니다. 둘 다 워치 운영체제의
+  일부이며 앱에는 위치 SDK가 없습니다.
 - **터널·네트워크 제공자.** Tailscale Funnel 같은 서비스로 브릿지를 공개하면 그 연결은 해당
   서비스의 약관을 따릅니다. 브릿지 README에 있듯 Funnel 호스트 이름은 공개 인증서 로그에 나타납니다.
 

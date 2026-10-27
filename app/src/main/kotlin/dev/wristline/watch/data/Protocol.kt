@@ -282,9 +282,39 @@ data class AnswerBody(val answers: Answers)
 @Serializable
 data class UsageList(val usage: List<Usage>)
 
-/** [threadId] continues that thread's conversation; absent, the ask starts a new one. */
+/**
+ * [threadId] continues that thread's conversation; absent, the ask starts a new one. [context] tells
+ * the CLI when and where the watch asks; [search] allows web search. Both are ignored by older bridges.
+ */
 @Serializable
-data class AskBody(val provider: String, val text: String, val model: String? = null, val threadId: String? = null)
+data class AskBody(
+    val provider: String,
+    val text: String,
+    val model: String? = null,
+    val threadId: String? = null,
+    val context: AskContext? = null,
+    val search: Boolean? = null,
+)
+
+/**
+ * The watch's situation when it asks (see data/AskContext.kt). [time] is ISO 8601 with the offset,
+ * [tz] an IANA zone id, [locale] a BCP 47 tag, [units] `metric` or `imperial`. [place] and
+ * [location] only with the location setting on.
+ */
+@Serializable
+data class AskContext(
+    val time: String,
+    val tz: String,
+    val locale: String,
+    val units: String,
+    val place: String? = null,
+    val location: AskLocation? = null,
+    val device: String,
+)
+
+/** Rounded to 3 decimals (about 100 m); [accuracyM] as the watch reported it, in meters. */
+@Serializable
+data class AskLocation(val lat: Double, val lon: Double, val accuracyM: Int? = null)
 
 @Serializable
 data class AskAccepted(val askId: String)

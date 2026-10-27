@@ -221,7 +221,10 @@ internal fun rememberQuickAsk(
             when (Bridge.conn.value) {
                 // Same message as the list's banner: nothing can be sent until the watch pairs again.
                 Conn.Unauthorized, Conn.NotPaired -> Failure.show(unpaired)
-                else -> speak()
+                else -> {
+                    Bridge.prepareAsk()
+                    speak()
+                }
             }
         }
     }
@@ -255,6 +258,7 @@ private fun ProviderChip(provider: String, onClick: (() -> Unit)?) {
 internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
     val asks by Bridge.asks.collectAsStateWithLifecycle()
     val conn by Bridge.conn.collectAsStateWithLifecycle()
+    val locatedAsks by Bridge.locatedAsks.collectAsStateWithLifecycle()
     val thread = remember(asks, askId) { askThread(asks, askId) }
     val newest = thread?.lastOrNull()
     val scope = rememberCoroutineScope()
@@ -317,6 +321,7 @@ internal fun AskScreen(askId: String, onReplaced: (String) -> Unit) {
         thread = thread,
         sending = sending,
         speaking = reader.speaking,
+        located = newest?.id in locatedAsks,
         onCancel = { running?.let { Bridge.cancelAsk(it) } },
         onAgain = { newest?.let { resend(it.provider) } },
         other = other,
@@ -344,6 +349,8 @@ internal fun AskContent(
     thread: List<Ask>?,
     sending: Boolean,
     speaking: Boolean,
+    /** The newest question was sent with the watch's location: the thinking screen marks it. */
+    located: Boolean,
     onCancel: () -> Unit,
     onAgain: () -> Unit,
     other: String?,
@@ -357,7 +364,7 @@ internal fun AskContent(
     }
     val newest = thread.last()
     if (thread.size == 1 && newest.status == AskStatus.RUNNING) {
-        Thinking(newest.question, onCancel)
+        Thinking(newest.question, located, onCancel)
         return
     }
     val listState = rememberTransformingLazyColumnState()
@@ -486,9 +493,9 @@ private fun TransformingLazyColumnScope.askItems(ask: Ask, spec: TransformationS
     }
 }
 
-/** The question in one line above a spinner, and [Cancel] below. */
+/** The question in one line above a spinner, and [Cancel] below; a pin beside "Thinking…" when [located]. */
 @Composable
-private fun Thinking(question: String, onCancel: () -> Unit) {
+private fun Thinking(question: String, located: Boolean, onCancel: () -> Unit) {
     ScreenScaffold { contentPadding ->
         Column(
             Modifier.fillMaxSize().padding(contentPadding),
@@ -505,7 +512,17 @@ private fun Thinking(question: String, onCancel: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Spinner(Modifier.size(THINKING_SPINNER))
-            Text(stringResource(R.string.ask_thinking), style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (located) {
+                    Icon(
+                        painterResource(R.drawable.ic_location),
+                        stringResource(R.string.ask_location_included),
+                        Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(stringResource(R.string.ask_thinking), style = MaterialTheme.typography.bodyMedium)
+            }
             CompactButton(onClick = onCancel, label = { Text(stringResource(R.string.ask_cancel)) })
         }
     }

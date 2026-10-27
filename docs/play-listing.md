@@ -45,7 +45,7 @@ WHAT IT DOES
 • English and Korean.
 
 PRIVACY
-The app talks only to the bridge address you enter, over HTTPS, with a token that stays on your watch. No developer servers, analytics, ads or crash reporting. Voice input uses the watch's system speech recognizer. Details: https://wristline.github.io/wristline/privacy
+The app talks only to the bridge address you enter, over HTTPS, with a token that stays on your watch. No developer servers, analytics, ads or crash reporting. Voice input uses the watch's system speech recognizer. Location is optional and off by default: turned on in Settings, Quick Ask questions include an approximate position and place name, sent only to your bridge and from there to the AI provider you chose. Details: https://wristline.github.io/wristline/privacy
 
 REQUIREMENTS
 • Wear OS 4 or newer, designed for round Galaxy Watch displays. The watch needs internet access (Wi-Fi, LTE, or through the phone).
@@ -76,7 +76,7 @@ Wristline은 단독으로는 동작하지 않습니다. 에이전트를 실행�
 • 한국어와 영어 지원.
 
 개인정보
-앱은 사용자가 입력한 브릿지 주소와만 HTTPS로 통신하며, 토큰은 워치에만 저장됩니다. 개발자 서버, 분석, 광고, 크래시 리포트가 없습니다. 음성 입력은 워치의 시스템 음성 인식기를 사용합니다. 자세한 내용: https://wristline.github.io/wristline/privacy
+앱은 사용자가 입력한 브릿지 주소와만 HTTPS로 통신하며, 토큰은 워치에만 저장됩니다. 개발자 서버, 분석, 광고, 크래시 리포트가 없습니다. 음성 입력은 워치의 시스템 음성 인식기를 사용합니다. 위치는 선택 사항이며 기본값은 꺼짐입니다. 설정에서 켜면 물어보기 질문에 대략적인 위치와 지명이 함께 가며, 사용자의 브릿지와 그 질문에 고른 AI 제공자에게만 전달됩니다. 자세한 내용: https://wristline.github.io/wristline/privacy
 
 요구 사항
 • Wear OS 4 이상, 원형 Galaxy Watch 화면에 맞춰 설계. 워치에 인터넷 연결(Wi-Fi, LTE 또는 휴대전화 경유)이 필요합니다.
@@ -109,7 +109,7 @@ transit (the app refuses `http://`).
 
 | Question | Answer | Basis |
 |---|---|---|
-| Does your app collect or share any of the required user data types? | Yes | Prompts, answers and the device token are transmitted to the user's bridge |
+| Does your app collect or share any of the required user data types? | Yes | Prompts, answers and the device token are transmitted to the user's bridge; with the optional location setting on, Quick Ask questions also carry the location |
 | Is all of the user data collected by your app encrypted in transit? | Yes | HTTPS/WSS only; `normalizeAddress` refuses `http://` |
 | Do you provide a way for users to request that their data is deleted? | Yes | Settings › Disconnect deletes the watch's record on the bridge (`DELETE /api/device`) and clears the watch; `wristline-bridge devices --revoke` on the computer |
 | Account creation / account deletion URL | Not applicable, no accounts | Pairing issues a device token, not an account with the developer. **verify** that the console accepts "no account" here |
@@ -119,9 +119,9 @@ transit (the app refuses `http://`).
 ### Data types
 
 For every row: Collected = Yes, Shared = No, Processed ephemerally = No, Purpose = App
-functionality only. Required or optional: **Optional (users can choose)** for the Messages and App
-activity rows, since each is sent only on an explicit user action and the app is fully usable
-without ever sending one; **Required** for the Device or other IDs row, since no connection works
+functionality only. Required or optional: **Optional (users can choose)** for the Messages, App
+activity and Location rows, since each is sent only on an explicit user action and the app is
+fully usable without ever sending one; **Required** for the Device or other IDs row, since no connection works
 without the token.
 
 | Category › type (console wording, **verify**) | What it is in Wristline | Notes |
@@ -129,9 +129,11 @@ without the token.
 | Messages › Other in-app messages | Messages the user types or dictates for an agent (`POST /api/sessions/{id}/prompt`) | Sent only after the user confirms on the "Send this?" screen |
 | App activity › Other user-generated content | Same messages, declared here too if the console asks for user-generated content; transcripts flow bridge → watch and are never transmitted from the watch | Declaring both is the conservative choice; drop one if a reviewer says it is redundant |
 | App activity › Other actions | Approval decisions (Allow / Always allow / Deny / Answer on PC) and answers to questions (`POST /api/requests/{id}`), plus which session is being viewed (WebSocket subscribe) | |
+| Location › Precise location | With **Include location in questions** on (off by default): the position rounded to 3 decimals (about 100 m, finer than Play's 3 km² "approximate"), its accuracy and a coarse place name, sent with each Quick Ask question (`POST /api/ask`, `context.location` / `context.place`) | Optional. Read once per question in the foreground, never in the background or stored. The bridge forwards it with the question to the AI provider the user picked; declare Shared = No under the user-initiated-transfer exemption, **verify** with the console's wording |
+| Location › Approximate location | Same value; declare too if the console asks, since a user who grants only approximate location sends that | Same answers as the row above |
 | Device or other IDs | The device token (bearer), the bridge-assigned device id, and the watch name sent at pairing | The watch name defaults to the system device name and can contain a personal name; if a reviewer treats that as Personal info › Name, add that row with the same answers |
 
-Not collected: location, contacts, photos, audio (the microphone is handled by the system
+Not collected: contacts, photos, audio (the microphone is handled by the system
 recognizer; the app receives text only), health, financial, calendar, files, installed apps,
 crash logs, diagnostics, or any identifier tied to the developer.
 
@@ -194,7 +196,8 @@ access no longer need a live bridge) is a bridge-side fixture change, not a watc
 - Violence, sexual content, language, controlled substances, gambling, horror: none.
 - User interaction: No. Messages go to a program on the user's own computer, not to other people;
   there is no user-to-user communication, no sharing of user-generated content with other users,
-  no location sharing.
+  no location sharing with other users (the optional Quick Ask location goes only to the user's
+  own bridge and the AI provider answering the question).
 - Purchases: none. Ads: none.
 - Expected result: Everyone / PEGI 3 / equivalent.
 
@@ -208,10 +211,11 @@ access no longer need a live bridge) is a bridge-side fixture change, not a watc
 | `FOREGROUND_SERVICE` | Runs `MonitorService` while Background alerts is on | `MonitorService.kt` |
 | `FOREGROUND_SERVICE_CONNECTED_DEVICE` | Type of that service: keeps the network connection to the bridge on the user's computer (see section 3) | `MonitorService.onStartCommand` |
 | `CHANGE_NETWORK_STATE` | Prerequisite for the `connectedDevice` foreground service type: Android requires at least one of `CHANGE_NETWORK_STATE`, `CHANGE_WIFI_STATE`, `BLUETOOTH_CONNECT`, `NFC`, `UWB_RANGING` (etc.) to be held before `startForeground(..., FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)` is allowed. It is the least invasive of those; no code calls network-changing APIs. Keep it and state this reason in the form | `AndroidManifest.xml`; enforced by the system in `MonitorService.onStartCommand` |
+| `ACCESS_COARSE_LOCATION`, `ACCESS_FINE_LOCATION` | Optional Quick Ask location (Settings › Include location in questions, off by default). Requested at runtime only when the user turns the switch on; either grant is enough. One `LocationManager.getCurrentLocation` (fused provider, else GPS/network) per question in the foreground, with a last known fix as fallback, and the framework `Geocoder` for a coarse place name. No background location, so no background-location declaration | `data/AskContext.kt`, `Bridge.ask`, `SettingsScreen` |
 | `VIBRATE` | One haptic click when a request arrives while the app is open (`Notifier.tick`). Notification vibration goes through the channel and does not need this permission | `Notifier.tick` |
 
 No `RECORD_AUDIO`: speech input launches the system recognizer via `RecognizerIntent`; the app
-receives text only. No location, Bluetooth, storage, contacts or boot permissions.
+receives text only. No background location, Bluetooth, storage, contacts or boot permissions.
 `uses-feature android.hardware.type.watch` restricts the listing to Wear OS devices.
 
 ## 7. Assets checklist
