@@ -30,16 +30,20 @@ import dev.wristline.watch.data.ServerEvent
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
 import dev.wristline.watch.data.Usage
+import dev.wristline.watch.data.UsageWindow
 import dev.wristline.watch.data.isoToMillis
+import dev.wristline.watch.data.key
 import dev.wristline.watch.data.look
 import dev.wristline.watch.ui.LimitEnd
 import dev.wristline.watch.ui.basename
 import dev.wristline.watch.ui.errorRes
+import dev.wristline.watch.ui.isLongWindow
 import dev.wristline.watch.ui.limitEnd
 import dev.wristline.watch.ui.markedProviders
 import dev.wristline.watch.ui.permissionQuestion
 import dev.wristline.watch.ui.progressDoneRes
 import dev.wristline.watch.ui.resetClockText
+import dev.wristline.watch.ui.windowAbbrev
 import java.time.ZoneId
 import kotlin.math.roundToInt
 
@@ -120,6 +124,10 @@ object Notifier {
     private const val TAG_LIMIT = "limit"
     /** A long turn's Live Update ([liveUpdate]): keyed by session id, apart from the session's alerts. */
     private const val TAG_LIVE = "live"
+    /** An early warning ([dev.wristline.watch.data.Warnings]) of a limit window, keyed by its usage entry. */
+    private const val TAG_WARN_LIMIT = "warnLimit"
+    /** An early warning of a session's context, keyed by session id. */
+    private const val TAG_WARN_CONTEXT = "warnContext"
 
     /** The app's primary (the theme's), for the small icon here and in the Now Bar: gray without it. */
     val COLOR: Int = 0xFF4FA8FF.toInt()
@@ -293,6 +301,46 @@ object Notifier {
         LimitEnd.Credits -> "¤ credits"
     }
 
+    /**
+     * A limit window reached 80%, before the agent hits it: titled with the provider and, when it
+     * has more than one account, the account's name ([usageTitle]); the window, its use and when it
+     * resets ([earlyLimitText]) below. Opens the usage screen.
+     */
+    fun earlyLimit(context: Context, usage: Usage, window: UsageWindow): Boolean {
+        val resetsAt = isoToMillis(window.resetsAt)
+        val resets = resetsAt?.let { resetClockText(it, System.currentTimeMillis(), ZoneId.systemDefault(), DateFormat.is24HourFormat(context)) }
+        return post(
+            context, TAG_WARN_LIMIT, usage.key, CHANNEL_UPDATES, MainActivity.EXTRA_USAGE,
+            title = usageTitle(providerName(context, usage.provider), usage, Bridge.usage.value, Bridge.sessions.value, Bridge.prefs.accounts.value),
+            text = earlyLimitText(window, resets),
+            alertOnce = false,
+        )
+    }
+
+    /** `◷ 5h 82% · resets 07:40 PM` in English, the calendar for a day or longer as the limit alert ([limitEndText]); [resets] ([resetClockText]) when known. */
+    internal fun earlyLimitText(window: UsageWindow, resets: String?): String =
+        (if (isLongWindow(window)) "🗓" else "◷") + " " + windowAbbrev(window) + " " + window.usedPercent.roundToInt() + "%" +
+            (resets?.let { " · resets $it" } ?: "")
+
+    /**
+     * `Codex · Work`: [providerName], and the account's name in [book] when the provider has more
+     * than one ([markedProviders]), as [accountLine] names a session's.
+     */
+    internal fun usageTitle(providerName: String, usage: Usage, all: List<Usage>, sessions: List<Session>, book: AccountBook): String {
+        val account = usage.account?.takeIf { usage.provider in markedProviders(all, sessions) } ?: return providerName
+        return providerName + " · " + book.look(usage.provider, account).name
+    }
+
+    /** A session's context reached 85%: the session's title over `ctx 87%`, the account line as for its other alerts. Opens the session. */
+    fun earlyContext(context: Context, session: Session, percent: Int): Boolean =
+        post(
+            context, TAG_WARN_CONTEXT, session.id, CHANNEL_UPDATES, MainActivity.EXTRA_SESSION_ID,
+            title = sessionTitle(context, session),
+            text = "ctx $percent%",
+            subText = accountLine(context, session),
+            alertOnce = false,
+        )
+
     /** Live Updates exist from Wear OS 7 (API 37) on; elsewhere none is posted and the setting is left out. */
     @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.CINNAMON_BUN)
     fun liveUpdatesSupported(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.CINNAMON_BUN
@@ -460,13 +508,15 @@ object Notifier {
      * Whether the notification [tag]/[id] posted on [channel] still applies: a request in
      * [requests]; a needs-input alert (requests channel) of a session in [sessions] that is still
      * waiting; a done or limit alert of one that is not running (an ended one is no longer listed);
-     * a Live Update of one still running or waiting. Untagged ones (monitoring) always do.
+     * a Live Update of one still running or waiting; a context warning of one still listed. Untagged
+     * ones (monitoring) and limit warnings (until tapped or dismissed) always do.
      */
     internal fun notificationApplies(tag: String?, channel: String?, id: Int, requests: List<PendingRequest>, sessions: List<Session>): Boolean =
         when (tag) {
             TAG_REQUEST -> requests.any { notificationId(it.id) == id }
             TAG_LIMIT -> sessions.any { notificationId(it.id) == id && it.status != SessionStatus.RUNNING }
             TAG_LIVE -> sessions.any { notificationId(it.id) == id && (it.status == SessionStatus.RUNNING || it.status == SessionStatus.NEEDS_INPUT) }
+            TAG_WARN_CONTEXT -> sessions.any { notificationId(it.id) == id }
             TAG_SESSION -> sessions.any { session ->
                 notificationId(session.id) == id && when (channel) {
                     CHANNEL_REQUESTS -> session.status == SessionStatus.NEEDS_INPUT
@@ -521,12 +571,13 @@ object Notifier {
     /** [accountLine] for [session] as the Bridge has it now. */
     private fun accountLine(context: Context, session: Session?): String? {
         val provider = session?.provider ?: return null
-        val name = when (provider) {
-            ProviderId.CLAUDE_CODE -> context.getString(R.string.provider_claude_code)
-            ProviderId.CODEX -> context.getString(R.string.provider_codex)
-            else -> provider
-        }
-        return accountLine(name, session, Bridge.usage.value, Bridge.sessions.value, Bridge.prefs.accounts.value)
+        return accountLine(providerName(context, provider), session, Bridge.usage.value, Bridge.sessions.value, Bridge.prefs.accounts.value)
+    }
+
+    private fun providerName(context: Context, provider: String): String = when (provider) {
+        ProviderId.CLAUDE_CODE -> context.getString(R.string.provider_claude_code)
+        ProviderId.CODEX -> context.getString(R.string.provider_codex)
+        else -> provider
     }
 
     /** Same fallbacks as the screens' session title. */

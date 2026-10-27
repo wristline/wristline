@@ -7,6 +7,8 @@ import dev.wristline.watch.data.ProviderId
 import dev.wristline.watch.data.RequestKind
 import dev.wristline.watch.data.Session
 import dev.wristline.watch.data.SessionStatus
+import dev.wristline.watch.data.Usage
+import dev.wristline.watch.data.UsageWindow
 import dev.wristline.watch.data.edit
 import dev.wristline.watch.data.seen
 import dev.wristline.watch.ui.LimitEnd
@@ -89,6 +91,33 @@ class NotifierTest {
         assertEquals("¤ credits", Notifier.limitEndText(LimitEnd.Credits, now, zone, is24Hour = false))
         assertEquals("Fix CI · ◷ 07:40 PM", Notifier.limitText("Fix CI", "◷ 07:40 PM"))
         assertEquals("Fix CI", Notifier.limitText("Fix CI", null))
+    }
+
+    @Test
+    fun earlyLimitTextIsTheWindowItsUseAndItsReset() {
+        val fiveHours = UsageWindow("5h", 82.4, "2026-10-27T10:40:00Z", minutes = 300)
+        assertEquals("◷ 5h 82% · resets 07:40 PM", Notifier.earlyLimitText(fiveHours, "07:40 PM"))
+        assertEquals("\uD83D\uDDD3 7d 80% · resets Mon 06:00 PM", Notifier.earlyLimitText(UsageWindow("7d", 80.0, minutes = 10_080), "Mon 06:00 PM"))
+        assertEquals("◷ 5h 82%", Notifier.earlyLimitText(fiveHours, null))
+    }
+
+    @Test
+    fun usageTitleNamesTheAccountOnlyWhenItsProviderHasMore() {
+        val work = Account("w", "Work")
+        val pro = Account("p", "Pro")
+        fun codex(account: Account?) = Usage(ProviderId.CODEX, "2026-10-27T10:00:00Z", listOf(UsageWindow("primary", 85.0)), account)
+        val both = listOf(codex(work), codex(pro))
+        val book = AccountBook().seen(listOf(ProviderId.CODEX to work, ProviderId.CODEX to pro), 0)
+        assertEquals("Codex · Pro", Notifier.usageTitle("Codex", both[1], both, emptyList(), book))
+        assertEquals("Codex", Notifier.usageTitle("Codex", both[0], both.take(1), emptyList(), book))
+        assertEquals("Codex", Notifier.usageTitle("Codex", codex(null), listOf(codex(null)), emptyList(), book))
+    }
+
+    @Test
+    fun contextWarningAppliesWhileTheSessionIsListed() {
+        assertTrue(applies("warnContext", Notifier.CHANNEL_UPDATES, listOf(session(SessionStatus.RUNNING))))
+        assertFalse(applies("warnContext", Notifier.CHANNEL_UPDATES, emptyList()))
+        assertTrue(applies("warnLimit", Notifier.CHANNEL_UPDATES, emptyList()))
     }
 
     @Test

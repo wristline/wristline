@@ -22,6 +22,13 @@ class NavigationTest {
     }
 
     @Test
+    fun limitWarningOpensTheUsageScreen() {
+        assertEquals(listOf(Route.Usage), notificationTarget(requestId = null, sessionId = null, usage = true))
+        assertEquals(listOf(list, Route.Usage), notificationStack(listOf(list, Route.Usage), listOf(Route.Usage)))
+        assertEquals(listOf(list, Route.Settings, Route.Usage), notificationStack(listOf(list, Route.Settings), listOf(Route.Usage)))
+    }
+
+    @Test
     fun monitoringCardOpensTheListAlone() {
         assertEquals(emptyList<Route>(), notificationTarget(requestId = null, sessionId = null, home = true))
         assertEquals(listOf(list), notificationStack(listOf(list, session, request), emptyList()))

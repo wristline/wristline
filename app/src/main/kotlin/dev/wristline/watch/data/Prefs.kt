@@ -72,6 +72,28 @@ class Prefs internal constructor(
             sp.edit().putBoolean(KEY_LIVE_UPDATES, value).apply()
         }
 
+    private val earlyWarningsFlow = MutableStateFlow(sp.getBoolean(KEY_EARLY_WARNINGS, true))
+
+    /** A limit window at 80% or a session's context at 85% is told ahead of time ([Warnings]); on by default. */
+    val earlyWarningsState: StateFlow<Boolean> = earlyWarningsFlow.asStateFlow()
+    var earlyWarnings: Boolean
+        get() = earlyWarningsFlow.value
+        set(value) {
+            earlyWarningsFlow.value = value
+            sp.edit().putBoolean(KEY_EARLY_WARNINGS, value).apply()
+        }
+
+    /** The early warnings given ([Warnings.fired]), so a restart within the same cycle does not repeat them. */
+    var warned: Set<String>
+        get() = sp.getString(KEY_WARNED, null)?.let {
+            try {
+                WireJson.decodeFromString(stringListSerializer, it).toSet()
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }.orEmpty()
+        set(value) = sp.edit().putString(KEY_WARNED, WireJson.encodeToString(stringListSerializer, value.toList())).apply()
+
     private val watchColorsFlow = MutableStateFlow(sp.getBoolean(KEY_WATCH_COLORS, false))
 
     /** The theme follows the watch's dynamic colors where it has them; off by default (graphite and blue). */
@@ -112,13 +134,13 @@ class Prefs internal constructor(
      */
     var quickReplies: List<String>
         get() = sp.getString(KEY_QUICK_REPLIES, null)?.let(::readQuickReplies) ?: quickRepliesOf(defaultQuickReplies())
-        set(value) = sp.edit().putString(KEY_QUICK_REPLIES, WireJson.encodeToString(quickRepliesSerializer, quickRepliesOf(value))).apply()
+        set(value) = sp.edit().putString(KEY_QUICK_REPLIES, WireJson.encodeToString(stringListSerializer, quickRepliesOf(value))).apply()
 
     /** Back to the defaults ([quickReplies]). */
     fun resetQuickReplies() = sp.edit().remove(KEY_QUICK_REPLIES).apply()
 
     private fun readQuickReplies(json: String): List<String>? = try {
-        quickRepliesOf(WireJson.decodeFromString(quickRepliesSerializer, json))
+        quickRepliesOf(WireJson.decodeFromString(stringListSerializer, json))
     } catch (_: IllegalArgumentException) {
         null
     }
@@ -167,6 +189,7 @@ class Prefs internal constructor(
         sp.edit().clear().apply()
         monitoringFlow.value = false
         liveUpdatesFlow.value = true
+        earlyWarningsFlow.value = true
         watchColorsFlow.value = false
         accountsFlow.value = AccountBook()
     }
@@ -186,6 +209,8 @@ class Prefs internal constructor(
         const val KEY_WATCH_COLORS = "watchColors"
         const val KEY_ACCOUNTS = "accounts"
         const val KEY_QUICK_REPLIES = "quickReplies"
-        val quickRepliesSerializer = ListSerializer(String.serializer())
+        const val KEY_EARLY_WARNINGS = "earlyWarnings"
+        const val KEY_WARNED = "warned"
+        val stringListSerializer = ListSerializer(String.serializer())
     }
 }

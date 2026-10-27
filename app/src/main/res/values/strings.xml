@@ -210,6 +210,8 @@
     <string name="settings_monitoring_detail">Stays connected when closed; uses more battery</string>
     <string name="settings_live_updates">Live Updates for long turns</string>
     <string name="settings_live_updates_detail">Over 1 min or with a task list</string>
+    <string name="settings_early_warnings">Early warnings</string>
+    <string name="settings_early_warnings_detail">Limit at 80%, context at 85%</string>
     <string name="settings_notifications_off">Notifications are off</string>
     <string name="settings_notifications_open">Allow them in app settings</string>
     <string name="settings_token">Enter token</string>

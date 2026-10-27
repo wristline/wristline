@@ -104,22 +104,23 @@ internal val routeModule = SerializersModule { polymorphic(NavKey::class) { subc
 /**
  * The screens a notification opens above the session list: a request over its session when the
  * notification names one, so Back goes request, session, list; none above it, the list alone, for
- * [home] (the monitoring card).
+ * [home] (the monitoring card); the usage screen for [usage] (a limit warning).
  */
-internal fun notificationTarget(requestId: String?, sessionId: String?, home: Boolean = false): List<Route>? = when {
+internal fun notificationTarget(requestId: String?, sessionId: String?, home: Boolean = false, usage: Boolean = false): List<Route>? = when {
     home -> emptyList()
+    usage -> listOf(Route.Usage)
     requestId != null -> listOfNotNull(sessionId?.let(Route::Session), Route.Request(requestId))
     sessionId != null -> listOf(Route.Session(sessionId))
     else -> null
 }
 
 /**
- * [stack] with [target] opened on top. A session, its quick replies or a request on top gives way to it; any other
+ * [stack] with [target] opened on top. A session, its quick replies, a request or the usage screen on top gives way to it; any other
  * screen stays below, so an Ask screen a notification covers is not popped (that would cancel its
  * question, see AskCanceller). An empty [target] (home) leaves the session list alone.
  */
 internal fun notificationStack(stack: List<NavKey>, target: List<Route>): List<NavKey> =
-    if (target.isEmpty()) listOf(Route.Sessions) else stack.dropLastWhile { it is Route.Session || it is Route.QuickReplies || it is Route.Request } + target
+    if (target.isEmpty()) listOf(Route.Sessions) else stack.dropLastWhile { it is Route.Session || it is Route.QuickReplies || it is Route.Request || it is Route.Usage } + target
 
 /**
  * Makes this back stack [keys], keeping the entries both share at the bottom: only the screens

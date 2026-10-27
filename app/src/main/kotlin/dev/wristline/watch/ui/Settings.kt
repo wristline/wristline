@@ -85,6 +85,7 @@ internal fun SettingsScreen(
     // The service turns the setting off itself when the pairing is gone.
     val monitoring by prefs.monitoringState.collectAsStateWithLifecycle()
     val liveUpdates by prefs.liveUpdatesState.collectAsStateWithLifecycle()
+    val earlyWarnings by prefs.earlyWarningsState.collectAsStateWithLifecycle()
     // Re-read on every resume: the user may have changed it in the system settings.
     var notificationsOn by remember { mutableStateOf(Notifier.enabled(context)) }
     LifecycleResumeEffect(Unit) {
@@ -134,6 +135,7 @@ internal fun SettingsScreen(
         monitoring = monitoring,
         canMonitor = prefs.isPaired && conn !is Conn.Unauthorized,
         liveUpdates = liveUpdates.takeIf { Notifier.liveUpdatesSupported() },
+        earlyWarnings = earlyWarnings,
         notificationsOff = !notificationsOn,
         busy = busy,
         tokenNeedsAddress = tokenNeedsAddress,
@@ -176,6 +178,7 @@ internal fun SettingsScreen(
             // The permission is granted at install, but the user may have turned Live Updates off.
             if (on && Notifier.liveUpdatesSupported() && !Notifier.canPostLiveUpdates(context)) openLiveUpdateSettings(context)
         },
+        onEarlyWarnings = { prefs.earlyWarnings = it },
         onNotificationSettings = { openAppSettings(context) },
         onRepair = onRepair,
         onToken = { if (prefs.baseUrl.isEmpty()) tokenNeedsAddress = true else enterToken() },
@@ -227,6 +230,8 @@ internal fun SettingsContent(
     canMonitor: Boolean,
     /** Null where the watch has no Live Updates: the row is left out. Needs [monitoring]. */
     liveUpdates: Boolean?,
+    /** Limit and context warnings ahead of time; also while the app is open, so not tied to [monitoring]. */
+    earlyWarnings: Boolean,
     notificationsOff: Boolean,
     busy: Boolean,
     tokenNeedsAddress: Boolean,
@@ -241,6 +246,7 @@ internal fun SettingsContent(
     onAskSearch: (Boolean) -> Unit,
     onMonitoring: (Boolean) -> Unit,
     onLiveUpdates: (Boolean) -> Unit,
+    onEarlyWarnings: (Boolean) -> Unit,
     onNotificationSettings: () -> Unit,
     onRepair: () -> Unit,
     onToken: () -> Unit,
@@ -393,6 +399,16 @@ internal fun SettingsContent(
                             secondaryLabel = { Text(stringResource(R.string.settings_live_updates_detail), maxLines = 2) },
                         )
                     }
+                }
+                item(key = "earlyWarnings") {
+                    SwitchButton(
+                        checked = earlyWarnings,
+                        onCheckedChange = onEarlyWarnings,
+                        modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                        transformation = SurfaceTransformation(spec),
+                        label = { Text(stringResource(R.string.settings_early_warnings), maxLines = 2) },
+                        secondaryLabel = { Text(stringResource(R.string.settings_early_warnings_detail), maxLines = 2) },
+                    )
                 }
                 if (notificationsOff) {
                     item(key = "notificationsOff") {

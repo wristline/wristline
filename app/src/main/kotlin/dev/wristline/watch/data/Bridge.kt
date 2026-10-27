@@ -531,6 +531,19 @@ object Bridge {
                 prefs.updateAccounts { it.seen(visible, System.currentTimeMillis()) }
             }
         }
+        // Early warnings ([Warnings]) on what the bridge reports, with the app open or only the
+        // monitoring service; only while online, when the lists are current (a session missing
+        // from them is gone, not yet to be loaded).
+        scope.launch {
+            val warnings = Warnings(prefs.warned)
+            combine(_conn, _usage, _sessions, prefs.earlyWarningsState) { conn, usage, sessions, on -> Triple(usage, sessions, on && conn is Conn.Online) }
+                .collect { (usage, sessions, on) ->
+                    val before = warnings.fired
+                    val due = warnings.check(usage, sessions, System.currentTimeMillis(), enabled = on)
+                    if (warnings.fired != before) prefs.warned = warnings.fired
+                    due.forEach(::warn)
+                }
+        }
         if (prefs.isPaired) {
             _conn.value = Conn.Connecting
         } else if (prefs.demo) {
@@ -627,7 +640,8 @@ object Bridge {
     /**
      * The screen turned on: fetches the session list once, for the Now Bar counts. A background
      * client is not told of sessions starting or going idle, and pushing them while the screen is
-     * off (the Now Bar unseen) would only wake the radio; see [screenOnRefreshDue].
+     * off (the Now Bar unseen) would only wake the radio; see [screenOnRefreshDue]. Nor of usage:
+     * with early warnings on, it is fetched too, so a limit nearing is told when the user looks.
      */
     fun refreshOnScreenOn() {
         scope.launch {
@@ -636,6 +650,7 @@ object Bridge {
             Log.i(TAG, "Screen on: refreshing the session list")
             refreshJob = scope.launch {
                 get(SessionList.serializer(), "sessions")?.let { setFetchedSessions(it.sessions) }
+                if (prefs.earlyWarnings) get(UsageList.serializer(), "usage")?.let { _usage.value = it.usage }
             }
         }
     }
@@ -878,6 +893,23 @@ object Bridge {
             else -> return
         }
         logReceived("alert ${event.alert}", id, looking, posted)
+    }
+
+    /**
+     * An early warning: a soft haptic while the user looks at the app (the limit card and gauges
+     * show it), else a notification; one of a session's context as a done alert of it ([attentionFor]).
+     */
+    private fun warn(warning: Warning) {
+        val looking = looking()
+        val posted = when (warning) {
+            is Warning.Limit -> attention(looking, sessionId = "", haptic = Haptic.DONE) {
+                Notifier.earlyLimit(appContext, warning.usage, warning.window)
+            }
+            is Warning.Context -> attention(looking, warning.session.id, done = true) {
+                Notifier.earlyContext(appContext, warning.session, warning.percent)
+            }
+        }
+        logReceived(if (warning is Warning.Limit) "warning limit" else "warning context", null, looking, posted)
     }
 
     /**
