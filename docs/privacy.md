@@ -157,8 +157,9 @@ request is answered or the session moves on.
 With **Settings › Background alerts** on, a foreground service of type `connectedDevice` keeps the
 single WebSocket connection to your bridge while the app is closed, so requests arrive as
 notifications. It runs only while that switch is on, stops itself when the pairing is removed or
-revoked, and does not start at boot (it resumes the next time you open the app). It uses more
-battery than leaving it off.
+revoked, and starts again by itself after the watch restarts or the app is updated, but only if the
+watch is still paired and the switch is still on (it uses the boot permission for this alone). It
+uses more battery than leaving it off.
 
 While that switch is on, the service also listens to the watch's off-body sensor (Android's
 `TYPE_LOW_LATENCY_OFFBODY_DETECT`, which needs no permission). It is used for one thing: when the
@@ -348,8 +349,9 @@ Wristline Bridge 자체는 사용자의 PC에서 실행되는 오픈소스 소�
 
 **설정 › 백그라운드 알림**을 켜면 `connectedDevice` 유형의 포그라운드 서비스가 앱을 닫아도 브릿지와의
 WebSocket 연결 하나를 유지해 요청이 알림으로 도착하게 합니다. 이 스위치가 켜져 있는 동안만 실행되고,
-페어링이 해제되거나 취소되면 스스로 멈추며, 부팅 시 자동 시작하지 않습니다(다음에 앱을 열 때 다시
-시작). 꺼 둘 때보다 배터리를 더 씁니다.
+페어링이 해제되거나 취소되면 스스로 멈추며, 워치를 다시 켜거나 앱이 업데이트되면 여전히 페어링되어 있고
+스위치가 켜져 있을 때만 자동으로 다시 시작합니다(부팅 권한은 이 용도로만 씁니다). 꺼 둘 때보다
+배터리를 더 씁니다.
 
 이 스위치가 켜져 있는 동안 서비스는 워치의 착용 감지 센서(Android의
 `TYPE_LOW_LATENCY_OFFBODY_DETECT`, 권한 불필요)도 사용합니다. 용도는 하나뿐입니다. 워치를 손목에서

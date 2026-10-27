@@ -75,6 +75,16 @@ import kotlinx.coroutines.launch
 /** Seconds with one decimal, as the answer header shows the time the CLI took: 1389 ms is `1.4`. */
 internal fun askSeconds(durationMs: Long): String = String.format(Locale.ROOT, "%.1f", durationMs / 1000.0)
 
+/**
+ * How the answer header names [model]: a Claude model id in the form `haiku-5-5` as `Haiku 5.5`,
+ * like the bridge's other display names; any other name as it came.
+ */
+internal fun askModelLabel(model: String): String {
+    val id = Regex("(haiku|sonnet|opus|fable)-(\\d+)-(\\d+)").matchEntire(model) ?: return model
+    val (family, major, minor) = id.destructured
+    return "${family.replaceFirstChar { it.uppercase() }} $major.$minor"
+}
+
 /** The provider a question goes to when the user asks with the other one. */
 internal fun otherProvider(provider: String): String =
     if (provider == ProviderId.CODEX) ProviderId.CLAUDE_CODE else ProviderId.CODEX
@@ -389,7 +399,7 @@ internal fun AskContent(
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         ProviderBadge(newest.provider)
-                        Text(listOfNotNull(name, newest.model).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(listOfNotNull(name, newest.model?.let(::askModelLabel)).joinToString(" · "), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

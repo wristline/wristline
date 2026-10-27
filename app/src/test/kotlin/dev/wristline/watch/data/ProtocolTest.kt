@@ -5,6 +5,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -264,9 +265,53 @@ class ProtocolTest {
             fixture.getValue("provider").jsonPrimitive.content,
             fixture.getValue("text").jsonPrimitive.content,
             threadId = fixture.getValue("threadId").jsonPrimitive.content,
+            context = WireJson.decodeFromJsonElement<AskContext>(fixture.getValue("context")),
         )
         assertEquals(fixture, WireJson.parseToJsonElement(WireJson.encodeToString(AskBody.serializer(), body)))
         assertEquals("""{"provider":"codex","text":"what?"}""", WireJson.encodeToString(AskBody.serializer(), AskBody("codex", "what?")))
+    }
+
+    // The fixtures carry `search` on every ask; an older bridge's ask without it did not search.
+    @Test
+    fun askSearchDecodesAndDefaultsToOff() {
+        val list = decode<AskList>(WireJson.parseToJsonElement(File(dir, "asks.json").readText()) as JsonObject).asks
+        assertTrue(list.all { it.search })
+        val older = decode<Ask>(
+            WireJson.parseToJsonElement(
+                """{"id":"ask-1","provider":"codex","question":"what?","status":"done","answer":"this","createdAt":"2026-09-29T00:00:00Z"}""",
+            ) as JsonObject,
+        )
+        assertFalse(older.search)
+        val off = decode<Ask>(
+            WireJson.parseToJsonElement(
+                """{"id":"ask-2","provider":"codex","question":"what?","status":"running","search":false,"createdAt":"2026-09-29T00:00:00Z"}""",
+            ) as JsonObject,
+        )
+        assertFalse(off.search)
+    }
+
+    // The request fixture carries `context` but leaves `search` to the bridge's default; the watch's
+    // body with both is the fixture plus `search`.
+    @Test
+    fun askBodyWithContextAndSearchMatchesTheFixture() {
+        val fixture = WireJson.parseToJsonElement(File(dir, "ask.json").readText()) as JsonObject
+        val context = AskContext(
+            time = "2026-09-29T19:00:00+09:00",
+            tz = "Asia/Seoul",
+            locale = "ko-KR",
+            units = "metric",
+            place = "서울 성북구 돈암동",
+            location = AskLocation(37.5912, 127.0187, accuracyM = 50),
+            device = "watch",
+        )
+        val body = AskBody(ProviderId.CLAUDE_CODE, "Reply with the single word OK", context = context)
+        assertEquals(fixture, WireJson.parseToJsonElement(WireJson.encodeToString(AskBody.serializer(), body)))
+        for (search in listOf(true, false)) {
+            assertEquals(
+                JsonObject(fixture + ("search" to JsonPrimitive(search))),
+                WireJson.parseToJsonElement(WireJson.encodeToString(AskBody.serializer(), body.copy(search = search))),
+            )
+        }
     }
 
     @Test

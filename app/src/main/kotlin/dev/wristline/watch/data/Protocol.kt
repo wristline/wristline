@@ -237,6 +237,8 @@ data class Ask(
     val createdAt: String,
     /** The conversation this ask continues; a new thread's id is its first ask's id. Empty from an older bridge. */
     val threadId: String = "",
+    /** Whether the model could search the web; false from an older bridge, which never searched. */
+    val search: Boolean = false,
 )
 
 /** The thread an ask belongs to: [Ask.threadId], or its own id when the bridge did not say. */
