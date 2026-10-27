@@ -58,6 +58,7 @@ import kotlinx.coroutines.launch
 internal fun SettingsScreen(
     onAddress: () -> Unit,
     onAccounts: () -> Unit,
+    onQuickReplies: () -> Unit,
     onRepair: () -> Unit,
     onPaired: () -> Unit,
     onSignedOut: () -> Unit,
@@ -139,6 +140,7 @@ internal fun SettingsScreen(
         onAddress = onAddress,
         onDeviceName = editName,
         onAccounts = onAccounts,
+        onQuickReplies = onQuickReplies,
         onShowToolCalls = {
             showToolCalls = it
             prefs.showToolCalls = it
@@ -231,6 +233,7 @@ internal fun SettingsContent(
     onAddress: () -> Unit,
     onDeviceName: () -> Unit,
     onAccounts: () -> Unit,
+    onQuickReplies: () -> Unit,
     onShowToolCalls: (Boolean) -> Unit,
     onWatchColors: (Boolean) -> Unit,
     onAskProvider: () -> Unit,
@@ -307,6 +310,14 @@ internal fun SettingsContent(
                         label = { Text(stringResource(R.string.settings_accounts)) },
                     )
                 }
+            }
+            item(key = "quickReplies") {
+                FilledTonalButton(
+                    onClick = onQuickReplies,
+                    modifier = Modifier.fillMaxWidth().transformedHeight(this, spec),
+                    transformation = SurfaceTransformation(spec),
+                    label = { Text(stringResource(R.string.settings_quick_replies)) },
+                )
             }
             item(key = "toolCalls") {
                 SwitchButton(

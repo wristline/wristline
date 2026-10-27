@@ -251,7 +251,7 @@ internal fun AccountsContent(
 }
 
 @Composable
-private fun MoveButton(icon: Int, description: String, enabled: Boolean, onClick: () -> Unit) {
+internal fun MoveButton(icon: Int, description: String, enabled: Boolean, onClick: () -> Unit) {
     FilledTonalIconButton(onClick = onClick, enabled = enabled, modifier = Modifier.touchTargetAwareSize(PICK_SIZE)) {
         Icon(painterResource(icon), description, Modifier.size(IconButtonDefaults.iconSizeFor(PICK_SIZE)))
     }
@@ -502,7 +502,7 @@ private fun Modifier.selectedRing(selected: Boolean, ring: Color, gap: Color): M
     }
 
 @Composable
-private fun TransformingLazyColumnItemScope.Header(text: String, spec: TransformationSpec) {
+internal fun TransformingLazyColumnItemScope.Header(text: String, spec: TransformationSpec) {
     ListHeader(
         modifier = Modifier
             .fillMaxWidth()
@@ -514,7 +514,7 @@ private fun TransformingLazyColumnItemScope.Header(text: String, spec: Transform
 
 /** The list's last item: room under the last row, off the round edge. */
 @Composable
-private fun TransformingLazyColumnItemScope.EndSpace(spec: TransformationSpec) {
+internal fun TransformingLazyColumnItemScope.EndSpace(spec: TransformationSpec) {
     Spacer(
         Modifier.edgeTransform(this, spec).minimumVerticalContentPadding(top = 0.dp, bottom = TextDefaults.minimumBottomListContentPadding),
     )

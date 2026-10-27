@@ -28,6 +28,38 @@ class PrefsTest {
         assertFalse(reopened.askLocation)
         assertTrue(reopened.askSearch)
     }
+
+    private val defaults = listOf("Continue", "Yes, go ahead", "Run the tests", "Commit it")
+
+    @Test
+    fun quickRepliesAreTheDefaultsUntilEditedAndRoundTrip() {
+        val store = MemoryPrefs()
+        val prefs = Prefs(store, "Watch") { defaults }
+        assertEquals(defaults, prefs.quickReplies)
+        prefs.quickReplies = listOf("Commit it", "Ship \"it\", please")
+        assertEquals(listOf("Commit it", "Ship \"it\", please"), Prefs(store, "Watch") { defaults }.quickReplies)
+        // Emptied on purpose: not the defaults again.
+        prefs.quickReplies = emptyList()
+        assertEquals(emptyList<String>(), Prefs(store, "Watch") { defaults }.quickReplies)
+        prefs.resetQuickReplies()
+        assertEquals(defaults, prefs.quickReplies)
+    }
+
+    @Test
+    fun quickRepliesAreTrimmedNonBlankShortAndAtMostEight() {
+        val prefs = Prefs(MemoryPrefs(), "Watch") { defaults }
+        prefs.quickReplies = listOf("  Go on  ", "", "   ", "x".repeat(QUICK_REPLY_MAX_CHARS + 1), "y".repeat(QUICK_REPLY_MAX_CHARS))
+        assertEquals(listOf("Go on", "y".repeat(QUICK_REPLY_MAX_CHARS)), prefs.quickReplies)
+        prefs.quickReplies = (1..12).map { "Reply $it" }
+        assertEquals((1..QUICK_REPLIES_MAX).map { "Reply $it" }, prefs.quickReplies)
+    }
+
+    @Test
+    fun unreadableQuickRepliesFallBackToTheDefaults() {
+        val store = MemoryPrefs()
+        store.edit().putString("quickReplies", "{not json").apply()
+        assertEquals(defaults, Prefs(store, "Watch") { defaults }.quickReplies)
+    }
 }
 
 /** SharedPreferences in a map, applied at once; enough for [Prefs]. */

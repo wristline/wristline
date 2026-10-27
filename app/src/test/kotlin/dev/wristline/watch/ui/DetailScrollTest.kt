@@ -1,11 +1,21 @@
 package dev.wristline.watch.ui
 
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DetailScrollTest {
+    @Test
+    fun sideActionsRiseToStayInsideTheRoundScreen() {
+        // The smallest round screen: the side buttons' centers 56dp out need about 21dp more.
+        assertEquals(20.75f, sideActionLift(192.dp, round = true).value, 0.1f)
+        // Galaxy Watch at 480px (295dp): a few dp.
+        assertEquals(7.4f, sideActionLift(295.dp, round = true).value, 0.1f)
+        assertEquals(0f, sideActionLift(192.dp, round = false).value, 0f)
+    }
+
     @Test
     fun enteringJumpsToTheNewestWhereverTheListStands() {
         // A restored or held position away from the end does not keep the list there.

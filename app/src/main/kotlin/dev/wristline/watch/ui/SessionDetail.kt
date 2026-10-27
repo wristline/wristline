@@ -68,6 +68,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -127,6 +128,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -140,15 +142,17 @@ private const val SENT_CHECK_MS = 1_200L
 // The library's small size, the minimum touch target.
 private val ACTION_SIZE = IconButtonDefaults.SmallButtonSize
 private val ACTION_GAP = 8.dp
-// Low in the round screen's bottom chin, the two buttons still inside the circle (192dp screens too).
+// Low in the round screen's bottom chin: the middle of the three buttons; the side ones rise to
+// stay inside the circle ([sideActionLift]).
 private val ACTIONS_BOTTOM = 6.dp
 // The list's end padding as a share of the screen height: at rest the newest short card ends about
 // 70% down the screen, a little above the actions.
 private const val END_PADDING_FRACTION = 0.3f
-// The jump to the newest message: a bare chevron over the gap between the actions, its strokes
-// just above their tops, inside the scrim where content already fades. Its 48dp touch target
-// reaches 18dp down between the actions, which are drawn after it and keep their own touches.
-private val JUMP_BOTTOM = ACTIONS_BOTTOM + ACTION_SIZE - 18.dp
+// The jump to the newest message: a bare chevron over the middle action, between the raised side
+// ones, its strokes a few dp above the middle one's top, inside the scrim where content already
+// fades. Its 48dp touch target reaches 12dp down over the middle action, which is drawn after it
+// and keeps its own touches.
+private val JUMP_BOTTOM = ACTIONS_BOTTOM + ACTION_SIZE - 12.dp
 private val JUMP_GLYPH = 20.dp
 // Behind the actions, rising well above them: content scrolling under them fades out.
 private val SCRIM_HEIGHT = 72.dp
@@ -199,7 +203,7 @@ private class OpenedSession(val id: String) : RememberObserver {
  * back to the newest message as on entering it.
  */
 @Composable
-internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (String) -> Unit) {
+internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (String) -> Unit, onQuickReplies: () -> Unit) {
     val opened = remember(sessionId) { OpenedSession(sessionId) }
     // Live items only while started: with the screen off, or another activity in front, nothing
     // streams; coming back reloads the newest page.
@@ -267,6 +271,7 @@ internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (Stri
         onEarlier = { Bridge.loadEarlier(sessionId) },
         onAction = { if (request != null) onRespond(request.id) else speak() },
         onType = type,
+        onQuick = onQuickReplies,
         visit = visit,
         confirming = confirming,
     )
@@ -319,6 +324,8 @@ internal fun SessionDetailContent(
     onEarlier: () -> Unit,
     onAction: () -> Unit,
     onType: () -> Unit,
+    /** Opens the quick replies. */
+    onQuick: () -> Unit,
     /** A new visit of the screen ([SessionDetailScreen]): the list starts at the newest message again. */
     visit: Int = 0,
     /** The send confirmation is up: the jump to the newest message hides under it. */
@@ -542,8 +549,9 @@ internal fun SessionDetailContent(
                 )
             }
         }
-        // [Respond] while a request waits, otherwise the speak and type buttons (disabled when blocked).
+        // [Respond] while a request waits, otherwise the speak, type and quick reply buttons (disabled when blocked).
         val actions = Modifier.align(Alignment.BottomCenter).padding(bottom = ACTIONS_BOTTOM)
+        val lift = sideActionLift(with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }, LocalConfiguration.current.isScreenRound)
         if (hasRequest) {
             CompactButton(
                 onClick = onAction,
@@ -553,11 +561,13 @@ internal fun SessionDetailContent(
                 label = { Text(stringResource(R.string.detail_respond)) },
             )
         } else if (session != null) {
-            Row(actions, horizontalArrangement = Arrangement.spacedBy(ACTION_GAP)) {
+            // A shallow arc along the round edge: the middle button lowest, the side ones [lift]ed.
+            Row(actions, horizontalArrangement = Arrangement.spacedBy(ACTION_GAP), verticalAlignment = Alignment.Bottom) {
                 // Round, squarer while pressed, but only so far: square corners this low would reach
-                // past the round screen's edge. The same size, so the pair never shifts.
+                // past the round screen's edge. The same size, so the row never shifts.
                 val shapes = IconButtonDefaults.animatedShapes(pressedShape = MaterialTheme.shapes.medium)
-                FilledIconButton(onClick = onAction, enabled = canSend, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
+                val side = Modifier.padding(bottom = lift).touchTargetAwareSize(ACTION_SIZE)
+                FilledIconButton(onClick = onAction, enabled = canSend, modifier = side, shapes = shapes) {
                     SpeakIcon(
                         when {
                             sending -> SpeakState.SENDING
@@ -569,12 +579,32 @@ internal fun SessionDetailContent(
                 FilledTonalIconButton(onClick = onType, enabled = canSend, modifier = Modifier.touchTargetAwareSize(ACTION_SIZE), shapes = shapes) {
                     Icon(painterResource(R.drawable.ic_keyboard), stringResource(R.string.detail_type))
                 }
+                FilledTonalIconButton(onClick = onQuick, enabled = canSend, modifier = side, shapes = shapes) {
+                    Icon(painterResource(R.drawable.ic_quick), stringResource(R.string.settings_quick_replies))
+                }
             }
         }
     }
 }
 
 private enum class SpeakState { MIC, SENDING, SENT }
+
+/**
+ * How far the side actions rise above the middle one on a [round] screen [screenWidth] wide: as
+ * the two buttons used to, each touches the circle at most, its center [ACTION_SIZE] +
+ * [ACTION_GAP] from the middle. None on a square screen or where they fit as they are.
+ */
+internal fun sideActionLift(screenWidth: Dp, round: Boolean): Dp {
+    if (!round) return 0.dp
+    val radius = screenWidth.value / 2
+    val half = ACTION_SIZE.value / 2
+    val offset = (ACTION_SIZE + ACTION_GAP).value
+    val reach = radius - half
+    if (reach <= offset) return 0.dp
+    // The side button's center height above the screen's bottom, its edge on the circle.
+    val center = radius - sqrt(reach * reach - offset * offset)
+    return (center - half - ACTIONS_BOTTOM.value).coerceAtLeast(0f).dp
+}
 
 /** What the detail list does when its newest item or its footers change ([endScroll]). */
 internal enum class EndScroll { NONE, JUMP, FOLLOW }

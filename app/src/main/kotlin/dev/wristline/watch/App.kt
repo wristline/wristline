@@ -29,6 +29,8 @@ import dev.wristline.watch.ui.AskScreen
 import dev.wristline.watch.ui.CodeScreen
 import dev.wristline.watch.ui.FailureNotice
 import dev.wristline.watch.ui.NotifyScreen
+import dev.wristline.watch.ui.QuickRepliesEditScreen
+import dev.wristline.watch.ui.QuickRepliesScreen
 import dev.wristline.watch.ui.RequestScreen
 import dev.wristline.watch.ui.SessionDetailScreen
 import dev.wristline.watch.ui.SessionListScreen
@@ -85,6 +87,14 @@ sealed interface Route : NavKey {
     /** One account, by its key in the AccountBook (`provider:id`). */
     @Serializable
     data class Account(val key: String) : Route
+
+    /** The quick replies to send to session [id]. */
+    @Serializable
+    data class QuickReplies(val id: String) : Route
+
+    /** Settings' quick reply editor. */
+    @Serializable
+    data object EditQuickReplies : Route
 }
 
 /** Saves the back stack's [Route]s by their serial names, without reflection (R8 renames classes). */
@@ -104,12 +114,12 @@ internal fun notificationTarget(requestId: String?, sessionId: String?, home: Bo
 }
 
 /**
- * [stack] with [target] opened on top. A session or request on top gives way to it; any other
+ * [stack] with [target] opened on top. A session, its quick replies or a request on top gives way to it; any other
  * screen stays below, so an Ask screen a notification covers is not popped (that would cancel its
  * question, see AskCanceller). An empty [target] (home) leaves the session list alone.
  */
 internal fun notificationStack(stack: List<NavKey>, target: List<Route>): List<NavKey> =
-    if (target.isEmpty()) listOf(Route.Sessions) else stack.dropLastWhile { it is Route.Session || it is Route.Request } + target
+    if (target.isEmpty()) listOf(Route.Sessions) else stack.dropLastWhile { it is Route.Session || it is Route.QuickReplies || it is Route.Request } + target
 
 /**
  * Makes this back stack [keys], keeping the entries both share at the bottom: only the screens
@@ -184,7 +194,16 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
                         )
                     }
                     entry<Route.Session> { key ->
-                        SessionDetailScreen(sessionId = key.id, visit = opens, onRespond = { backStack.add(Route.Request(it)) })
+                        SessionDetailScreen(
+                            sessionId = key.id,
+                            visit = opens,
+                            onRespond = { backStack.add(Route.Request(it)) },
+                            onQuickReplies = { backStack.add(Route.QuickReplies(key.id)) },
+                        )
+                    }
+                    entry<Route.QuickReplies> { key ->
+                        // This entry, not whatever is on top: a notification may have opened a screen over it.
+                        QuickRepliesScreen(sessionId = key.id, onSent = { backStack.remove(key) })
                     }
                     entry<Route.Request> { key ->
                         // This entry, not whatever is on top: a notification may have opened a screen over it.
@@ -203,6 +222,7 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
                         SettingsScreen(
                             onAddress = { backStack.add(Route.Address) },
                             onAccounts = { backStack.add(Route.Accounts) },
+                            onQuickReplies = { backStack.add(Route.EditQuickReplies) },
                             onRepair = { backStack.add(Route.Code(Bridge.prefs.baseUrl)) },
                             onPaired = { backStack.showSessions() },
                             onSignedOut = { backStack.replaceWith(listOf(Route.Welcome)) },
@@ -210,6 +230,7 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
                     }
                     entry<Route.Accounts> { AccountsScreen(onAccount = { backStack.add(Route.Account(it)) }) }
                     entry<Route.Account> { key -> AccountScreen(key.key) }
+                    entry<Route.EditQuickReplies> { QuickRepliesEditScreen() }
                 },
             )
 

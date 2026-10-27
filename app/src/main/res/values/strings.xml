@@ -220,6 +220,24 @@
     <string name="settings_version">Version %1$s</string>
     <string name="settings_privacy">Privacy policy</string>
     <string name="settings_accounts">Accounts</string>
+    <string name="settings_quick_replies">Quick replies</string>
+
+    <!-- Quick replies: one-tap prompts from a session, edited in Settings -->
+    <string-array name="quick_replies_default">
+        <item>Continue</item>
+        <item>Yes, go ahead</item>
+        <item>Run the tests</item>
+        <item>Commit it</item>
+    </string-array>
+    <string name="quick_replies_add">Add</string>
+    <string name="quick_replies_delete">Delete %1$s</string>
+    <string name="quick_replies_reset">Reset to defaults</string>
+    <string name="quick_replies_max">Up to %1$d. Delete one to add another.</string>
+    <plurals name="quick_replies_too_long">
+        <item quantity="one">Up to %1$d character.</item>
+        <item quantity="other">Up to %1$d characters.</item>
+    </plurals>
+    <string name="quick_replies_empty">Add replies in Settings.</string>
 
     <!-- Accounts: how each account is marked and named on the watch -->
     <string name="accounts_primary">Default</string>

@@ -363,7 +363,7 @@ private fun SessionDetailPreview() = Frame {
     SessionDetailContent(
         sessions[1].copy(model = "gpt-5.3-codex", effort = "high"), gone = false, limit = usage[1].windows[0],
         state = items, hasRequest = false, sending = false, outcome = null,
-        onEarlier = {}, onAction = {}, onType = {},
+        onEarlier = {}, onAction = {}, onType = {}, onQuick = {},
     )
 }
 
@@ -373,7 +373,7 @@ private fun SessionDetailKoPreview() = Frame {
     SessionDetailContent(
         sessions[0].copy(status = SessionStatus.RUNNING, promptBlock = null, model = "Fable 5.1", effort = "xhigh"),
         gone = false, limit = usage[0].windows[0], state = items, hasRequest = false, sending = false, outcome = null,
-        onEarlier = {}, onAction = {}, onType = {},
+        onEarlier = {}, onAction = {}, onType = {}, onQuick = {},
     )
 }
 
@@ -383,7 +383,7 @@ private fun SessionDetailKoPreview() = Frame {
 private fun SessionDetailRespondPreview() = Frame {
     SessionDetailContent(
         sessions[0], gone = false, limit = usage[0].windows[0], state = items, hasRequest = true, sending = false, outcome = null,
-        onEarlier = {}, onAction = {}, onType = {},
+        onEarlier = {}, onAction = {}, onType = {}, onQuick = {},
     )
 }
 
@@ -395,7 +395,7 @@ private fun SessionDetailFullGaugesPreview() = Frame {
     SessionDetailContent(
         sessions[0].copy(context = ContextUsage(200_000, 200_000)), gone = false, limit = usage[0].windows[0].copy(usedPercent = 100.0),
         state = items, hasRequest = false, sending = false, outcome = null,
-        onEarlier = {}, onAction = {}, onType = {},
+        onEarlier = {}, onAction = {}, onType = {}, onQuick = {},
     )
 }
 
@@ -406,7 +406,7 @@ private fun SessionDetailFullGaugesPreview() = Frame {
 private fun SessionDetailNoUsagePreview() = Frame {
     SessionDetailContent(
         sessions[0], gone = false, limit = null, state = items, hasRequest = false, sending = false, outcome = null,
-        onEarlier = {}, onAction = {}, onType = {},
+        onEarlier = {}, onAction = {}, onType = {}, onQuick = {},
     )
 }
 
@@ -416,7 +416,7 @@ private fun SessionDetailNoUsagePreview() = Frame {
 private fun SessionDetailFailedPreview() = Frame {
     SessionDetailContent(
         sessions[1], gone = false, limit = null, state = SessionItems(failed = true), hasRequest = false, sending = false, outcome = null,
-        onEarlier = {}, onAction = {}, onType = {},
+        onEarlier = {}, onAction = {}, onType = {}, onQuick = {},
     )
 }
 
@@ -478,7 +478,7 @@ private fun SettingsPreview() = Frame {
         demo = false, address = "https://example.tail0000.ts.net", paired = true, deviceName = "Galaxy Watch Ultra", accounts = true,
         showToolCalls = false, watchColors = false, askProvider = ProviderId.CLAUDE_CODE, canChangeAskProvider = true, askLocation = false, askSearch = true, monitoring = false, canMonitor = true, liveUpdates = true, notificationsOff = true,
         busy = false, tokenNeedsAddress = false,
-        onAddress = {}, onDeviceName = {}, onAccounts = {}, onShowToolCalls = {}, onWatchColors = {}, onAskProvider = {}, onAskLocation = {}, onAskSearch = {}, onMonitoring = {}, onLiveUpdates = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
+        onAddress = {}, onDeviceName = {}, onAccounts = {}, onQuickReplies = {}, onShowToolCalls = {}, onWatchColors = {}, onAskProvider = {}, onAskLocation = {}, onAskSearch = {}, onMonitoring = {}, onLiveUpdates = {}, onNotificationSettings = {}, onRepair = {}, onToken = {},
         onDisconnect = {}, onExitDemo = {},
     )
 }

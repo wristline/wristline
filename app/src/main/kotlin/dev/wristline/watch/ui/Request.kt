@@ -82,7 +82,7 @@ private const val HANDLED_MS = 1_500L
  * library's 4s, as the screen (and any next request) waits behind it; a tap closes it sooner. The
  * library lengthens it for accessibility services.
  */
-private const val CONFIRMATION_MS = 2_000L
+internal const val CONFIRMATION_MS = 2_000L
 
 /** The tool of a Claude Code plan approval: a permission titled so, whose text is the plan. */
 private const val PLAN_TOOL = "ExitPlanMode"

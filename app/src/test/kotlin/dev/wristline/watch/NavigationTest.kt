@@ -37,6 +37,8 @@ class NavigationTest {
         assertEquals(listOf(list, session, request), notificationStack(listOf(list, Route.Session("other")), target))
         assertEquals(listOf(list, session, request), notificationStack(listOf(list, session, Route.Request("req-1")), target))
         assertEquals(listOf(list, session), notificationStack(listOf(list, request), listOf(session)))
+        // A session's quick replies go with it.
+        assertEquals(listOf(list, session), notificationStack(listOf(list, Route.Session("other"), Route.QuickReplies("other")), listOf(session)))
     }
 
     @Test

@@ -4,18 +4,36 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Build
 import android.provider.Settings
+import dev.wristline.watch.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+
+/** At most this many quick replies ([quickRepliesOf]). */
+const val QUICK_REPLIES_MAX = 8
+
+/** The longest quick reply, in characters. */
+const val QUICK_REPLY_MAX_CHARS = 80
+
+/** [replies] as kept: each trimmed, the empty and the longer than [QUICK_REPLY_MAX_CHARS] left out, the first [QUICK_REPLIES_MAX]. */
+internal fun quickRepliesOf(replies: List<String>): List<String> =
+    replies.map { it.trim() }.filter { it.isNotEmpty() && it.length <= QUICK_REPLY_MAX_CHARS }.take(QUICK_REPLIES_MAX)
 
 /**
  * Pairing and user settings. Stored in app-private SharedPreferences, which are excluded from
  * backup and device transfer (see res/xml/data_extraction_rules.xml).
  */
-class Prefs internal constructor(private val sp: SharedPreferences, private val defaultDeviceName: String) {
+class Prefs internal constructor(
+    private val sp: SharedPreferences,
+    private val defaultDeviceName: String,
+    private val defaultQuickReplies: () -> List<String> = { emptyList() },
+) {
     constructor(context: Context) : this(
         context.getSharedPreferences("wristline", Context.MODE_PRIVATE),
         Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME) ?: Build.MODEL,
+        { context.resources.getStringArray(R.array.quick_replies_default).toList() },
     )
 
     /**
@@ -88,6 +106,23 @@ class Prefs internal constructor(private val sp: SharedPreferences, private val 
         get() = sp.getBoolean(KEY_ASK_SEARCH, true)
         set(value) = sp.edit().putBoolean(KEY_ASK_SEARCH, value).apply()
 
+    /**
+     * The session screen's one-tap prompts, in order, as [quickRepliesOf] keeps them; the app
+     * language's defaults until the user edits them (so those follow a language change).
+     */
+    var quickReplies: List<String>
+        get() = sp.getString(KEY_QUICK_REPLIES, null)?.let(::readQuickReplies) ?: quickRepliesOf(defaultQuickReplies())
+        set(value) = sp.edit().putString(KEY_QUICK_REPLIES, WireJson.encodeToString(quickRepliesSerializer, quickRepliesOf(value))).apply()
+
+    /** Back to the defaults ([quickReplies]). */
+    fun resetQuickReplies() = sp.edit().remove(KEY_QUICK_REPLIES).apply()
+
+    private fun readQuickReplies(json: String): List<String>? = try {
+        quickRepliesOf(WireJson.decodeFromString(quickRepliesSerializer, json))
+    } catch (_: IllegalArgumentException) {
+        null
+    }
+
     private val accountsFlow = MutableStateFlow(readAccounts())
 
     /** The accounts seen and how each looks (see [AccountBook]); one JSON value, written when it changes. */
@@ -150,5 +185,7 @@ class Prefs internal constructor(private val sp: SharedPreferences, private val 
         const val KEY_ASK_SEARCH = "askSearch"
         const val KEY_WATCH_COLORS = "watchColors"
         const val KEY_ACCOUNTS = "accounts"
+        const val KEY_QUICK_REPLIES = "quickReplies"
+        val quickRepliesSerializer = ListSerializer(String.serializer())
     }
 }
