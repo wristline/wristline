@@ -420,7 +420,7 @@ private fun SessionDetailFailedPreview() = Frame {
     )
 }
 
-// The agent has a suggested next prompt: a small ✦ on the quick replies bolt.
+// The agent has a suggested next prompt: a small ✦ on the quick replies bolt, and the dim ✦ card at the newest end.
 @Preview(device = WearDevices.LARGE_ROUND, showSystemUi = true)
 @Composable
 private fun SessionDetailSuggestionPreview() = Frame {

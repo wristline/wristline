@@ -35,6 +35,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,6 +95,7 @@ import androidx.wear.compose.material3.FilledTonalIconButton
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.IconButtonDefaults
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.OutlinedCard
 import androidx.wear.compose.material3.ProgressIndicatorDefaults
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.ScrollIndicator
@@ -141,6 +143,10 @@ private const val COLLAPSED_CHARS = 1_000
 private const val SENT_NOTICE_MS = 4_000L
 // How long the speak button shows a check after a prompt went out.
 private const val SENT_CHECK_MS = 1_200L
+// How long a tap on the suggestion card shows that a long press sends it.
+private const val HINT_MS = 1_500L
+// The suggestion card's text: dim, as Claude Code's ghost text, yet readable on the dark screen.
+private const val GHOST_ALPHA = 0.5f
 // The library's small size, the minimum touch target.
 private val ACTION_SIZE = IconButtonDefaults.SmallButtonSize
 private val ACTION_GAP = 8.dp
@@ -206,9 +212,10 @@ private class OpenedSession(val id: String) : ViewModel() {
  * [visit] changes when a notification opens this session again while it is on screen, or a quick
  * reply or an answer sent from a screen opened over it returns here: the list goes back to the
  * newest message as on entering it. Coming back without sending keeps the list where it was.
+ * [onNewVisit] starts one from here: the agent's suggestion sent from its card.
  */
 @Composable
-internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (String) -> Unit, onQuickReplies: () -> Unit) {
+internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (String) -> Unit, onQuickReplies: () -> Unit, onNewVisit: () -> Unit) {
     val opened = viewModel { OpenedSession(sessionId) }
     // Live items only while started: with the screen off, or another activity in front, nothing
     // streams; coming back reloads the newest page.
@@ -263,6 +270,16 @@ internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (Stri
             outcome = null
         }
     }
+    fun send(text: String, onOk: () -> Unit = {}) {
+        sending = true
+        scope.launch {
+            val sent = Bridge.prompt(sessionId, text)
+            outcome = sent
+            sending = false
+            touch(sentHaptic(sent))
+            if (sent == Sent.Ok) onOk()
+        }
+    }
 
     SessionDetailContent(
         session = session,
@@ -277,6 +294,12 @@ internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (Stri
         onAction = { if (request != null) onRespond(request.id) else speak() },
         onType = type,
         onQuick = onQuickReplies,
+        // Sent as a quick reply is (no confirm step: the phrase is already known), then the list
+        // goes to the newest as after one.
+        onSuggestion = { text ->
+            outcome = null
+            send(text, onOk = onNewVisit)
+        },
         visit = visit,
         confirming = confirming,
     )
@@ -288,13 +311,7 @@ internal fun SessionDetailScreen(sessionId: String, visit: Int, onRespond: (Stri
             AlertDialogDefaults.ConfirmButton(
                 onClick = {
                     confirming = false
-                    sending = true
-                    scope.launch {
-                        val sent = Bridge.prompt(sessionId, draft)
-                        outcome = sent
-                        sending = false
-                        touch(sentHaptic(sent))
-                    }
+                    send(draft)
                 },
             )
         },
@@ -331,6 +348,8 @@ internal fun SessionDetailContent(
     onType: () -> Unit,
     /** Opens the quick replies. */
     onQuick: () -> Unit,
+    /** Sends the agent's suggestion, from its card ([ghostSuggestion]). */
+    onSuggestion: (String) -> Unit = {},
     /** A new visit of the screen ([SessionDetailScreen]): the list starts at the newest message again. */
     visit: Int = 0,
     /** The send confirmation is up: the jump to the newest message hides under it. */
@@ -349,7 +368,10 @@ internal fun SessionDetailContent(
     val working = session?.status == SessionStatus.RUNNING
     val blockCode = session?.promptBlock?.takeIf { !hasRequest }
     val canSend = session != null && session.promptBlock == null && !sending
-    val footers = listOf(working, blockCode != null, outcome != null).count { it }
+    // Not while a prompt goes out, nor while "Sent" shows: the suggestion is gone by then.
+    val ghost = ghostSuggestion(session?.status, hasRequest, session?.suggestion, session?.promptBlock)
+        ?.takeIf { !sending && outcome != Sent.Ok }
+    val footers = footersKey(working, blockCode != null, outcome != null, ghost != null)
     val screenHeight = LocalWindowInfo.current.containerSize.height
     val endPadding = with(LocalDensity.current) { (screenHeight * END_PADDING_FRACTION).toDp() }
 
@@ -410,6 +432,16 @@ internal fun SessionDetailContent(
     // The gauges fill in from zero the first time they show, once per visit: held here, as they
     // leave composition whenever the list scrolls.
     var gaugesFilled by remember { mutableStateOf(false) }
+    // A tap on the suggestion card says that a long press sends it, for HINT_MS; a tap again starts over.
+    var hintTaps by remember { mutableIntStateOf(0) }
+    var hintShown by remember { mutableStateOf(false) }
+    LaunchedEffect(hintTaps) {
+        if (hintTaps > 0) {
+            hintShown = true
+            delay(HINT_MS)
+            hintShown = false
+        }
+    }
     ScreenScaffold(
         scrollState = listState,
         // Nothing at the top, not even the clock: the session cards show the model and effort.
@@ -435,6 +467,12 @@ internal fun SessionDetailContent(
                 bottom = endPadding,
             ),
         ) {
+            // The newest end, under everything: what the agent suggests sending next.
+            if (ghost != null) {
+                item(key = "ghost") {
+                    GhostSuggestion(ghost, spec, onHint = { hintTaps++ }, onSend = { onSuggestion(ghost) })
+                }
+            }
             if (outcome != null) {
                 item(key = "outcome") {
                     val text = when (outcome) {
@@ -560,6 +598,18 @@ internal fun SessionDetailContent(
                 )
             }
         }
+        AnimatedVisibility(hintShown, modifier = Modifier.align(Alignment.Center), enter = CalmFadeIn, exit = CalmFadeOut) {
+            Text(
+                stringResource(R.string.detail_suggestion_hint),
+                Modifier
+                    .clip(CircleShape)
+                    .background(colors.surfaceContainerHigh)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .announced(),
+                color = colors.onSurface,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
         // [Respond] while a request waits, otherwise the speak, type and quick reply buttons (disabled when blocked).
         val actions = Modifier.align(Alignment.BottomCenter).padding(bottom = ACTIONS_BOTTOM)
         val lift = sideActionLift(with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() }, LocalConfiguration.current.isScreenRound)
@@ -621,6 +671,21 @@ internal fun sideActionLift(screenWidth: Dp, round: Boolean): Dp {
     val center = radius - sqrt(reach * reach - offset * offset)
     return (center - half - ACTIONS_BOTTOM.value).coerceAtLeast(0f).dp
 }
+
+/**
+ * The agent's suggested next prompt as the detail list's newest entry, trimmed: while the session
+ * is idle ([status]) with no request open, nothing blocks a prompt ([promptBlock]) and the
+ * [suggestion] is not blank; otherwise null.
+ */
+internal fun ghostSuggestion(status: String?, hasRequest: Boolean, suggestion: String?, promptBlock: String?): String? =
+    suggestion?.trim()?.takeIf { it.isNotEmpty() && status == SessionStatus.IDLE && !hasRequest && promptBlock == null }
+
+/**
+ * Which of the entries under the newest item show, as a key that changes whenever one comes or
+ * goes: the spinner giving way to the suggestion as a turn ends is a change too.
+ */
+internal fun footersKey(working: Boolean, block: Boolean, outcome: Boolean, ghost: Boolean): Int =
+    listOf(working, block, outcome, ghost).foldIndexed(0) { i, key, shown -> if (shown) key or (1 shl i) else key }
 
 /** What the detail list does when its newest item or its footers change ([endScroll]). */
 internal enum class EndScroll { NONE, JUMP, FOLLOW }
@@ -1138,6 +1203,51 @@ private fun TransformingLazyColumnItemScope.ItemRow(
         ) {
             ItemTime(item.ts)
             CaptionText(item.text)
+        }
+    }
+}
+
+/**
+ * The agent's suggested next prompt, as Claude Code shows it in its input: a user message not yet
+ * sent, dim, outlined rather than filled, after a ✦. A long press sends it ([onSend]); a tap only
+ * says so ([onHint]). Read out as `Suggested: …`, with the long press as a Send action.
+ */
+@Composable
+private fun TransformingLazyColumnItemScope.GhostSuggestion(text: String, spec: TransformationSpec, onHint: () -> Unit, onSend: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    val interaction = remember { MutableInteractionSource() }
+    val description = stringResource(R.string.detail_suggestion_description, text)
+    OutlinedCard(
+        onClick = onHint,
+        onLongClick = onSend,
+        onLongClickLabel = stringResource(R.string.detail_suggestion_send),
+        modifier = Modifier
+            .fillMaxWidth()
+            .transformedHeight(this, spec)
+            .animateItemCalmly(this)
+            .pressScale(rememberPressDepth(interaction))
+            .semantics { contentDescription = description },
+        transformation = SurfaceTransformation(spec),
+        interactionSource = interaction,
+        // As a user message's card, its fill as the outline.
+        border = CardDefaults.outlinedCardBorder(colors.primaryContainer),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+    ) {
+        Row(Modifier.clearAndSetSemantics {}, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Icon(
+                painterResource(R.drawable.ic_suggest),
+                null,
+                // On the first line's middle.
+                Modifier.padding(top = 2.dp).size(PLAN_GLYPH),
+                tint = colors.primary.copy(alpha = GHOST_ALPHA),
+            )
+            Text(
+                text,
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurface.copy(alpha = GHOST_ALPHA),
+                maxLines = COLLAPSED_LINES,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

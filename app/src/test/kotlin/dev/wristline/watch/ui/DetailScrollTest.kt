@@ -1,8 +1,11 @@
 package dev.wristline.watch.ui
 
 import androidx.compose.ui.unit.dp
+import dev.wristline.watch.data.SessionStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -55,5 +58,32 @@ class DetailScrollTest {
     fun jumpButtonHidesWhileLoadingOrConfirming() {
         assertFalse(showJumpToLatest(atEnd = false, loading = true, confirming = false))
         assertFalse(showJumpToLatest(atEnd = false, loading = false, confirming = true))
+    }
+
+    @Test
+    fun suggestionShowsOnlyWhileIdleAndFree() {
+        assertEquals("Run the tests", ghostSuggestion(SessionStatus.IDLE, hasRequest = false, suggestion = "  Run the tests\n", promptBlock = null))
+        assertNull(ghostSuggestion(SessionStatus.RUNNING, hasRequest = false, suggestion = "Run the tests", promptBlock = null))
+        assertNull(ghostSuggestion(SessionStatus.NEEDS_INPUT, hasRequest = false, suggestion = "Run the tests", promptBlock = null))
+        assertNull(ghostSuggestion(SessionStatus.ENDED, hasRequest = false, suggestion = "Run the tests", promptBlock = "not_live"))
+        assertNull(ghostSuggestion(null, hasRequest = false, suggestion = "Run the tests", promptBlock = null))
+        assertNull(ghostSuggestion(SessionStatus.IDLE, hasRequest = true, suggestion = "Run the tests", promptBlock = null))
+        assertNull(ghostSuggestion(SessionStatus.IDLE, hasRequest = false, suggestion = "Run the tests", promptBlock = "busy"))
+        assertNull(ghostSuggestion(SessionStatus.IDLE, hasRequest = false, suggestion = null, promptBlock = null))
+        assertNull(ghostSuggestion(SessionStatus.IDLE, hasRequest = false, suggestion = " \n", promptBlock = null))
+    }
+
+    @Test
+    fun footersKeyChangesWhenTheSpinnerGivesWayToTheSuggestion() {
+        // The same number of entries under the newest item, but a different one: the list follows.
+        assertNotEquals(
+            footersKey(working = true, block = false, outcome = false, ghost = false),
+            footersKey(working = false, block = false, outcome = false, ghost = true),
+        )
+        assertNotEquals(
+            footersKey(working = false, block = false, outcome = true, ghost = false),
+            footersKey(working = false, block = false, outcome = false, ghost = true),
+        )
+        assertEquals(0, footersKey(working = false, block = false, outcome = false, ghost = false))
     }
 }

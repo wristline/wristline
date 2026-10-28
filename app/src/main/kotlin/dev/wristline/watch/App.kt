@@ -149,8 +149,8 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
             // New visits of the session screen: a notification tap opening the session already there, or
-            // coming back to it from a quick reply or an answer sent. Each puts its list at the newest item;
-            // coming back without sending leaves it where it was.
+            // coming back to it from a quick reply or an answer sent, or the agent's suggestion sent from it.
+            // Each puts its list at the newest item; coming back without sending leaves it where it was.
             var visits by remember { mutableIntStateOf(0) }
 
             NavDisplay(
@@ -202,6 +202,7 @@ fun App(openTarget: List<Route>?, onOpened: () -> Unit) {
                             visit = visits,
                             onRespond = { backStack.add(Route.Request(it)) },
                             onQuickReplies = { backStack.add(Route.QuickReplies(key.id)) },
+                            onNewVisit = { visits++ },
                         )
                     }
                     entry<Route.QuickReplies> { key ->

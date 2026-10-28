@@ -244,6 +244,12 @@
     <string name="quick_replies_suggested">Suggested</string>
     <!-- TalkBack: the session screen's quick replies button while the agent has a suggested prompt -->
     <string name="detail_quick_suggested">Quick replies, with a suggestion</string>
+    <!-- TalkBack: the session screen's dim card of the agent's suggested next prompt -->
+    <string name="detail_suggestion_description">Suggested: %1$s</string>
+    <!-- TalkBack: the long press action of the suggestion card, which sends it -->
+    <string name="detail_suggestion_send">Send</string>
+    <!-- Shown for a moment after a tap on the suggestion card: a long press sends it -->
+    <string name="detail_suggestion_hint">Hold to send</string>
 
     <!-- Accounts: how each account is marked and named on the watch -->
     <string name="accounts_primary">Default</string>

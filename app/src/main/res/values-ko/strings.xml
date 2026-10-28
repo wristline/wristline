@@ -220,6 +220,9 @@
     <string name="quick_replies_empty">설정에서 답변을 추가하세요.</string>
     <string name="quick_replies_suggested">추천</string>
     <string name="detail_quick_suggested">빠른 답변, 추천 있음</string>
+    <string name="detail_suggestion_description">추천: %1$s</string>
+    <string name="detail_suggestion_send">보내기</string>
+    <string name="detail_suggestion_hint">길게 눌러 보내기</string>
 
     <!-- Accounts: how each account is marked and named on the watch -->
     <string name="accounts_primary">기본</string>
