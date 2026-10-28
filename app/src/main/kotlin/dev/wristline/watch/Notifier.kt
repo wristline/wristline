@@ -65,6 +65,20 @@ internal fun clipText(text: String, max: Int): String {
     return text.substring(0, end) + "…"
 }
 
+/** Characters of the agent's suggestion a done notification's action shows ([suggestionLabel]). */
+internal const val SUGGESTION_LABEL_MAX = 30
+
+/**
+ * The suggestion a done notification offers to send: the alert's [suggestion], trimmed; none when
+ * blank, or when [session] is not known or would refuse a prompt (its promptBlock).
+ */
+internal fun notificationSuggestion(suggestion: String?, session: Session?): String? =
+    suggestion?.trim()?.takeIf { it.isNotEmpty() && session != null && session.promptBlock == null }
+
+/** `✦ Run the tests and fix any fai…`: [suggestion] on one line, clipped to [SUGGESTION_LABEL_MAX]. */
+internal fun suggestionLabel(suggestion: String): String =
+    "✦ " + clipText(suggestion.trim().replace(Regex("\\s+"), " "), SUGGESTION_LABEL_MAX)
+
 /**
  * Request titles (the tool) whose text sums the tool's input up rather than showing all of it: a
  * file's path but not the change (Claude Code's file tools, Codex's "Edit"), a subagent's
@@ -254,17 +268,56 @@ object Notifier {
             alertOnce = false,
         )
 
-    /** [title] is the alert's own title, when the bridge sends one; otherwise the session title. */
-    fun done(context: Context, sessionId: String, title: String?, text: String?, session: Session?): Boolean =
-        post(
-            context, TAG_SESSION, sessionId, CHANNEL_UPDATES, MainActivity.EXTRA_SESSION_ID,
+    /**
+     * [title] is the alert's own title, when the bridge sends one; otherwise the session title. The
+     * alert's [suggestion], when the session takes a prompt ([notificationSuggestion]), is an action
+     * that sends it ([suggestionAction]).
+     */
+    fun done(context: Context, sessionId: String, title: String?, text: String?, session: Session?, suggestion: String? = null): Boolean =
+        postDone(
+            context, sessionId,
             title = title?.takeIf { it.isNotBlank() } ?: sessionTitle(context, session),
             text = text ?: context.getString(R.string.notify_done),
             subText = accountLine(context, session),
+            suggestion = notificationSuggestion(suggestion, session),
+        )
+
+    /**
+     * A done alert as [done] has it, with [suggestion] as its action. [note] is a line above the text
+     * about the suggestion's send ([NotificationActionReceiver]); a notification with one is posted silently.
+     */
+    internal fun postDone(context: Context, sessionId: String, title: String, text: String, subText: String?, suggestion: String?, note: String? = null): Boolean =
+        post(
+            context, TAG_SESSION, sessionId, CHANNEL_UPDATES, MainActivity.EXTRA_SESSION_ID,
+            title = title,
+            text = listOfNotNull(note, text).joinToString("\n"),
+            subText = subText,
             // Each done alert is new (replays are deduplicated by id). A background client is not told
             // that the session ran again, so the previous one may still be shown: vibrate anyway.
             alertOnce = false,
+            silent = note != null,
+            actions = listOfNotNull(suggestion?.let { suggestionAction(context, sessionId, it, title, text, subText) }),
         )
+
+    /**
+     * Sends [suggestion] to the session as a prompt without opening the app, as [decisionAction]
+     * answers; the notification's [title], [text] and [subText] go along, for the receiver to post it
+     * again with a note. TalkBack says "Send suggestion" and the whole suggestion.
+     */
+    private fun suggestionAction(context: Context, sessionId: String, suggestion: String, title: String, text: String, subText: String?): NotificationCompat.Action {
+        val intent = NotificationActionReceiver.suggestionIntent(context, sessionId, suggestion, title, text, subText)
+        // The intent's data is unique per session, so the PendingIntents stay apart.
+        val pending = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val label = SpannableString(suggestionLabel(suggestion)).apply {
+            val spoken = context.getString(R.string.notify_send_suggestion, suggestion)
+            setSpan(TtsSpan.TextBuilder(spoken).build(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return NotificationCompat.Action.Builder(R.drawable.ic_suggest, label, pending)
+            .setAuthenticationRequired(true)
+            .setShowsUserInterface(false)
+            .extend(NotificationCompat.Action.WearableExtender().setHintLaunchesActivity(false))
+            .build()
+    }
 
     /**
      * The agent hit a usage limit: titled in English as the agent says it, the session and when the

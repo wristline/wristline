@@ -65,12 +65,27 @@ internal fun actionOutcome(decision: String, sent: Sent, settled: Boolean): Acti
 }
 
 /**
- * Allow or Deny tapped on a request notification ([Notifier.request]). The process may have been
- * started for this alone: [Bridge.init] reads the stored pairing, and the answer goes over REST
- * without a socket. The intent carries the request, so a failed answer can post it again.
+ * What follows sending a done notification's suggestion: sent, the confirming haptic and the
+ * notification goes. Otherwise the error haptic and a notice, never the action again: an
+ * unreachable bridge may have sent the prompt all the same ([UNCONFIRMED]), and a refused one would
+ * be refused again (the session busy or gone). The notification still opens the session.
+ */
+internal fun suggestionOutcome(sent: Sent): ActionOutcome =
+    if (sent == Sent.Ok) {
+        ActionOutcome(Haptic.CONFIRM, AfterAnswer.Gone)
+    } else {
+        ActionOutcome(Haptic.ERROR, AfterAnswer.Notice((sent as? Sent.Refused)?.code ?: UNCONFIRMED))
+    }
+
+/**
+ * Allow or Deny tapped on a request notification ([Notifier.request]), or the suggestion on a done
+ * one ([Notifier.done], [suggest]). The process may have been started for this alone: [Bridge.init]
+ * reads the stored pairing, and the answer goes over REST without a socket. The intent carries the
+ * request, so a failed answer can post it again.
  */
 class NotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == ACTION_SUGGEST) return suggest(context, intent)
         val request = intent.getStringExtra(EXTRA_REQUEST)?.let {
             try {
                 WireJson.decodeFromString(PendingRequest.serializer(), it)
@@ -121,6 +136,44 @@ class NotificationActionReceiver : BroadcastReceiver() {
         }
     }
 
+    /** Sends the suggestion as a prompt to its session, as [onReceive] answers a request. */
+    private fun suggest(context: Context, intent: Intent) {
+        val sessionId = intent.getStringExtra(EXTRA_SESSION_ID) ?: return
+        val suggestion = intent.getStringExtra(EXTRA_SUGGESTION)?.takeIf { it.isNotBlank() } ?: return
+        val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+        val text = intent.getStringExtra(EXTRA_TEXT).orEmpty()
+        val subText = intent.getStringExtra(EXTRA_SUB_TEXT)
+        val app = context.applicationContext
+        val key = "suggest/$sessionId"
+        if (!answering.add(key)) return
+        // The action goes at once, so the suggestion is sent once.
+        Notifier.postDone(app, sessionId, title, text, subText, suggestion = null, note = app.getString(R.string.notify_answer_sending))
+        Bridge.init(app)
+        val pending = goAsync()
+        scope.launch {
+            try {
+                val sent = if (Bridge.prefs.isPaired) Bridge.prompt(sessionId, suggestion, ANSWER_TIMEOUT_MS) else Sent.Refused("unauthorized")
+                Log.i(TAG, "action suggest session=$sessionId sent=$sent")
+                val outcome = suggestionOutcome(sent)
+                val after = outcome.after
+                if (after is AfterAnswer.Notice) {
+                    Notifier.postDone(app, sessionId, title, text, subText, suggestion = null, note = note(app, after.code))
+                } else {
+                    Notifier.cancelSession(app, sessionId)
+                }
+                Haptics.event(app, outcome.haptic)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "action suggest session=$sessionId failed", e)
+                runCatching { Notifier.postDone(app, sessionId, title, text, subText, suggestion = null, note = Notifier.answerFailed(app, "exception")) }
+            } finally {
+                answering.remove(key)
+                pending.finish()
+            }
+        }
+    }
+
     private fun note(context: Context, code: String): String = when (code) {
         UNCONFIRMED -> context.getString(R.string.notify_answer_unconfirmed)
         "already_resolved" -> context.getString(R.string.error_already_resolved)
@@ -135,10 +188,16 @@ class NotificationActionReceiver : BroadcastReceiver() {
         private const val EXTRA_DECISION = "decision"
         private const val EXTRA_SESSION_TITLE = "sessionTitle"
         private const val EXTRA_ACCOUNT = "account"
+        private const val ACTION_SUGGEST = "dev.wristline.watch.action.SUGGEST"
+        private const val EXTRA_SESSION_ID = "sessionId"
+        private const val EXTRA_SUGGESTION = "suggestion"
+        private const val EXTRA_TITLE = "title"
+        private const val EXTRA_TEXT = "text"
+        private const val EXTRA_SUB_TEXT = "subText"
 
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-        /** Ids of the requests an answer is on its way for. */
+        /** Ids of the requests an answer is on its way for, and `suggest/<session id>` of suggestions. */
         private val answering: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
         /** The broadcast [decision] sends for [request]'s [question]; [account] is the notification's account line, if any. */
@@ -151,5 +210,16 @@ class NotificationActionReceiver : BroadcastReceiver() {
                 .putExtra(EXTRA_DECISION, decision)
                 .putExtra(EXTRA_SESSION_TITLE, sessionTitle)
                 .putExtra(EXTRA_ACCOUNT, account)
+
+        /** The broadcast that sends [suggestion] to [sessionId]; [title], [text] and [subText] are its done notification's. */
+        fun suggestionIntent(context: Context, sessionId: String, suggestion: String, title: String, text: String, subText: String?): Intent =
+            Intent(ACTION_SUGGEST)
+                .setClass(context, NotificationActionReceiver::class.java)
+                .setData(Uri.Builder().scheme("wristline").authority("suggest").appendPath(sessionId).build())
+                .putExtra(EXTRA_SESSION_ID, sessionId)
+                .putExtra(EXTRA_SUGGESTION, suggestion)
+                .putExtra(EXTRA_TITLE, title)
+                .putExtra(EXTRA_TEXT, text)
+                .putExtra(EXTRA_SUB_TEXT, subText)
     }
 }

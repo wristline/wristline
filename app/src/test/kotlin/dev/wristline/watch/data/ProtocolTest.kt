@@ -104,6 +104,14 @@ class ProtocolTest {
     }
 
     @Test
+    fun doneAlertCarriesTheSuggestionWhenTheBridgeHasOne() {
+        val alert = parseServerEvent(File(dir, "event-alert-done-suggestion.json").readText()) as ServerEvent.Alert
+        assertEquals(AlertKind.DONE, alert.alert)
+        assertEquals("Run the tests and fix any failures", alert.suggestion)
+        assertNull((parseServerEvent(File(dir, "event-alert.json").readText()) as ServerEvent.Alert).suggestion)
+    }
+
+    @Test
     fun limitItemAndAlertCarryTheResetTime() {
         val item = (parseServerEvent(File(dir, "event-item-limit.json").readText()) as ServerEvent.ItemChanged).item
         assertEquals(ItemKind.ASSISTANT, item.kind)

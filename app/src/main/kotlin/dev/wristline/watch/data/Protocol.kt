@@ -370,6 +370,7 @@ sealed interface ServerEvent {
      * resets, when known, [resetsEstimated] and [limitKind] as on its [Item]. [id]
      * and [at] (ISO 8601) come with bridges that replay alerts in the snapshot: the id tells a
      * replayed alert from one already handled, the time keeps old ones from being replayed.
+     * [suggestion] is a done alert's suggested next prompt, when the agent made one in time.
      */
     @Serializable
     data class Alert(
@@ -382,6 +383,7 @@ sealed interface ServerEvent {
         val resetsAt: String? = null,
         val resetsEstimated: Boolean = false,
         val limitKind: String? = null,
+        val suggestion: String? = null,
     ) : ServerEvent
 
     /** Sent only to the device that asked. [text] is the answer, present when [status] is done. */

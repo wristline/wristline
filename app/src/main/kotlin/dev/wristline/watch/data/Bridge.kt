@@ -884,7 +884,7 @@ object Bridge {
             AlertKind.NEEDS_INPUT -> _requests.value.none { it.sessionId == event.sessionId } &&
                 attention(looking, event.sessionId) { Notifier.needsInput(appContext, event.sessionId, event.text, session(event.sessionId)) }
             AlertKind.DONE -> attention(looking, event.sessionId, done = true) {
-                Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId))
+                Notifier.done(appContext, event.sessionId, event.title, event.text, session(event.sessionId), event.suggestion)
             }
             // Posted like a done alert (the open session shows the error card), felt like a request.
             AlertKind.LIMIT -> attention(looking, event.sessionId, done = true, haptic = Haptic.ATTENTION) {
@@ -1100,7 +1100,8 @@ object Bridge {
 
     // prompt() and answer() finish even when the screen that sent them closes: the user has already
     // confirmed them, and cancelling the call midway could drop a dictated prompt or an answer.
-    suspend fun prompt(sessionId: String, text: String): Sent = withContext(dispatcher + NonCancellable) {
+    /** [timeoutMs] as for [answer]. */
+    suspend fun prompt(sessionId: String, text: String, timeoutMs: Long = 0): Sent = withContext(dispatcher + NonCancellable) {
         if (demo != null) {
             itemFlow(sessionId)?.update {
                 it.withItem(Item((it.items.lastOrNull()?.seq ?: 0L) + 1, ItemKind.USER, Instant.now().toString(), text))
@@ -1109,7 +1110,7 @@ object Bridge {
         }
         val body = WireJson.encodeToString(PromptBody.serializer(), PromptBody(text))
         val url = apiUrl(prefs.baseUrl, "sessions", sessionId, "prompt")
-        val result = send(authed(url).post(body.toRequestBody(jsonType)).build()) ?: return@withContext Sent.Unreachable
+        val result = send(authed(url).post(body.toRequestBody(jsonType)).build(), timeoutMs) ?: return@withContext Sent.Unreachable
         when (result.code) {
             200, 202 -> Sent.Ok
             401 -> {

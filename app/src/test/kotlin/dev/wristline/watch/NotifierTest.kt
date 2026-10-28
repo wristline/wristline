@@ -67,6 +67,25 @@ class NotifierTest {
         assertFalse(applies("session", Notifier.CHANNEL_UPDATES, emptyList()))
     }
 
+    @Test
+    fun doneAlertOffersTheSuggestionOnlyWhenTheSessionTakesAPrompt() {
+        val idle = session(SessionStatus.IDLE)
+        assertEquals("Run the tests", notificationSuggestion("  Run the tests\n", idle))
+        assertNull(notificationSuggestion(null, idle))
+        assertNull(notificationSuggestion(" \n ", idle))
+        // Refused by the bridge (e.g. no tmux), or a session the client does not know.
+        assertNull(notificationSuggestion("Run the tests", idle.copy(promptBlock = "no_tmux")))
+        assertNull(notificationSuggestion("Run the tests", null))
+    }
+
+    @Test
+    fun suggestionLabelIsOneClippedLine() {
+        assertEquals("✦ Run the tests", suggestionLabel(" Run the tests "))
+        assertEquals("✦ Run the tests and fix any fai…", suggestionLabel("Run the tests and fix any failures"))
+        assertEquals("✦ " + "x".repeat(SUGGESTION_LABEL_MAX), suggestionLabel("x".repeat(SUGGESTION_LABEL_MAX)))
+        assertEquals("✦ Commit, then push", suggestionLabel("Commit,\n  then push"))
+    }
+
     // A limit alert has its own tag: it stays until the session works again, whatever the channel.
     @Test
     fun limitAlertAppliesUntilTheSessionWorksAgain() {

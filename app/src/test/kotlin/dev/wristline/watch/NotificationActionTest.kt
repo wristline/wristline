@@ -91,6 +91,16 @@ class NotificationActionTest {
     }
 
     @Test
+    fun outcomeOfASentSuggestion() {
+        assertEquals(ActionOutcome(Haptic.CONFIRM, AfterAnswer.Gone), suggestionOutcome(Sent.Ok))
+        // It may have gone out: never offered again, so it is not sent twice.
+        assertEquals(ActionOutcome(Haptic.ERROR, AfterAnswer.Notice(UNCONFIRMED)), suggestionOutcome(Sent.Unreachable))
+        for (code in listOf("busy", "not_live", "unauthorized", "http_500")) {
+            assertEquals(ActionOutcome(Haptic.ERROR, AfterAnswer.Notice(code)), suggestionOutcome(Sent.Refused(code)))
+        }
+    }
+
+    @Test
     fun aSettledRequestIsNeverOfferedAgain() {
         // Resolved meanwhile, perhaps by this very answer with its response lost.
         assertEquals(AfterAnswer.Notice(UNCONFIRMED), actionOutcome(Decision.ALLOW, Sent.Unreachable, settled = true).after)
